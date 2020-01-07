@@ -6,5 +6,5 @@ setup(name='dolfiny',
       author='Michal Habera',
       author_email='michal.habera@gmail.com',
       license='MIT',
-      packages=['dolfin-y'],
+      packages=['dolfiny'],
       zip_safe=False)
