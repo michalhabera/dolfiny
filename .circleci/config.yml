@@ -1,0 +1,16 @@
+version: 1
+jobs:
+  build:
+    docker:
+      - image: quay.io/fenicsproject/dolfinx:latest
+    steps:
+      - checkout
+      - run:
+          name: Install requirements
+          command: pip3 install -r requirements.txt --upgrade
+      - run:
+          name: Install dolfin-y package
+          command: pip3 install .
+      - run:
+          name: Run Python unit tests (serial)
+          command: python3 -m pytest test/.
