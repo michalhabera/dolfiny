@@ -1,8 +1,7 @@
-
-import numpy as np
 import ufl
 from ufl.corealg.multifunction import MultiFunction
 from ufl.algorithms.map_integrands import map_integrand_dags
+import typing
 
 
 class Replacer(MultiFunction):
@@ -17,9 +16,16 @@ class Replacer(MultiFunction):
             return self.reuse_if_untouched(o, *args)
 
 
-def extract_blocks(form, test_functions, trial_functions):
+def extract_blocks(form, test_functions: typing.List, trial_functions: typing.List):
+    """Extract blocks from a monolithic UFL form.
+
+    Returns
+    -------
+    Splitted UFL form in the order determined by the passed test and trial functions.
+
+    """
     # Prepare empty block matrices list
-    blocks = [[None for i in  range(len(test_functions))] for j in  range(len(trial_functions))]
+    blocks = [[None for i in range(len(test_functions))] for j in range(len(trial_functions))]
 
     for i, tef in enumerate(test_functions):
         for j, trf in enumerate(trial_functions):

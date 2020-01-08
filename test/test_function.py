@@ -2,7 +2,6 @@ import dolfin
 import ufl
 import dolfiny.function
 import pytest
-import pdb
 
 
 @pytest.fixture

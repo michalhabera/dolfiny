@@ -6,6 +6,9 @@ jobs:
     steps:
       - checkout
       - run:
+          name: Flake8
+          command: flake8 .
+      - run:
           name: Install requirements
           command: pip3 install -r requirements.txt --upgrade
       - run:
