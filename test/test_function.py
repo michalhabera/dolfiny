@@ -1,25 +1,9 @@
-import dolfin
 import ufl
 import dolfiny.function
-import pytest
 
 
-@pytest.fixture
-def mesh():
-    return dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 5, 5)
-
-
-@pytest.fixture
-def V1(mesh):
-    return dolfin.FunctionSpace(mesh, ("P", 1))
-
-
-@pytest.fixture
-def V2(mesh):
-    return dolfin.FunctionSpace(mesh, ("P", 2))
-
-
-def test_ufl_block_extraction(V1, V2, mesh):
+def test_ufl_block_extraction(V1, V2, squaremesh_5):
+    mesh = squaremesh_5
     u1, v1 = ufl.TrialFunction(V1), ufl.TestFunction(V1)
     u2, v2 = ufl.TrialFunction(V2), ufl.TestFunction(V2)
 
