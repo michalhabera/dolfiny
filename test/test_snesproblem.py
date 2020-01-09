@@ -16,11 +16,6 @@ def test_singleblock(V1, squaremesh_5):
 
     F = ufl.derivative(Phi, u, v)
 
-    problem = dolfiny.snesproblem.SNESProblem(F, u)
-
-    def monitor(snes, it, norm):
-        print("### SNES iteration %3d: |r| = %5.4e" % (it, norm))
-
     opts = PETSc.Options()
 
     opts.setValue('snes_type', 'newtonls')
@@ -31,20 +26,41 @@ def test_singleblock(V1, squaremesh_5):
     opts.setValue('ksp_type', 'preonly')
 
     opts.setValue('pc_type', 'lu')
-    opts.setValue('pc_factor_mat_solver_type', 'mumps')
+    opts.setValue('pc_factor_mat_solver_type', 'umfpack')
 
-    snes = PETSc.SNES().create(dolfin.MPI.comm_world)
-
-    J = dolfin.fem.create_matrix(problem.J_form)
-    F = dolfin.fem.create_vector(problem.F_form)
-
-    snes.setFunction(problem.F, F)
-    snes.setJacobian(problem.J, J)
-    snes.setMonitor(monitor)
-
-    snes.setFromOptions()
-    snes.getKSP().setFromOptions()
-    snes.getKSP().getPC().setFromOptions()
-
-    snes.solve(None, problem.u.vector)
+    problem = dolfiny.snesproblem.SNESProblem(F, u, opts=opts)
+    problem.snes.solve(None, problem.u.vector)
     assert np.isclose((problem.u.vector - 0.25).norm(), 0.0)
+
+
+def test_block(V1, V2, squaremesh_5):
+    mesh = squaremesh_5
+
+    u0 = dolfin.Function(V1, name="u0")
+    u1 = dolfin.Function(V2, name="u1")
+
+    v0 = ufl.TestFunction(V1)
+    v1 = ufl.TestFunction(V2)
+
+    Phi = (u0 - 0.25) ** 2 * ufl.dx(mesh) + (4.0 * u0 - u1) ** 2 * ufl.dx(mesh)
+
+    F0 = ufl.derivative(Phi, u0, v0)
+    F1 = ufl.derivative(Phi, u1, v1)
+
+    F = [F0, F1]
+    u = [u0, u1]
+
+    opts = PETSc.Options()
+
+    opts.setValue('snes_type', 'newtonls')
+    opts.setValue('snes_linesearch_type', 'basic')
+    opts.setValue('snes_rtol', 1.0e-08)
+    opts.setValue('snes_max_it', 12)
+
+    opts.setValue('ksp_type', 'cg')
+
+    opts.setValue('pc_type', 'none')
+    # opts.setValue('pc_factor_mat_solver_type', 'mumps')
+
+    problem = dolfiny.snesproblem.SNESBlockProblem(F, u, opts=opts, nest=False)
+    problem.snes.solve(None, problem.x)
