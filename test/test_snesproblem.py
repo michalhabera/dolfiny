@@ -3,6 +3,7 @@ import numpy as np
 import dolfin
 import ufl
 import dolfiny.snesproblem
+import pytest
 
 
 def test_singleblock(V1, squaremesh_5):
@@ -26,14 +27,15 @@ def test_singleblock(V1, squaremesh_5):
     opts.setValue('ksp_type', 'preonly')
 
     opts.setValue('pc_type', 'lu')
-    opts.setValue('pc_factor_mat_solver_type', 'umfpack')
+    opts.setValue('pc_factor_mat_solver_type', 'mumps')
 
     problem = dolfiny.snesproblem.SNESProblem(F, u, opts=opts)
     problem.snes.solve(None, problem.u.vector)
     assert np.isclose((problem.u.vector - 0.25).norm(), 0.0)
 
 
-def test_block(V1, V2, squaremesh_5):
+@pytest.mark.parametrize("nest", [True])
+def test_block(V1, V2, squaremesh_5, nest):
     mesh = squaremesh_5
 
     u0 = dolfin.Function(V1, name="u0")
@@ -57,10 +59,17 @@ def test_block(V1, V2, squaremesh_5):
     opts.setValue('snes_rtol', 1.0e-08)
     opts.setValue('snes_max_it', 12)
 
-    opts.setValue('ksp_type', 'cg')
+    if nest:
+        opts.setValue('ksp_type', 'cg')
+        opts.setValue('pc_type', 'none')
+        opts.setValue('ksp_rtol', 1.0e-10)
+    else:
+        opts.setValue('ksp_type', 'preonly')
+        opts.setValue('pc_type', 'lu')
+        opts.setValue('pc_factor_mat_solver_type', 'mumps')
 
-    opts.setValue('pc_type', 'none')
-    # opts.setValue('pc_factor_mat_solver_type', 'mumps')
+    problem = dolfiny.snesproblem.SNESBlockProblem(F, u, opts=opts, nest=nest)
+    sol = problem.solve()
 
-    problem = dolfiny.snesproblem.SNESBlockProblem(F, u, opts=opts, nest=False)
-    problem.snes.solve(None, problem.x)
+    # assert np.isclose((sol[0].vector - 0.25).norm(), 0.0)
+    # assert np.isclose((sol[1].vector - 1.0).norm(), 0.0)

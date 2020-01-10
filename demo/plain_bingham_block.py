@@ -216,8 +216,7 @@ for i in range(TS+1):
         ]
 
     # solve nonlinear problem
-    problem.snes.solve(None, problem.x)
-    m = problem.solution()
+    m = problem.solve()
 
     # extract solution
     v_, p_ = m
