@@ -25,7 +25,6 @@ def test_singleblock(V1, squaremesh_5):
     opts.setValue('snes_max_it', 12)
 
     opts.setValue('ksp_type', 'preonly')
-
     opts.setValue('pc_type', 'lu')
     opts.setValue('pc_factor_mat_solver_type', 'mumps')
 
@@ -34,7 +33,7 @@ def test_singleblock(V1, squaremesh_5):
     assert np.isclose((problem.u.vector - 0.25).norm(), 0.0)
 
 
-@pytest.mark.parametrize("nest", [True])
+@pytest.mark.parametrize("nest", [True, False])
 def test_block(V1, V2, squaremesh_5, nest):
     mesh = squaremesh_5
 
@@ -71,5 +70,5 @@ def test_block(V1, V2, squaremesh_5, nest):
     problem = dolfiny.snesproblem.SNESBlockProblem(F, u, opts=opts, nest=nest)
     sol = problem.solve()
 
-    # assert np.isclose((sol[0].vector - 0.25).norm(), 0.0)
-    # assert np.isclose((sol[1].vector - 1.0).norm(), 0.0)
+    assert np.isclose((sol[0].vector - 0.25).norm(), 0.0)
+    assert np.isclose((sol[1].vector - 1.0).norm(), 0.0)

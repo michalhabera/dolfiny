@@ -10,6 +10,7 @@ def functions_to_vec(u, x):
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
             u[i].vector.copy(subvec)
+            subvec.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
     else:
         offset = 0
         for i in range(len(u)):
@@ -23,6 +24,7 @@ def vec_to_functions(x, u):
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
             subvec.copy(u[i].vector)
+            u[i].vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
     else:
         offset = 0
         x = x.getArray(readonly=True)
@@ -80,9 +82,14 @@ class SNESProblem():
         J.assemble()
 
     def monitor(self, snes, it, norm):
+
+        r = snes.getFunctionNorm()
+        dx = snes.getSolutionUpdate().norm()
+        x = snes.getSolution().norm()
+
         if dolfin.MPI.comm_world.rank == 0:
-            print("\n ### SNES iteration {}".format(it))
-            print(snes.getConvergenceHistory())
+            print("\n### SNES iteration {}".format(it))
+            print("# |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(x, dx, r))
 
 
 
@@ -237,14 +244,14 @@ class SNESBlockProblem():
 
     def _monitor_block(self, snes, it, norm):
         if dolfin.MPI.comm_world.rank == 0:
-            print("\n ### SNES iteration {}".format(it))
+            print("\n### SNES iteration {}".format(it))
         self.compute_norms_block(snes)
         it = snes.getIterationNumber()
         self.print_norms(it)
 
     def _monitor_nest(self, snes, it, norm):
         if dolfin.MPI.comm_world.rank == 0:
-            print("\n ### SNES iteration {}".format(it))
+            print("\n### SNES iteration {}".format(it))
         self.compute_norms_nest(snes)
         it = snes.getIterationNumber()
         self.print_norms(it)
