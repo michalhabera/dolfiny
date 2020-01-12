@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+
 def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y0=0.0, do_quads=False, progression=1.0):
     """
     Create mesh of 2d annulus using the Python API of Gmsh.
     """
-    px, py, pz =  x0,  y0, 0.0 # center point
-    ax, ay, az = 0.0, 0.0, 1.0 # rotation axis
+    px, py, pz = x0, y0, 0.0  # center point
+    ax, ay, az = 0.0, 0.0, 1.0  # rotation axis
 
     # --- generate geometry and mesh with gmsh
 
@@ -16,34 +17,35 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
 
     gmsh.model.add(name)
 
-    # create points and line
-    p0 = gmsh.model.geo.addPoint(iR+x0, 0.0+y0, 0.0)
-    p1 = gmsh.model.geo.addPoint(oR+x0, 0.0+y0, 0.0)
+    # Create points and line
+    p0 = gmsh.model.geo.addPoint(iR + x0, 0.0 + y0, 0.0)
+    p1 = gmsh.model.geo.addPoint(oR + x0, 0.0 + y0, 0.0)
     l0 = gmsh.model.geo.addLine(p0, p1)
 
-    # create sectors by revolving the cross-sectional line
-    s0 = gmsh.model.geo.revolve([1,l0], px, py, pz, ax, ay, az, angle=gmsh.pi/2, numElements=[nT], recombine=do_quads)
-    s1 = gmsh.model.geo.revolve( s0[0], px, py, pz, ax, ay, az, angle=gmsh.pi/2, numElements=[nT], recombine=do_quads)
-    s2 = gmsh.model.geo.revolve( s1[0], px, py, pz, ax, ay, az, angle=gmsh.pi/2, numElements=[nT], recombine=do_quads)
-    s3 = gmsh.model.geo.revolve( s2[0], px, py, pz, ax, ay, az, angle=gmsh.pi/2, numElements=[nT], recombine=do_quads)
+    # Create sectors by revolving the cross-sectional line
+    s0 = gmsh.model.geo.revolve([1, l0], px, py, pz, ax, ay, az,
+                                angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
+    s1 = gmsh.model.geo.revolve(s0[0], px, py, pz, ax, ay, az, angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
+    s2 = gmsh.model.geo.revolve(s1[0], px, py, pz, ax, ay, az, angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
+    s3 = gmsh.model.geo.revolve(s2[0], px, py, pz, ax, ay, az, angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
 
-    # define physical groups for domain
-    domain = gmsh.model.addPhysicalGroup(2, [s0[1][1], s1[1][1], s2[1][1], s3[1][1]]) # all sectors
+    # Define physical groups for domain
+    domain = gmsh.model.addPhysicalGroup(2, [s0[1][1], s1[1][1], s2[1][1], s3[1][1]])  # all sectors
     gmsh.model.setPhysicalName(2, domain, 'domain')
 
-    # determine boundaries
+    # Determine boundaries
     bs0 = gmsh.model.getBoundary(s0)
     bs1 = gmsh.model.getBoundary(s1)
     bs2 = gmsh.model.getBoundary(s2)
     bs3 = gmsh.model.getBoundary(s3)
 
-    # define physical groups for boundaries
-    ring_inner = gmsh.model.addPhysicalGroup(1, [bs0[4][1], bs1[4][1], bs2[4][1], bs3[4][1]]) # index 4 by inspection
+    # Define physical groups for boundaries
+    ring_inner = gmsh.model.addPhysicalGroup(1, [bs0[4][1], bs1[4][1], bs2[4][1], bs3[4][1]])  # index 4 by inspection
     gmsh.model.setPhysicalName(1, ring_inner, 'boundary_ring_inner')
-    ring_outer = gmsh.model.addPhysicalGroup(1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]]) # index 5 by inspection
+    ring_outer = gmsh.model.addPhysicalGroup(1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]])  # index 5 by inspection
     gmsh.model.setPhysicalName(1, ring_outer, 'boundary_ring_outer')
 
-    # check labels
+    # Check labels
     pg_domains = gmsh.model.getPhysicalGroups(2)
     pg_domain_name = gmsh.model.getPhysicalName(2, pg_domains[0][1])
     print(pg_domain_name)
@@ -82,27 +84,28 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     mesh = meshio.read("/tmp/" + name + ".msh")
     # mesh.prune()
 
-    points_pruned_z = mesh.points[:, :2] # prune z components
+    points_pruned_z = mesh.points[:, :2]  # prune z components
 
     print("Writing mesh for dolfin Mesh")
     meshio.write("/tmp/" + name + ".xdmf", meshio.Mesh(
         points=points_pruned_z,
         cells={key: mesh.cells[key] for key in ["triangle", "quad"] if key in mesh.cells}
-        ))
+    ))
 
     print("Writing subdomain data for dolfin MeshValueCollection")
     meshio.write("/tmp/" + name + "_subdomains" + ".xdmf", meshio.Mesh(
         points=points_pruned_z,
         cells={key: mesh.cells[key] for key in ["triangle", "quad"] if key in mesh.cells},
-        cell_data={key: {"name_to_read": mesh.cell_data[key]["gmsh:physical"]} for key in ["triangle", "quad"] if key in mesh.cells}
-        ))
+        cell_data={key: {"name_to_read": mesh.cell_data[key]["gmsh:physical"]}
+                   for key in ["triangle", "quad"] if key in mesh.cells}
+    ))
 
     print("Writing boundary data for dolfin MeshValueCollection")
     meshio.write("/tmp/" + name + "_boundaries" + ".xdmf", meshio.Mesh(
         points=points_pruned_z,
         cells={key: mesh.cells[key] for key in ["line"] if key in mesh.cells},
         cell_data={key: {"name_to_read": mesh.cell_data[key]["gmsh:physical"]} for key in ["line"] if key in mesh.cells}
-        ))
+    ))
 
     # --- test mesh with dolfin and write
 
@@ -146,6 +149,7 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         outfile.write(mfc_boundaries)
 
     return mesh
+
 
 if __name__ == "__main__":
     mesh_annulus_gmshapi()

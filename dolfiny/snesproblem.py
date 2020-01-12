@@ -19,6 +19,7 @@ def functions_to_vec(u, x):
             offset += size_local
             x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
+
 def vec_to_functions(x, u):
     """Copies block vector into functions"""
     if x.getType() == "nest":
@@ -92,7 +93,6 @@ class SNESProblem():
             print("# |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(x, dx, r))
 
 
-
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None, opts=None, nest=False):
         """SNES problem and solver wrapper
@@ -119,7 +119,8 @@ class SNESBlockProblem():
 
             for i in range(len(self.u)):
                 for j in range(len(self.u)):
-                    self.J_form[i][j] = ufl.derivative(F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space))
+                    self.J_form[i][j] = ufl.derivative(
+                        F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space))
         else:
             self.J_form = J_form
 
@@ -167,7 +168,6 @@ class SNESBlockProblem():
             self.snes.setFromOptions()
             self.snes.getKSP().setFromOptions()
             self.snes.getKSP().getPC().setFromOptions()
-
 
     def _F_block(self, snes, x, F):
         x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
@@ -262,9 +262,9 @@ class SNESBlockProblem():
                 print("# sub {:2d} |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(
                     i, self.norm_x[it][i], self.norm_dx[it][i], self.norm_r[it][i], ui.name))
             print("# all    |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(
-                    np.linalg.norm(np.asarray(self.norm_x[it])),
-                    np.linalg.norm(np.asarray(self.norm_dx[it])),
-                    np.linalg.norm(np.asarray(self.norm_r[it]))))
+                np.linalg.norm(np.asarray(self.norm_x[it])),
+                np.linalg.norm(np.asarray(self.norm_dx[it])),
+                np.linalg.norm(np.asarray(self.norm_r[it]))))
 
     def compute_norms_block(self, snes):
         r = snes.getFunction()[0].getArray(readonly=True)
