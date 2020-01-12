@@ -7,16 +7,26 @@ jobs:
       - checkout
       - run:
           name: Flake8
-          command: flake8 .
+          command: |
+            flake8 .
       - run:
           name: Install requirements
-          command: pip3 install -r requirements.txt --upgrade
+          command: |
+            pip3 install -r requirements.txt --upgrade
       - run:
           name: Install dolfin-y package
-          command: pip3 install .
+          command: |
+            pip3 install .
       - run:
           name: Run Python unit tests (serial)
-          command: python3 -m pytest test/.
+          command: |
+            python3 -m pytest test/.
       - run:
           name: Run Python unit tests (perallel)
-          command: mpirun -n 3 python3 -m pytest test/.
+          command: |
+            mpirun -n 3 python3 -m pytest test/.
+      - run:
+          name: Run bingham demo
+          working_directory: ~/demo/bingham/
+          command: |
+            python3 plain_bingham_block.py
