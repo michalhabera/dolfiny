@@ -27,6 +27,6 @@ jobs:
             mpirun -n 3 python3 -m pytest test/.
       - run:
           name: Run bingham demo
-          working_directory: ~/demo/bingham/
           command: |
+            cd demo/bingham
             python3 plain_bingham_block.py
