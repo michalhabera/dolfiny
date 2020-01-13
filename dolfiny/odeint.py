@@ -62,7 +62,7 @@ class odeint():
 
         if 'verbose' in kwargs and kwargs['verbose'] is True:
             out = "rho = %.3f, alpha_f = %.3f, alpha_m = %.3f, gamma = %.3f" % \
-                  (self.rhoinf, self.alpha_f, self.alpha_m, self.gamma)
+                  (self.rho, self.alpha_f, self.alpha_m, self.gamma)
             print("odeint (generalised alpha) using: %s" % out)
 
     def g_(self, g, x=None, x0=None, x0t=None):
