@@ -2,7 +2,7 @@
 
 import mesh_annulus_gmshapi as mg
 import dolfiny.odeint as oi
-import dolfiny.snesproblem
+import dolfiny.snesblockproblem
 import prepare_output as po
 from petsc4py import PETSc
 
@@ -219,7 +219,7 @@ opts.setValue('pc_factor_mat_solver_type', 'mumps')
 opts.setValue('mat_mumps_icntl_14', 500)
 opts.setValue('mat_mumps_icntl_24', 1)
 
-problem = dolfiny.snesproblem.SNESBlockProblem(F, m, opts=opts)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
 
 # Process time steps
 for i in range(TS + 1):
