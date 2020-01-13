@@ -1,7 +1,9 @@
 import ufl
+import dolfin
 from ufl.corealg.multifunction import MultiFunction
 from ufl.algorithms.map_integrands import map_integrand_dags
 import typing
+from petsc4py import PETSc
 
 
 class Replacer(MultiFunction):
@@ -47,3 +49,34 @@ def extract_blocks(form, test_functions: typing.List, trial_functions: typing.Li
             blocks[i][j] = map_integrand_dags(replacer, form)
 
     return blocks
+
+
+def functions_to_vec(u: typing.List[dolfin.Function], x):
+    """Copies functions into block vector"""
+    if x.getType() == "nest":
+        for i, subvec in enumerate(x.getNestSubVecs()):
+            u[i].vector.copy(subvec)
+            subvec.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+    else:
+        offset = 0
+        for i in range(len(u)):
+            size_local = u[i].vector.getLocalSize()
+            x[offset:offset + size_local] = u[i].vector.array
+            offset += size_local
+            x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+
+
+def vec_to_functions(x, u: typing.List[dolfin.Function]):
+    """Copies block vector into functions"""
+    if x.getType() == "nest":
+        for i, subvec in enumerate(x.getNestSubVecs()):
+            subvec.copy(u[i].vector)
+            u[i].vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+    else:
+        offset = 0
+        x = x.getArray(readonly=True)
+        for i in range(len(u)):
+            size_local = u[i].vector.getLocalSize()
+            u[i].vector.array[:] = x[offset:offset + size_local]
+            offset += size_local
+            u[i].vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
