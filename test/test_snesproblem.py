@@ -39,9 +39,11 @@ def test_monolithic(V1, V2, squaremesh_5):
     sol = problem.solve()
 
     u0, u1 = sol.split()
-    # u0.vector.view()
+    u0 = u0.collapse()
+    u1 = u1.collapse()
 
-    # assert np.isclose((u0.vector - np.arcsin(0.5)).norm(), 0.0)
+    assert np.isclose((u0.vector - np.arcsin(0.5)).norm(), 0.0)
+    assert np.isclose((u1.vector - 4.0 * np.arcsin(0.5)).norm(), 0.0)
 
 
 @pytest.mark.parametrize("nest", [False])
