@@ -1,0 +1,6 @@
+# python
+*.egg-info
+__pycache__
+
+# skip demo output data
+demo/*/output
