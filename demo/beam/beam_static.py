@@ -96,9 +96,9 @@ m = [u, w, r]
 x = ufl.SpatialCoordinate(mesh)
 
 # Axial strain
-ε = (1.0 + x[0].dx(0)*u.dx(0) + x[1].dx(0)*w.dx(0)) * ufl.cos(r) + (x[1].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0)) - 1.0
+ε = (1.0 + x[0].dx(0)*u.dx(0) + x[1].dx(0)*w.dx(0)) * ufl.cos(r) + (x[1].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0)) * ufl.sin(r) - 1.0
 # Shear strain
-γ = (1.0 + x[0].dx(0)*u.dx(0) + x[1].dx(0)*w.dx(0)) * ufl.sin(r) - (x[1].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0))
+γ = (1.0 + x[0].dx(0)*u.dx(0) + x[1].dx(0)*w.dx(0)) * ufl.sin(r) - (x[1].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0)) * ufl.cos(r)
 # Bending strain
 κ = r.dx(0)
 
@@ -116,12 +116,15 @@ F = + δε * EA * ε * dx(beam) \
     + δr * m_2 * dx(beam)  \
     + δu * F_1 * ds(right) \
     + δw * F_3 * ds(right) \
-    + δr * M_2 * ds(right) 
+    + δr * M_2 * ds(right)
+
+# TEST form
+F = δu * 1 * (u-x[0]) * dx + δw * 1 * (w-x[0]) * dx + δr * 1 * (r-x[0]) * dx
 
 # Output files
-ofile_u = dfio.XDMFFile(df.MPI.comm_world, name + "_disp_1.xdmf")
-ofile_w = dfio.XDMFFile(df.MPI.comm_world, name + "_disp_3.xdmf")
-ofile_r = dfio.XDMFFile(df.MPI.comm_world, name + "_rota_2.xdmf")
+ofile_u = dfio.XDMFFile(df.MPI.comm_world, name + "_disp1.xdmf")
+ofile_w = dfio.XDMFFile(df.MPI.comm_world, name + "_disp3.xdmf")
+ofile_r = dfio.XDMFFile(df.MPI.comm_world, name + "_rota2.xdmf")
 
 # Options
 opts = PETSc.Options()
@@ -148,11 +151,15 @@ u_left = df.Function(U)
 w_left = df.Function(W)
 r_left = df.Function(R)
 
+u_left.interpolate(lambda x: np.zeros((1, x.shape[1])))
+w_left.interpolate(lambda x: np.zeros((1, x.shape[1])))
+r_left.interpolate(lambda x: np.zeros((1, x.shape[1])))
+
 # Set/update boundary conditions
 problem.bcs = [
-    df.fem.DirichletBC(U, u_left, np.where(interfaces.values == left)[0]),  # u left
-    df.fem.DirichletBC(W, w_left, np.where(interfaces.values == left)[0]),  # w left
-    df.fem.DirichletBC(R, r_left, np.where(interfaces.values == left)[0]),  # r left
+    # df.fem.DirichletBC(U, u_left, np.where(interfaces.values == left)[0]),  # u left
+    # df.fem.DirichletBC(W, w_left, np.where(interfaces.values == left)[0]),  # w left
+    # df.fem.DirichletBC(R, r_left, np.where(interfaces.values == left)[0]),  # r left
 ]
 
 # Solve nonlinear problem
@@ -161,13 +168,13 @@ m = problem.solve()
 # Extract solution
 u_, w_, r_ = m
 
-print(problem.snes.getKSP().getConvergedReason())
+print(u_.vector[:])
+print(w_.vector[:])
+print(r_.vector[:])
 
 # Write output
-dflog.set_log_level(dflog.LogLevel.OFF)
-ofile_u.write_checkpoint(u_, 'disp_1')
-ofile_w.write_checkpoint(w_, 'disp_3')
-ofile_r.write_checkpoint(w_, 'rota_2')
-dflog.set_log_level(dflog.LogLevel.WARNING)
+ofile_u.write_checkpoint(u_, 'disp1')
+ofile_w.write_checkpoint(w_, 'disp3')
+ofile_r.write_checkpoint(r_, 'rota2')
 
 print('\nDone.')
