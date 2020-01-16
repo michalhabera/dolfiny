@@ -51,6 +51,32 @@ def extract_blocks(form, test_functions: typing.List, trial_functions: typing.Li
     return blocks
 
 
+def extract_forms(form, test_functions: typing.List):
+    """Extract blocks from a monolithic UFL form.
+
+    Returns
+    -------
+    Splitted UFL form in the order determined by the passed test functions.
+
+    """
+    # Prepare empty list
+    blocks = [None for i in range(len(test_functions))]
+
+    for i, tef in enumerate(test_functions):
+        to_null = dict()
+
+        # Dictionary mapping the other test functions
+        # to zero
+        for item in test_functions:
+            if item != tef:
+                to_null[item] = ufl.zero(item.ufl_shape)
+
+        replacer = Replacer(to_null)
+        blocks[i] = map_integrand_dags(replacer, form)
+
+    return blocks
+    
+    
 def functions_to_vec(u: typing.List[dolfin.Function], x):
     """Copies functions into block vector"""
     if x.getType() == "nest":
