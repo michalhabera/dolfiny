@@ -7,7 +7,8 @@ from petsc4py import PETSc
 
 
 class SNESBlockProblem():
-    def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None, opts=None, nest=False):
+    def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
+                 opts=None, nest=False, restriction=None):
         """SNES problem and solver wrapper
 
         Parameters
@@ -39,6 +40,7 @@ class SNESBlockProblem():
 
         self.bcs = bcs
         self.opts = opts
+        self.restriction = restriction
 
         self.solution = []
 
@@ -55,6 +57,9 @@ class SNESBlockProblem():
         self.snes = PETSc.SNES().create(dolfin.MPI.comm_world)
 
         if nest:
+            if restriction is not None:
+                raise RuntimeError("Restriction for MATNEST not supported.")
+
             self.J = dolfin.fem.create_matrix_nest(self.J_form)
             self.F = dolfin.fem.create_vector_nest(self.F_form)
             self.x = dolfin.fem.create_vector_nest(self.F_form)
@@ -73,8 +78,18 @@ class SNESBlockProblem():
             self.F = dolfin.fem.create_vector_block(self.F_form)
             self.x = dolfin.fem.create_vector_block(self.F_form)
 
-            self.snes.setFunction(self._F_block, self.F)
-            self.snes.setJacobian(self._J_block, self.J)
+            if restriction is not None:
+                self.J.assemble()
+                self.rJ = restriction.restrict_matrix(self.J)
+                self.rF = restriction.restrict_vector(self.F)
+                self.rx = restriction.restrict_vector(self.x)
+
+                self.snes.setFunction(self._F_block, self.rF)
+                self.snes.setJacobian(self._J_block, self.rJ)
+            else:
+                self.snes.setFunction(self._F_block, self.F)
+                self.snes.setJacobian(self._J_block, self.J)
+
             self.snes.setMonitor(self._monitor_block)
             self.snes.setConvergenceTest(self._converged)
 
@@ -84,12 +99,19 @@ class SNESBlockProblem():
 
     def _F_block(self, snes, x, F):
         x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-        with F.localForm() as f_local:
+        with self.F.localForm() as f_local:
             f_local.set(0.0)
 
         # Update solution
-        vec_to_functions(x, self.u)
-        dolfin.fem.assemble_vector_block(F, self.F_form, self.J_form, self.bcs, x0=x, scale=-1.0)
+        if self.restriction is not None:
+            self.restriction.update_functions(self.u, x)
+        else:
+            vec_to_functions(x, self.u)
+
+        dolfin.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=x, scale=-1.0)
+
+        if self.restriction is not None:
+            self.rF = self.restriction.restrict_vector(self.F)
 
     def _F_nest(self, snes, x, F):
         vec_to_functions(x, self.u)
@@ -113,8 +135,11 @@ class SNESBlockProblem():
 
     def _J_block(self, snes, u, J, P):
         J.zeroEntries()
-        dolfin.fem.assemble_matrix_block(J, self.J_form, self.bcs, diagonal=1.0)
-        J.assemble()
+        dolfin.fem.assemble_matrix_block(self.J, self.J_form, self.bcs, diagonal=1.0)
+        self.J.assemble()
+
+        if self.restriction is not None:
+            self.rJ = self.restriction.restrict_matrix(self.J)
 
     def _J_nest(self, snes, u, J, P):
         J.zeroEntries()
