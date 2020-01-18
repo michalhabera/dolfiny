@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
 
-def mesh_curve2d_gmshapi(name="curve2d", nL=10, progression=1.0):
+def mesh_curve2d_gmshapi(name="curve2d", shape="xline", L=1.0, nL=10, progression=1.0):
     """
     Create mesh of 2d curve using the Python API of Gmsh.
     """
     
     tdim = 1 # target topological dimension
-    gdim = 2 # target geometrical dimension
+    gdim = 3 # target geometrical dimension
 
     # --- generate geometry and mesh with gmsh
 
@@ -19,9 +19,23 @@ def mesh_curve2d_gmshapi(name="curve2d", nL=10, progression=1.0):
     gmsh.model.add(name)
 
     # create points and line
-    p0 = gmsh.model.geo.addPoint(0.0, 0.0, 0.0)
-    p1 = gmsh.model.geo.addPoint(1.0, 0.0, 0.0)
-    l0 = gmsh.model.geo.addLine(p0, p1)
+    if shape == "xline":
+        p0 = gmsh.model.geo.addPoint(0.0, 0.0, 0.0)
+        p1 = gmsh.model.geo.addPoint(  L, 0.0, 0.0)
+        l0 = gmsh.model.geo.addLine(p0, p1)
+    elif shape == "yline":
+        p0 = gmsh.model.geo.addPoint(0.0, 0.0, 0.0)
+        p1 = gmsh.model.geo.addPoint(0.0, 0.0,   L)
+        l0 = gmsh.model.geo.addLine(p0, p1)
+    elif shape == "quarc":
+        R = 2.0*L/3.1415
+        p0 = gmsh.model.geo.addPoint(0.0, 0.0,   R)
+        p1 = gmsh.model.geo.addPoint(  R, 0.0, 0.0)
+        pc = gmsh.model.geo.addPoint(0.0, 0.0, 0.0)
+        l0 = gmsh.model.geo.addCircleArc(p0, pc, p1)
+    else:
+        print("Error: Unknown shape identifier '{:s}'.".format(shape))
+        exit()
 
     # define physical groups for subdomains (! target tag > 0)
     tag_domain = 1
