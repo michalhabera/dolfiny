@@ -1,7 +1,5 @@
 import numpy
 from petsc4py import PETSc
-import dolfin
-import pdb
 
 
 class Restriction():
@@ -16,8 +14,8 @@ class Restriction():
         self.offsets = [0]
         offset = 0
         for space in function_spaces:
-            self.offsets.append(self.offsets[-1] + space.dofmap.index_map.size_local +
-                                space.dofmap.index_map.num_ghosts)
+            self.offsets.append(self.offsets[-1] + space.dofmap.index_map.size_local
+                                + space.dofmap.index_map.num_ghosts)
             offset += self.offsets[-1]
 
         # Shift the block-local dof indices by offsets
@@ -45,10 +43,4 @@ class Restriction():
         for i, fi in enumerate(f):
             num_rdofs = self.global_rdofs[i].shape[0]
             fi.vector.array[self.global_rdofs[i] - self.offsets[i]] = rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
-            rdof_offset += num_rdofs
-
-    def extend_vector(self, rx, x):
-        for i, rdofs in enumerate(self.global_rdofs):
-            num_rdofs = rdofs.shape[0]
-            x.array[rdofs - self.offsets[i]] = rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
             rdof_offset += num_rdofs

@@ -81,9 +81,9 @@ def test_restricted_fs():
 
     w0 = dolfin.Function(U0, name="w0")
     w1 = dolfin.Function(U1, name="w1")
-    l = dolfin.Function(L, name="l")
+    lam = dolfin.Function(L, name="l")
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        L_block, [w0, w1, l], bcs=bcs, J_form=a_block, opts=opts, restriction=r)
+        L_block, [w0, w1, lam], bcs=bcs, J_form=a_block, opts=opts, restriction=r)
 
-    w0, w1, l = problem.solve()
+    w0, w1, lam = problem.solve()

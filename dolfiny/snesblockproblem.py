@@ -4,7 +4,7 @@ import ufl
 import dolfin
 from dolfiny.function import functions_to_vec, vec_to_functions
 from petsc4py import PETSc
-import pdb
+
 
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
@@ -144,7 +144,6 @@ class SNESBlockProblem():
 
         if self.restriction is not None:
             self.restriction.restrict_matrix(self.J).copy(self.rJ)
-
 
     def _J_nest(self, snes, u, J, P):
         J.zeroEntries()
