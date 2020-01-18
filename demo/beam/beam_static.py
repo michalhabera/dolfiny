@@ -2,7 +2,7 @@
 
 # pip3 install -e . && export PYTHONDONTWRITEBYTECODE=1
 
-import mesh_curve2d_gmshapi as mg
+import mesh_curve3d_gmshapi as mg
 import dolfiny.odeint as oi
 import dolfiny.snesblockproblem
 import dolfiny.function
@@ -31,7 +31,7 @@ N = 10 # number of elements
 p = 1 # ansatz polynomial order
 
 # create the mesh of a curve with given dimensions
-mesh, labels = mg.mesh_curve2d_gmshapi(name, nL=N)
+mesh, labels = mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N)
 
 # read mesh, subdomains and interfaces
 with dfio.XDMFFile(df.MPI.comm_world, name + ".xdmf") as infile:
@@ -66,10 +66,11 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Check geometry data
-area_msh = df.fem.assemble_scalar(1 * dx)
-area_ana = L
-print("geometry subdomain area      = %4.3e (rel error = %4.3e)" %
-      (area_msh, np.sqrt((area_msh - area_ana) ** 2 / area_ana ** 2)))
+int_dx_msh = df.fem.assemble_scalar(1 * dx)
+int_dx_ana = L
+print("int dx  = {:4.3e} (rel error = {:4.3e})".format(
+      int_dx_msh,
+      np.sqrt((int_dx_msh - int_dx_ana) ** 2 / int_dx_ana ** 2)))
 
 # Function spaces
 Ue = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
@@ -96,9 +97,9 @@ m = [u, w, r]
 x = ufl.SpatialCoordinate(mesh)
 
 # Axial strain
-ε = (1.0 + x[0].dx(0)*u.dx(0) + x[1].dx(0)*w.dx(0)) * ufl.cos(r) + (x[1].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0)) * ufl.sin(r) - 1.0
+ε = (1.0 + x[0].dx(0)*u.dx(0) + x[2].dx(0)*w.dx(0)) * ufl.cos(r) + (x[2].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0)) * ufl.sin(r) - 1.0
 # Shear strain
-γ = (1.0 + x[0].dx(0)*u.dx(0) + x[1].dx(0)*w.dx(0)) * ufl.sin(r) - (x[1].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0)) * ufl.cos(r)
+γ = (1.0 + x[0].dx(0)*u.dx(0) + x[2].dx(0)*w.dx(0)) * ufl.sin(r) - (x[2].dx(0)*u.dx(0) - x[0].dx(0)*w.dx(0)) * ufl.cos(r)
 # Bending strain
 κ = r.dx(0)
 
@@ -157,9 +158,9 @@ r_left.interpolate(lambda x: np.zeros((1, x.shape[1])))
 
 # Set/update boundary conditions
 problem.bcs = [
-    # df.fem.DirichletBC(U, u_left, np.where(interfaces.values == left)[0]),  # u left
-    # df.fem.DirichletBC(W, w_left, np.where(interfaces.values == left)[0]),  # w left
-    # df.fem.DirichletBC(R, r_left, np.where(interfaces.values == left)[0]),  # r left
+    df.fem.DirichletBC(U, u_left, np.where(interfaces.values == left)[0]),  # u left
+    df.fem.DirichletBC(W, w_left, np.where(interfaces.values == left)[0]),  # w left
+    df.fem.DirichletBC(R, r_left, np.where(interfaces.values == left)[0]),  # r left
 ]
 
 # Solve nonlinear problem
