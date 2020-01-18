@@ -4,7 +4,7 @@ import ufl
 import dolfin
 from dolfiny.function import functions_to_vec, vec_to_functions
 from petsc4py import PETSc
-
+import pdb
 
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
@@ -79,8 +79,11 @@ class SNESBlockProblem():
             self.x = dolfin.fem.create_vector_block(self.F_form)
 
             if restriction is not None:
-                self.J.assemble()
-                self.rJ = restriction.restrict_matrix(self.J)
+                # Need to create new global matrix for the restriction
+                J = dolfin.fem.create_matrix_block(self.J_form)
+                J.assemble()
+
+                self.rJ = restriction.restrict_matrix(J)
                 self.rF = restriction.restrict_vector(self.F)
                 self.rx = restriction.restrict_vector(self.x)
 
@@ -98,7 +101,7 @@ class SNESBlockProblem():
             self.snes.getKSP().getPC().setFromOptions()
 
     def _F_block(self, snes, x, F):
-        x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+        # x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
         with self.F.localForm() as f_local:
             f_local.set(0.0)
 
@@ -108,10 +111,10 @@ class SNESBlockProblem():
         else:
             vec_to_functions(x, self.u)
 
-        dolfin.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=x, scale=-1.0)
+        dolfin.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
 
         if self.restriction is not None:
-            self.rF = self.restriction.restrict_vector(self.F)
+            self.restriction.restrict_vector(self.F).copy(self.rF)
 
     def _F_nest(self, snes, x, F):
         vec_to_functions(x, self.u)
@@ -134,12 +137,14 @@ class SNESBlockProblem():
         F.assemble()
 
     def _J_block(self, snes, u, J, P):
-        J.zeroEntries()
+        self.J.zeroEntries()
+
         dolfin.fem.assemble_matrix_block(self.J, self.J_form, self.bcs, diagonal=1.0)
         self.J.assemble()
 
         if self.restriction is not None:
-            self.rJ = self.restriction.restrict_matrix(self.J)
+            self.restriction.restrict_matrix(self.J).copy(self.rJ)
+
 
     def _J_nest(self, snes, u, J, P):
         J.zeroEntries()
@@ -254,7 +259,11 @@ class SNESBlockProblem():
         if u_init is not None:
             functions_to_vec(u_init, self.x)
 
-        self.snes.solve(None, self.x)
-        vec_to_functions(self.x, self.solution)
+        if self.restriction is not None:
+            self.snes.solve(None, self.rx)
+            self.restriction.update_functions(self.solution, self.rx)
+        else:
+            self.snes.solve(None, self.x)
+            vec_to_functions(self.x, self.solution)
 
         return self.solution

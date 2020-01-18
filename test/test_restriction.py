@@ -4,18 +4,19 @@ import numpy
 import dolfin
 import dolfin.cpp
 import dolfin.io
-import time
+import pytest
 
 import dolfiny
 import dolfiny.restriction
 import dolfiny.la
 import dolfiny.snesblockproblem
-import pdb
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+
+skip_in_parallel = pytest.mark.skipif(
+    dolfin.MPI.size(dolfin.MPI.comm_world) > 1,
+    reason="This test should only be run in serial.")
 
 
+@skip_in_parallel
 def test_restricted_fs():
     mesh = dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 10, 10)
 
@@ -30,11 +31,9 @@ def test_restricted_fs():
     subcells2 = numpy.where(mf.values == 2)[0]
     interfacecells = numpy.where(mf_interface.values == 1)[0]
 
-    t0 = time.time()
     U0 = dolfin.FunctionSpace(mesh, ("P", 1))
     U1 = dolfin.FunctionSpace(mesh, ("P", 1))
     L = dolfin.FunctionSpace(mesh, ("P", 1))
-    print("Function spaces construction {}".format(time.time() - t0))
 
     u0, v0 = ufl.TrialFunction(U0), ufl.TestFunction(U0)
     u1, v1 = ufl.TrialFunction(U1), ufl.TestFunction(U1)
@@ -69,32 +68,16 @@ def test_restricted_fs():
     bcdofsU1 = dolfin.fem.locate_dofs_geometrical(U1, lambda x: numpy.isclose(x[0], 1.0))
     bcs = [dolfin.fem.DirichletBC(u0_bc, bcdofsU0), dolfin.fem.DirichletBC(u1_bc, bcdofsU1)]
 
-    # A = dolfin.fem.assemble_matrix_block(a_block, bcs)
-    # b = dolfin.fem.assemble_vector_block(L_block, a_block, bcs)
-    # A.assemble()
-
     rdofsU0 = dolfin.fem.locate_dofs_topological(U0, mesh.topology.dim, subcells1)
     rdofsU1 = dolfin.fem.locate_dofs_topological(U1, mesh.topology.dim, subcells2)
     rdofsL = dolfin.fem.locate_dofs_topological(L, mesh.topology.dim - 1, interfacecells)
 
     r = dolfiny.restriction.Restriction([U0, U1, L], [rdofsU0, rdofsU1, rdofsL])
 
-    # rA = r.restrict_matrix(A)
-    # rb = r.restrict_vector(b)
-    # rb.set(0.0)
-    # b.view()
-    # sol = rb.copy()
-
     opts = PETSc.Options()
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
-
-    # solver = PETSc.KSP().create(dolfin.MPI.comm_world)
-    # solver.setFromOptions()
-
-    # solver.setOperators(rA)
-    # solver.solve(rb, sol)
 
     w0 = dolfin.Function(U0, name="w0")
     w1 = dolfin.Function(U1, name="w1")
@@ -103,16 +86,4 @@ def test_restricted_fs():
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
         L_block, [w0, w1, l], bcs=bcs, J_form=a_block, opts=opts, restriction=r)
 
-    problem.solve()
-
-    # r.update_functions([w0, w1, l], sol)
-
-    # with dolfin.io.XDMFFile(dolfin.MPI.comm_world, "w0.xdmf") as outfile:
-    #     outfile.write_checkpoint(w0, "w0")
-
-    # with dolfin.io.XDMFFile(dolfin.MPI.comm_world, "w1.xdmf") as outfile:
-    #     outfile.write_checkpoint(w1, "w1")
-
-    # with dolfin.io.XDMFFile(dolfin.MPI.comm_world, "l.xdmf") as outfile:
-    #     outfile.write_checkpoint(l, "l")
-
+    w0, w1, l = problem.solve()
