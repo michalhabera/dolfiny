@@ -19,7 +19,7 @@ def test_restricted_fs():
     else:
         ghost_mode = dolfin.cpp.mesh.GhostMode.shared_facet
 
-    mesh = dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 4, 4, ghost_mode=ghost_mode)
+    mesh = dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 10, 10, ghost_mode=ghost_mode)
 
     mf = dolfin.MeshFunction("size_t", mesh, mesh.topology.dim, 0)
     mf.mark(lambda x: numpy.less_equal(x[0], 0.5), 1)
