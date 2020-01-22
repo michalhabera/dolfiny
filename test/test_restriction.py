@@ -19,7 +19,7 @@ def test_restricted_fs():
     else:
         ghost_mode = dolfin.cpp.mesh.GhostMode.shared_facet
 
-    mesh = dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 10, 10, ghost_mode=ghost_mode)
+    mesh = dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 16, 16, ghost_mode=ghost_mode)
 
     mf = dolfin.MeshFunction("size_t", mesh, mesh.topology.dim, 0)
     mf.mark(lambda x: numpy.less_equal(x[0], 0.5), 1)
@@ -97,8 +97,8 @@ def test_restricted_fs():
         value_s0 = s0.eval(p, numpy.asarray(cell))
         value_s1 = s1.eval(p, numpy.asarray(cell))
 
-        assert(numpy.isclose(value_s0[0], 0.125))
-        assert(numpy.isclose(value_s1[0], 0.125))
+        assert(numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
+        assert(numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
 
     with dolfin.io.XDMFFile(dolfin.MPI.comm_world, "s0.xdmf") as outfile:
         outfile.write_checkpoint(s0, "s0")
