@@ -1,46 +1,66 @@
 import numpy
+import pdb
+import dolfin
 from petsc4py import PETSc
 
 
 class Restriction():
-
-    def __init__(self, function_spaces, local_rdofs):
+    def __init__(self, function_spaces, blocal_dofs):
         self.function_space = function_spaces
-        self.local_rdofs = local_rdofs
+        self.blocal_dofs = blocal_dofs
 
-        self.global_rdofs = []
+        self.comm = dolfin.MPI.comm_world
 
-        # Compute offsets in the non-restricted matrix
-        self.offsets = [0]
+        self.bglobal_dofs = []
+        self.bglobal_dofs_ng = []
+
+        self.boffsets = [0]
+        self.boffsets_ng = [0]
         offset = 0
-        for space in function_spaces:
-            self.offsets.append(self.offsets[-1] + space.dofmap.index_map.size_local
-                                + space.dofmap.index_map.num_ghosts)
-            offset += self.offsets[-1]
+        offset_ng = 0
 
-        # Shift the block-local dof indices by offsets
-        for i, rdofsi in enumerate(self.local_rdofs):
-            dofs = rdofsi.copy()
-            dofs += self.offsets[i]
-            self.global_rdofs.append(dofs)
+        for i, space in enumerate(function_spaces):
+            # Compute block-offsets in the non-restricted matrix
+            # _ng version for offsets with ghosts excluded
+            self.boffsets.append(self.boffsets[-1] + space.dofmap.index_map.size_local +
+                                 space.dofmap.index_map.num_ghosts)
+            self.boffsets_ng.append(self.boffsets_ng[-1] + space.dofmap.index_map.size_local)
+            offset += self.boffsets[-1]
+            offset_ng += self.boffsets_ng[-1]
 
-        rdofs = numpy.hstack(self.global_rdofs)
-        self.isrow = PETSc.IS().createBlock(1, rdofs)
+            # Compute block-global dof indices in non-restricted matrix
+            # _ng version for offsets with ghosts excluded
+            dofs = self.blocal_dofs[i].copy()
+            dofs += self.boffsets[i]
+            self.bglobal_dofs.append(dofs)
+
+            dofs_ng = self.blocal_dofs[i].copy()
+            dofs_ng += self.boffsets_ng[i]
+            self.bglobal_dofs_ng.append(dofs_ng)
+
+        self.bglobal_dof = numpy.hstack(self.bglobal_dofs)
+        self.bglobal_dof_ng = numpy.hstack(self.bglobal_dofs_ng)
 
     def restrict_matrix(self, A):
-        subA = A.createSubMatrix(isrow=self.isrow, iscol=self.isrow)
+        global_isrow = PETSc.IS(self.comm).createGeneral(self.bglobal_dof)
+        global_isrow = A.getLGMap()[0].applyIS(global_isrow)
+
+        subA = A.createSubMatrix(isrow=global_isrow, iscol=global_isrow)
         subA.assemble()
 
         return subA
 
     def restrict_vector(self, x):
-        subx = x.getSubVector(self.isrow)
+        global_isrow = PETSc.IS(self.comm).createGeneral(self.bglobal_dof_ng)
+        global_isrow = x.getLGMap().applyIS(global_isrow)
 
+        subx = x.getSubVector(global_isrow)
         return subx
 
     def update_functions(self, f, rx):
         rdof_offset = 0
         for i, fi in enumerate(f):
-            num_rdofs = self.global_rdofs[i].shape[0]
-            fi.vector.array[self.global_rdofs[i] - self.offsets[i]] = rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
+            num_rdofs = self.bglobal_dofs[i].shape[0]
+            fi.vector.array[self.bglobal_dofs[i] - self.boffsets[i]] = rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
+            fi.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
             rdof_offset += num_rdofs

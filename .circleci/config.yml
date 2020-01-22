@@ -1,18 +1,40 @@
-version: 1
+version: 2.1
+
+install-python-components: &install-python-components
+  name: Install FEniCS Python components
+  command: |
+            pip3 install git+https://github.com/FEniCS/fiat.git --upgrade
+            pip3 install git+https://github.com/FEniCS/ufl.git --upgrade
+            pip3 install git+https://github.com/FEniCS/ffcx.git --upgrade
+            rm -rf /usr/local/include/dolfin /usr/local/include/dolfin.h
+
+build-dolfinx-cpp: &build-dolfinx-cpp
+  name: Build dolfin-x cpp
+  command: |
+            git clone --branch michal/rework-bcs https://github.com/FEniCS/dolfinx.git
+            cd dolfinx
+            mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Developer ../cpp/
+            make -j3 install
+
+build-dolfinx-python: &build-dolfinx-python
+  name: Build dolfin-x python interface
+  command: |
+    cd dolfinx/python
+    pip3 -v install . --user
+
 jobs:
   build:
     docker:
-      - image: quay.io/fenicsproject/dolfinx:latest
+      - image: quay.io/fenicsproject/dolfinx:dev-env-real
     steps:
       - checkout
       - run:
           name: Flake8
           command: |
             flake8 .
-      - run:
-          name: Install requirements
-          command: |
-            pip3 install -r requirements.txt --upgrade
+      - run: *install-python-components
+      - run: *build-dolfinx-cpp
+      - run: *install-dolfinx-python
       - run:
           name: Install dolfin-y package
           command: |

@@ -11,14 +11,16 @@ import dolfiny.restriction
 import dolfiny.la
 import dolfiny.snesblockproblem
 
-skip_in_parallel = pytest.mark.skipif(
-    dolfin.MPI.size(dolfin.MPI.comm_world) > 1,
-    reason="This test should only be run in serial.")
 
-
-@skip_in_parallel
 def test_restricted_fs():
-    mesh = dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 10, 10)
+
+    # dS integrals in parallel require shared_facet ghost mode
+    if dolfin.MPI.comm_world.size == 1:
+        ghost_mode = dolfin.cpp.mesh.GhostMode.none
+    else:
+        ghost_mode = dolfin.cpp.mesh.GhostMode.shared_facet
+
+    mesh = dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 4, 4, ghost_mode=ghost_mode)
 
     mf = dolfin.MeshFunction("size_t", mesh, mesh.topology.dim, 0)
     mf.mark(lambda x: numpy.less_equal(x[0], 0.5), 1)
@@ -32,7 +34,7 @@ def test_restricted_fs():
     interfacecells = numpy.where(mf_interface.values == 1)[0]
 
     U0 = dolfin.FunctionSpace(mesh, ("P", 1))
-    U1 = dolfin.FunctionSpace(mesh, ("P", 1))
+    U1 = dolfin.FunctionSpace(mesh, ("P", 2))
     L = dolfin.FunctionSpace(mesh, ("P", 1))
 
     u0, v0 = ufl.TrialFunction(U0), ufl.TestFunction(U0)
@@ -45,24 +47,17 @@ def test_restricted_fs():
     dx = ufl.Measure("dx", subdomain_data=mf, domain=mesh)
     dS = ufl.Measure("dS", subdomain_data=mf_interface, domain=mesh)
 
-    a00 = ufl.inner(ufl.grad(u0), ufl.grad(v0)) * dx(1)
-    a01 = None
-    a02 = l("-") * v0("-") * dS(1)
-    a10 = None
-    a11 = ufl.inner(ufl.grad(u1), ufl.grad(v1)) * dx(2)
-    a12 = - l("+") * v1("+") * dS(1)
-    a20 = m("-") * u0("-") * dS(1)
-    a21 = - m("+") * u1("+") * dS(1)
-    a22 = None
+    w0 = dolfin.Function(U0, name="w0")
+    w1 = dolfin.Function(U1, name="w1")
+    lam = dolfin.Function(L, name="l")
 
-    L0 = v0 * dx(1)
-    L1 = v1 * dx(2)
+    b0 = v0 * dx(1)
+    b1 = v1 * dx(2)
+    b2 = dolfin.Function(L)("+") * m("+") * dS(1)
 
-    # FIXME: Zero sub-vector via None not yet supported in dolfin-x
-    L2 = dolfin.Function(L)("+") * m("+") * dS(1)
-
-    a_block = [[a00, a01, a02], [a10, a11, a12], [a20, a21, a22]]
-    L_block = [L0, L1, L2]
+    F0 = ufl.inner(ufl.grad(w0), ufl.grad(v0)) * dx(1) + lam("-") * v0("-") * dS(1) - b0
+    F1 = ufl.inner(ufl.grad(w1), ufl.grad(v1)) * dx(2) - lam("+") * v1("+") * dS(1) - b1
+    F2 = w0("-") * m("-") * dS(1) - w1("+") * m("+") * dS(1) - b2
 
     bcdofsU0 = dolfin.fem.locate_dofs_geometrical(U0, lambda x: numpy.isclose(x[0], 0.0))
     bcdofsU1 = dolfin.fem.locate_dofs_geometrical(U1, lambda x: numpy.isclose(x[0], 1.0))
@@ -72,18 +67,42 @@ def test_restricted_fs():
     rdofsU1 = dolfin.fem.locate_dofs_topological(U1, mesh.topology.dim, subcells2)
     rdofsL = dolfin.fem.locate_dofs_topological(L, mesh.topology.dim - 1, interfacecells)
 
+    owned_sizeU0 = U0.dofmap.index_map.size_local
+    owned_sizeU1 = U1.dofmap.index_map.size_local
+    owned_sizeL = L.dofmap.index_map.size_local
+
+    rdofsU0 = numpy.extract(rdofsU0 < owned_sizeU0, rdofsU0)
+    rdofsU1 = numpy.extract(rdofsU1 < owned_sizeU1, rdofsU1)
+    rdofsL = numpy.extract(rdofsL < owned_sizeL, rdofsL)
+
     r = dolfiny.restriction.Restriction([U0, U1, L], [rdofsU0, rdofsU1, rdofsL])
 
     opts = PETSc.Options()
+
+    opts["snes_type"] = "newtonls"
+    opts["snes_linesearch_type"] = "basic"
+    opts["snes_rtol"] = 1.0e-08
+    opts["snes_max_it"] = 5
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
 
-    w0 = dolfin.Function(U0, name="w0")
-    w1 = dolfin.Function(U1, name="w1")
-    lam = dolfin.Function(L, name="l")
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [w0, w1, lam], bcs=bcs, opts=opts, restriction=r)
+    s0, s1, s2 = problem.solve()
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        L_block, [w0, w1, lam], bcs=bcs, J_form=a_block, opts=opts, restriction=r)
+    # Evaluate the solution -0.5*x*(x-1) at x=0.5
+    bb_tree = dolfin.cpp.geometry.BoundingBoxTree(mesh, 2)
+    p = [0.5, 0.5, 0.0]
+    cell = dolfin.cpp.geometry.compute_first_collision(bb_tree, p)
+    if cell >= 0:
+        value_s0 = s0.eval(p, numpy.asarray(cell))
+        value_s1 = s1.eval(p, numpy.asarray(cell))
 
-    w0, w1, lam = problem.solve()
+        assert(numpy.isclose(value_s0[0], 0.125))
+        assert(numpy.isclose(value_s1[0], 0.125))
+
+    with dolfin.io.XDMFFile(dolfin.MPI.comm_world, "s0.xdmf") as outfile:
+        outfile.write_checkpoint(s0, "s0")
+
+    with dolfin.io.XDMFFile(dolfin.MPI.comm_world, "s1.xdmf") as outfile:
+        outfile.write_checkpoint(s1, "s1")

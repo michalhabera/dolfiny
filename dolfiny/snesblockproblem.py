@@ -23,10 +23,14 @@ class SNESBlockProblem():
             PETSc options context
         nest: False
             True for 'matnest' data layout, False for 'aij'
+        restriction: optional
+            ``Restriction`` class used to provide information about degree-of-freedom
+            indices for which this solver should solve.
 
         """
         self.F_form = F_form
         self.u = u
+        self.comm = dolfin.MPI.comm_world
 
         if J_form is None:
             self.J_form = [[None for i in range(len(self.u))] for j in range(len(self.u))]
@@ -54,7 +58,7 @@ class SNESBlockProblem():
         self.norm_dx = {}
         self.norm_x = {}
 
-        self.snes = PETSc.SNES().create(dolfin.MPI.comm_world)
+        self.snes = PETSc.SNES().create(self.comm)
 
         if nest:
             if restriction is not None:
@@ -101,7 +105,6 @@ class SNESBlockProblem():
             self.snes.getKSP().getPC().setFromOptions()
 
     def _F_block(self, snes, x, F):
-        # x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
         with self.F.localForm() as f_local:
             f_local.set(0.0)
 
@@ -185,21 +188,21 @@ class SNESBlockProblem():
             return 4
 
     def _monitor_block(self, snes, it, norm):
-        if dolfin.MPI.comm_world.rank == 0:
+        if self.comm.rank == 0:
             print("\n### SNES iteration {}".format(it))
         self.compute_norms_block(snes)
         it = snes.getIterationNumber()
         self.print_norms(it)
 
     def _monitor_nest(self, snes, it, norm):
-        if dolfin.MPI.comm_world.rank == 0:
+        if self.comm.rank == 0:
             print("\n### SNES iteration {}".format(it))
         self.compute_norms_nest(snes)
         it = snes.getIterationNumber()
         self.print_norms(it)
 
     def print_norms(self, it):
-        if dolfin.MPI.comm_world.rank == 0:
+        if self.comm.rank == 0:
             for i, ui in enumerate(self.u):
                 print("# sub {:2d} |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(
                     i, self.norm_x[it][i], self.norm_dx[it][i], self.norm_r[it][i], ui.name))
@@ -224,9 +227,12 @@ class SNESBlockProblem():
             subvec_dx = dx[offset:offset + size_local]
             subvec_x = x[offset:offset + size_local]
 
-            ei_r.append(np.linalg.norm(subvec_r))
-            ei_dx.append(np.linalg.norm(subvec_dx))
-            ei_x.append(np.linalg.norm(subvec_x))
+            # Need first apply square, only then sum over processes
+            # since sqrt(a^2+b^2) + sqrt(c^2+d^2) != sqrt(a^2+b^2+c^2+d^2)
+            # i.e. norm is not a linear function
+            ei_r.append(np.sqrt(dolfin.MPI.sum(self.comm, np.linalg.norm(subvec_r) ** 2)))
+            ei_dx.append(np.sqrt(dolfin.MPI.sum(self.comm, np.linalg.norm(subvec_dx) ** 2)))
+            ei_x.append(np.sqrt(dolfin.MPI.sum(self.comm, np.linalg.norm(subvec_x) ** 2)))
 
             offset += size_local
 
