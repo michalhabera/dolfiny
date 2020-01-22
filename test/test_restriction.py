@@ -4,7 +4,6 @@ import numpy
 import dolfin
 import dolfin.cpp
 import dolfin.io
-import pytest
 
 import dolfiny
 import dolfiny.restriction
@@ -37,9 +36,9 @@ def test_restricted_fs():
     U1 = dolfin.FunctionSpace(mesh, ("P", 2))
     L = dolfin.FunctionSpace(mesh, ("P", 1))
 
-    u0, v0 = ufl.TrialFunction(U0), ufl.TestFunction(U0)
-    u1, v1 = ufl.TrialFunction(U1), ufl.TestFunction(U1)
-    l, m = ufl.TrialFunction(L), ufl.TestFunction(L)
+    v0 = ufl.TestFunction(U0)
+    v1 = ufl.TestFunction(U1)
+    m = ufl.TestFunction(L)
 
     u0_bc = dolfin.Function(U0)
     u1_bc = dolfin.Function(U1)

@@ -1,5 +1,4 @@
 import numpy
-import pdb
 import dolfin
 from petsc4py import PETSc
 
@@ -22,8 +21,8 @@ class Restriction():
         for i, space in enumerate(function_spaces):
             # Compute block-offsets in the non-restricted matrix
             # _ng version for offsets with ghosts excluded
-            self.boffsets.append(self.boffsets[-1] + space.dofmap.index_map.size_local +
-                                 space.dofmap.index_map.num_ghosts)
+            self.boffsets.append(self.boffsets[-1] + space.dofmap.index_map.size_local
+                                 + space.dofmap.index_map.num_ghosts)
             self.boffsets_ng.append(self.boffsets_ng[-1] + space.dofmap.index_map.size_local)
             offset += self.boffsets[-1]
             offset_ng += self.boffsets_ng[-1]
