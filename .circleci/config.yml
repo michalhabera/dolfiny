@@ -34,7 +34,7 @@ jobs:
             flake8 .
       - run: *install-python-components
       - run: *build-dolfinx-cpp
-      - run: *install-dolfinx-python
+      - run: *build-dolfinx-python
       - run:
           name: Install dolfin-y package
           command: |
