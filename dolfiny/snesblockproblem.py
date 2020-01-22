@@ -62,7 +62,7 @@ class SNESBlockProblem():
 
         if nest:
             if restriction is not None:
-                raise RuntimeError("Restriction for MATNEST not supported.")
+                raise RuntimeError("Restriction for MATNEST not yet supported.")
 
             self.J = dolfin.fem.create_matrix_nest(self.J_form)
             self.F = dolfin.fem.create_vector_nest(self.F_form)

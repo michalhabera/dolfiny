@@ -32,7 +32,6 @@ class SNESProblem():
         self.snes.getKSP().getPC().setFromOptions()
 
     def _F(self, snes, u, F):
-        """Assemble residual vector."""
         u.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
         u.copy(self.u.vector)
         self.u.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
@@ -46,13 +45,11 @@ class SNESProblem():
         dolfin.fem.set_bc(F, self.bcs, u)
 
     def _J(self, snes, u, J, P):
-        """Assemble Jacobi matrix."""
         J.zeroEntries()
         dolfin.fem.assemble_matrix(J, self.J_form, self.bcs)
         J.assemble()
 
     def monitor(self, snes, it, norm):
-
         r = snes.getFunctionNorm()
         dx = snes.getSolutionUpdate().norm()
         x = snes.getSolution().norm()
@@ -62,7 +59,6 @@ class SNESProblem():
             print("# |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(x, dx, r))
 
     def solve(self, u_init=None):
-
         if u_init is not None:
             u_init.vector.copy(self.x)
             self.x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)

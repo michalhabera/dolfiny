@@ -1,10 +1,26 @@
+import typing
+
 import numpy
 import dolfin
 from petsc4py import PETSc
 
 
 class Restriction():
-    def __init__(self, function_spaces, blocal_dofs):
+    def __init__(self, function_spaces: typing.List[dolfin.FunctionSpace], blocal_dofs: typing.List[numpy.ndarray]):
+        """Restriction of a problem to subset of degree-of-freedom indices.
+
+        Parameters
+        ----------
+        function_spaces
+        blocal_dofs
+            Block-local DOF indices.
+
+        Note
+        ----
+        Currently, restriction of a matrix and vector is sub-optimal, since it assumes
+        different parallel layout every time restriction is called.
+
+        """
         self.function_space = function_spaces
         self.blocal_dofs = blocal_dofs
 
@@ -40,7 +56,7 @@ class Restriction():
         self.bglobal_dof = numpy.hstack(self.bglobal_dofs)
         self.bglobal_dof_ng = numpy.hstack(self.bglobal_dofs_ng)
 
-    def restrict_matrix(self, A):
+    def restrict_matrix(self, A: PETSc.Mat):
         global_isrow = PETSc.IS(self.comm).createGeneral(self.bglobal_dof)
         global_isrow = A.getLGMap()[0].applyIS(global_isrow)
 
@@ -49,14 +65,15 @@ class Restriction():
 
         return subA
 
-    def restrict_vector(self, x):
+    def restrict_vector(self, x: PETSc.Vec):
         global_isrow = PETSc.IS(self.comm).createGeneral(self.bglobal_dof_ng)
         global_isrow = x.getLGMap().applyIS(global_isrow)
 
         subx = x.getSubVector(global_isrow)
         return subx
 
-    def update_functions(self, f, rx):
+    def update_functions(self, f: typing.List, rx: PETSc.Vec):
+        """Update dolfin Functions using restricted DOF indices."""
         rdof_offset = 0
         for i, fi in enumerate(f):
             num_rdofs = self.bglobal_dofs[i].shape[0]
