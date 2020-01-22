@@ -111,8 +111,11 @@ class SNESBlockProblem():
         # Update solution
         if self.restriction is not None:
             self.restriction.update_functions(self.u, x)
+            functions_to_vec(self.u, self.x)
         else:
             vec_to_functions(x, self.u)
+            x.copy(self.x)
+            x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
         dolfin.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
 

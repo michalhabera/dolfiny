@@ -212,7 +212,7 @@ opts.setValue('snes_linesearch_type', 'basic')
 opts.setValue('snes_rtol', 1.0e-10)
 opts.setValue('snes_max_it', 12)
 
-opts.setValue('ksp_type', 'gmres')
+opts.setValue('ksp_type', 'preonly')
 
 opts.setValue('pc_type', 'lu')
 opts.setValue('pc_factor_mat_solver_type', 'mumps')
@@ -220,6 +220,10 @@ opts.setValue('mat_mumps_icntl_14', 500)
 opts.setValue('mat_mumps_icntl_24', 1)
 
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
+
+outerdofs_V = df.fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(boundaries.values == outer)[0])
+innerdofs_V = df.fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(boundaries.values == inner)[0])
+innerdofs_P = df.fem.locate_dofs_topological(P, mesh.topology.dim - 1, np.where(boundaries.values == inner)[0])
 
 # Process time steps
 for i in range(TS + 1):
@@ -237,9 +241,9 @@ for i in range(TS + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        df.fem.DirichletBC(V, v_vector_o, np.where(boundaries.values == outer)[0]),  # velo outer
-        df.fem.DirichletBC(V, v_vector_i, np.where(boundaries.values == inner)[0]),  # velo inner
-        df.fem.DirichletBC(P, p_scalar_i, np.where(boundaries.values == inner)[0]),  # pressure inner
+        df.fem.DirichletBC(v_vector_o, outerdofs_V),  # velo outer
+        df.fem.DirichletBC(v_vector_i, innerdofs_V),  # velo inner
+        df.fem.DirichletBC(p_scalar_i, innerdofs_P),  # pressure inner
     ]
 
     # Solve nonlinear problem
