@@ -6,10 +6,10 @@ install-python-components: &install-python-components
             pip3 install git+https://github.com/FEniCS/fiat.git --upgrade
             pip3 install git+https://github.com/FEniCS/ufl.git --upgrade
             pip3 install git+https://github.com/FEniCS/ffcx.git --upgrade
-            rm -rf /usr/local/include/dolfin /usr/local/include/dolfin.h
+            rm -rf /usr/local/include/dolfinx /usr/local/include/dolfinx.h
 
 build-dolfinx-cpp: &build-dolfinx-cpp
-  name: Build dolfin-x cpp
+  name: Build dolfinx cpp
   command: |
             git clone --branch michal/rework-bcs https://github.com/FEniCS/dolfinx.git
             cd dolfinx

@@ -1,5 +1,5 @@
 import ufl
-import dolfin
+import dolfinx
 from ufl.corealg.multifunction import MultiFunction
 from ufl.algorithms.map_integrands import map_integrand_dags
 import typing
@@ -18,26 +18,50 @@ class Replacer(MultiFunction):
             return self.reuse_if_untouched(o, *args)
 
 
-def extract_blocks(form, test_functions: typing.List, trial_functions: typing.List):
+def extract_blocks(form, test_functions: typing.List[ufl.Argument],
+                   trial_functions: typing.List[ufl.Argument] = None):
     """Extract blocks from a monolithic UFL form.
+
+    Parameters
+    ----------
+    form
+    test_functions
+    trial_functions: optional
 
     Returns
     -------
     Splitted UFL form in the order determined by the passed test and trial functions.
+    If no `trial_functions` are provided returns a list, othwerwise returns list of lists.
 
     """
     # Prepare empty block matrices list
-    blocks = [[None for i in range(len(test_functions))] for j in range(len(trial_functions))]
+    if trial_functions is not None:
+        blocks = [[None for i in range(len(test_functions))] for j in range(len(trial_functions))]
+    else:
+        blocks = [None for i in range(len(test_functions))]
 
     for i, tef in enumerate(test_functions):
-        for j, trf in enumerate(trial_functions):
-            to_null = dict()
 
-            # Dictionary mapping the other trial functions
-            # to zero
-            for item in trial_functions:
-                if item != trf:
-                    to_null[item] = ufl.zero(item.ufl_shape)
+        if trial_functions is not None:
+            for j, trf in enumerate(trial_functions):
+                to_null = dict()
+
+                # Dictionary mapping the other trial functions
+                # to zero
+                for item in trial_functions:
+                    if item != trf:
+                        to_null[item] = ufl.zero(item.ufl_shape)
+
+                # Dictionary mapping the other test functions
+                # to zero
+                for item in test_functions:
+                    if item != tef:
+                        to_null[item] = ufl.zero(item.ufl_shape)
+
+                replacer = Replacer(to_null)
+                blocks[i][j] = map_integrand_dags(replacer, form)
+        else:
+            to_null = dict()
 
             # Dictionary mapping the other test functions
             # to zero
@@ -46,12 +70,12 @@ def extract_blocks(form, test_functions: typing.List, trial_functions: typing.Li
                     to_null[item] = ufl.zero(item.ufl_shape)
 
             replacer = Replacer(to_null)
-            blocks[i][j] = map_integrand_dags(replacer, form)
+            blocks[i] = map_integrand_dags(replacer, form)
 
     return blocks
 
 
-def functions_to_vec(u: typing.List[dolfin.Function], x):
+def functions_to_vec(u: typing.List[dolfinx.Function], x):
     """Copies functions into block vector"""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
@@ -66,7 +90,7 @@ def functions_to_vec(u: typing.List[dolfin.Function], x):
             x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
 
-def vec_to_functions(x, u: typing.List[dolfin.Function]):
+def vec_to_functions(x, u: typing.List[dolfinx.Function]):
     """Copies block vector into functions"""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):

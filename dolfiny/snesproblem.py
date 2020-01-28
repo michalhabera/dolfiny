@@ -1,5 +1,5 @@
 import ufl
-import dolfin
+import dolfinx
 from petsc4py import PETSc
 
 
@@ -7,7 +7,7 @@ class SNESProblem():
     def __init__(self, F_form, u, bcs=None, J_form=None, opts=None):
         self.F_form = F_form
         self.u = u
-        self.solution = dolfin.Function(u.function_space)
+        self.solution = dolfinx.Function(u.function_space)
 
         if J_form is None:
             self.J_form = ufl.derivative(F_form, u, ufl.TrialFunction(u.function_space))
@@ -17,11 +17,11 @@ class SNESProblem():
         self.bcs = []
         self.opts = opts
 
-        self.snes = PETSc.SNES().create(dolfin.MPI.comm_world)
+        self.snes = PETSc.SNES().create(dolfinx.MPI.comm_world)
 
-        self.J = dolfin.fem.create_matrix(self.J_form)
-        self.F = dolfin.fem.create_vector(self.F_form)
-        self.x = dolfin.fem.create_vector(self.F_form)
+        self.J = dolfinx.fem.create_matrix(self.J_form)
+        self.F = dolfinx.fem.create_vector(self.F_form)
+        self.x = dolfinx.fem.create_vector(self.F_form)
 
         self.snes.setFunction(self._F, self.F)
         self.snes.setJacobian(self._J, self.J)
@@ -39,14 +39,14 @@ class SNESProblem():
         with F.localForm() as f_local:
             f_local.set(0.0)
 
-        dolfin.fem.assemble_vector(F, self.F_form)
-        dolfin.fem.apply_lifting(F, [self.J_form], [self.bcs], [u], -1.0)
+        dolfinx.fem.assemble_vector(F, self.F_form)
+        dolfinx.fem.apply_lifting(F, [self.J_form], [self.bcs], [u], -1.0)
         F.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-        dolfin.fem.set_bc(F, self.bcs, u)
+        dolfinx.fem.set_bc(F, self.bcs, u)
 
     def _J(self, snes, u, J, P):
         J.zeroEntries()
-        dolfin.fem.assemble_matrix(J, self.J_form, self.bcs)
+        dolfinx.fem.assemble_matrix(J, self.J_form, self.bcs)
         J.assemble()
 
     def monitor(self, snes, it, norm):
@@ -54,7 +54,7 @@ class SNESProblem():
         dx = snes.getSolutionUpdate().norm()
         x = snes.getSolution().norm()
 
-        if dolfin.MPI.comm_world.rank == 0:
+        if dolfinx.MPI.comm_world.rank == 0:
             print("\n### SNES iteration {}".format(it))
             print("# |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(x, dx, r))
 

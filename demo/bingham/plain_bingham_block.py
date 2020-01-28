@@ -6,9 +6,9 @@ import dolfiny.snesblockproblem
 import prepare_output as po
 from petsc4py import PETSc
 
-import dolfin as df
-import dolfin.io as dfio
-import dolfin.log as dflog
+import dolfinx as df
+import dolfinx.io as dfio
+import dolfinx.log as dflog
 import ufl as ufl
 
 import numpy as np

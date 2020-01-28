@@ -1,17 +1,22 @@
-import dolfin
+import dolfinx
 import pytest
 
 
 @pytest.fixture(scope="module")
 def squaremesh_5():
-    return dolfin.generation.UnitSquareMesh(dolfin.MPI.comm_world, 5, 5)
+    return dolfinx.generation.UnitSquareMesh(dolfinx.MPI.comm_world, 5, 5)
 
 
 @pytest.fixture(scope="module")
 def V1(squaremesh_5):
-    return dolfin.FunctionSpace(squaremesh_5, ("P", 1))
+    return dolfinx.FunctionSpace(squaremesh_5, ("P", 1))
 
 
 @pytest.fixture(scope="module")
 def V2(squaremesh_5):
-    return dolfin.FunctionSpace(squaremesh_5, ("P", 2))
+    return dolfinx.FunctionSpace(squaremesh_5, ("P", 2))
+
+
+@pytest.fixture(scope="module")
+def vV1(squaremesh_5):
+    return dolfinx.VectorFunctionSpace(squaremesh_5, ("P", 1))

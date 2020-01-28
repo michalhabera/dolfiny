@@ -1,12 +1,12 @@
 import typing
 
 import numpy
-import dolfin
+import dolfinx
 from petsc4py import PETSc
 
 
 class Restriction():
-    def __init__(self, function_spaces: typing.List[dolfin.FunctionSpace], blocal_dofs: typing.List[numpy.ndarray]):
+    def __init__(self, function_spaces: typing.List[dolfinx.FunctionSpace], blocal_dofs: typing.List[numpy.ndarray]):
         """Restriction of a problem to subset of degree-of-freedom indices.
 
         Parameters
@@ -24,7 +24,7 @@ class Restriction():
         self.function_space = function_spaces
         self.blocal_dofs = blocal_dofs
 
-        self.comm = dolfin.MPI.comm_world
+        self.comm = dolfinx.MPI.comm_world
 
         self.bglobal_dofs = []
         self.bglobal_dofs_ng = []
@@ -73,7 +73,7 @@ class Restriction():
         return subx
 
     def update_functions(self, f: typing.List, rx: PETSc.Vec):
-        """Update dolfin Functions using restricted DOF indices."""
+        """Update dolfinx Functions using restricted DOF indices."""
         rdof_offset = 0
         for i, fi in enumerate(f):
             num_rdofs = self.bglobal_dofs[i].shape[0]
