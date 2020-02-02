@@ -80,16 +80,18 @@ class SNESBlockProblem():
         else:
             self.J = dolfinx.fem.create_matrix_block(self.J_form)
             self.F = dolfinx.fem.create_vector_block(self.F_form)
-            self.x = dolfinx.fem.create_vector_block(self.F_form)
+            self.x = self.F.copy()
 
             if restriction is not None:
                 # Need to create new global matrix for the restriction
-                J = dolfinx.fem.create_matrix_block(self.J_form)
-                J.assemble()
+                self._J = dolfinx.fem.create_matrix_block(self.J_form)
+                self._J.assemble()
 
-                self.rJ = restriction.restrict_matrix(J)
+                self._x = self.x.copy()
+
+                self.rJ = restriction.restrict_matrix(self._J)
                 self.rF = restriction.restrict_vector(self.F)
-                self.rx = restriction.restrict_vector(self.x)
+                self.rx = restriction.restrict_vector(self._x)
 
                 self.snes.setFunction(self._F_block, self.rF)
                 self.snes.setJacobian(self._J_block, self.rJ)
@@ -115,7 +117,7 @@ class SNESBlockProblem():
         else:
             vec_to_functions(x, self.u)
             x.copy(self.x)
-            x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+            self.x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
         dolfinx.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
 

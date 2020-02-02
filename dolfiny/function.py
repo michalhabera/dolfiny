@@ -1,4 +1,5 @@
 import ufl
+import numpy
 import dolfinx
 from ufl.corealg.multifunction import MultiFunction
 from ufl.algorithms.map_integrands import map_integrand_dags
@@ -85,7 +86,8 @@ def functions_to_vec(u: typing.List[dolfinx.Function], x):
         offset = 0
         for i in range(len(u)):
             size_local = u[i].vector.getLocalSize()
-            x[offset:offset + size_local] = u[i].vector.array
+            with x.localForm() as loc:
+                loc.array[offset:offset + size_local] = u[i].vector.array_r
             offset += size_local
             x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
@@ -98,9 +100,8 @@ def vec_to_functions(x, u: typing.List[dolfinx.Function]):
             u[i].vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
     else:
         offset = 0
-        x = x.getArray(readonly=True)
         for i in range(len(u)):
             size_local = u[i].vector.getLocalSize()
-            u[i].vector.array[:] = x[offset:offset + size_local]
+            u[i].vector.array[:] = x.array_r[offset:offset + size_local]
             offset += size_local
             u[i].vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)

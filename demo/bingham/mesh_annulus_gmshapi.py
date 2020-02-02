@@ -109,8 +109,8 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
 
     # --- test mesh with dolfin and write
 
-    import dolfin as df
-    import dolfin.io as dfio
+    import dolfinx as df
+    import dolfinx.io as dfio
 
     # plain mesh
     print("Reading mesh into dolfin")

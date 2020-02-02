@@ -83,5 +83,6 @@ def test_block(V1, V2, squaremesh_5, nest):
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, u, opts=opts, nest=nest)
     sol = problem.solve()
 
+    assert problem.snes.getConvergedReason() > 0
     assert np.isclose((sol[0].vector - np.arcsin(0.5)).norm(), 0.0)
     assert np.isclose((sol[1].vector - 4.0 * np.arcsin(0.5)).norm(), 0.0)
