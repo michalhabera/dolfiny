@@ -1,36 +1,37 @@
 
-class odeint():
+class ODEInt():
 
     def __init__(self, **kwargs):
-        r"""Initialises the ODE integrator (single-step-method).
-            Uses underneath the generalised alpha method and its limits:
+        """Initialises the ODE integrator (single-step-method).
+        Uses underneath the generalised alpha method and its limits:
 
-            Euler forward:
-                alpha_f = 0, alpha_m = 1/2, gamma = 1/2
-            Euler backward:
-                alpha_f = 1, alpha_m = 1/2, gamma = 1/2
-            Crank-Nicolson:
-                alpha_f = 1/2, alpha_m = 1/2, gamma = 1/2
-            Theta:
-                alpha_f = theta, alpha_m = 1/2, gamma = 1/2
-            Generalised alpha:
-                The value of rho can be used to determine the values
-                alpha_f = 1/(1+rho),
-                alpha_m = 1/2*(3-rho)/(1+rho),
-                gamma = 1/2 + alpha_m - alpha_f
-        Args:
-            **kwargs:
-                dt: Time step size.
-                rho: Spectral radius rho_infinity for generalised alpha.
-                alpha_f:
-                alpha_m:
-                gamma:
+        Euler forward:
+            alpha_f = 0, alpha_m = 1/2, gamma = 1/2
+        Euler backward:
+            alpha_f = 1, alpha_m = 1/2, gamma = 1/2
+        Crank-Nicolson:
+            alpha_f = 1/2, alpha_m = 1/2, gamma = 1/2
+        Theta:
+            alpha_f = theta, alpha_m = 1/2, gamma = 1/2
+        Generalised alpha:
+            The value of rho can be used to determine the values
+            alpha_f = 1 / (1 + rho),
+            alpha_m = 1 / 2 * (3 - rho) / (1 + rho),
+            gamma = 1 / 2 + alpha_m - alpha_f
+
+        Parameters
+        ----------
+        dt: Time step size.
+        rho: Spectral radius rho_infinity for generalised alpha.
+        alpha_f:
+        alpha_m:
+        gamma:
         """
         # Eval settings
 
         # Time step size
-        if 'dt' in kwargs:
-            self.dt = kwargs['dt']
+        if "dt" in kwargs:
+            self.dt = kwargs["dt"]
         else:
             raise RuntimeError("No time step dt given.")
 
@@ -40,30 +41,30 @@ class odeint():
         self.gamma = 0.5
 
         # Parameters from given rho
-        if 'rho' in kwargs:
-            self.rho = kwargs['rho']
+        if "rho" in kwargs:
+            self.rho = kwargs["rho"]
             self.alpha_f = 1.0 / (1.0 + self.rho)
             self.alpha_m = 0.5 * (3.0 - self.rho) / (1.0 + self.rho)
             self.gamma = 0.5 + self.alpha_m - self.alpha_f
 
         # Parameters directly
-        if 'alpha_f' in kwargs and 'alpha_m' in kwargs and 'gamma' in kwargs:
-            self.alpha_f = kwargs['alpha_f']
-            self.alpha_m = kwargs['alpha_m']
-            self.gamma = kwargs['gamma']
+        if "alpha_f" in kwargs and "alpha_m" in kwargs and "gamma" in kwargs:
+            self.alpha_f = kwargs["alpha_f"]
+            self.alpha_m = kwargs["alpha_m"]
+            self.gamma = kwargs["gamma"]
 
-        # pointers to solution states (not documented)
-        if 'x' in kwargs:
-            self.x = kwargs['x']
-        if 'x0' in kwargs:
-            self.x_last_time = kwargs['x0']
-        if 'x0t' in kwargs:
-            self.dxdt_last_time = kwargs['x0t']
+        # Pointers to solution states (not documented)
+        if "x" in kwargs:
+            self.x = kwargs["x"]
+        if "x0" in kwargs:
+            self.x_last_time = kwargs["x0"]
+        if "x0t" in kwargs:
+            self.dxdt_last_time = kwargs["x0t"]
 
-        if 'verbose' in kwargs and kwargs['verbose'] is True:
-            out = "rho = %.3f, alpha_f = %.3f, alpha_m = %.3f, gamma = %.3f" % \
-                  (self.rho, self.alpha_f, self.alpha_m, self.gamma)
-            print("odeint (generalised alpha) using: %s" % out)
+        if "verbose" in kwargs and kwargs["verbose"] is True:
+            out = "rho = {:.3f}, alpha_f = {:.3f}, alpha_m = {:.3f}, gamma = {:.3f}".format(
+                self.rho, self.alpha_f, self.alpha_m, self.gamma)
+            print("ODEInt (generalised alpha) using: {}".format(out))
 
     def g_(self, g, x=None, x0=None, x0t=None):
         if g is None:
@@ -87,7 +88,7 @@ class odeint():
                 + (self.gamma - 1.0) / self.gamma * g_x0t
             return self.alpha_m * g_xt + (1.0 - self.alpha_m) * g_x0t
 
-        if type(g_x) is list and type(g_x0) is list and type(g_x0t) is list:
+        if isinstance(g_x, list) and isinstance(g_x0, list) and isinstance(g_x0t, list):
             # Check dimensions
             assert(len(g_x) == len(g_x0))
             assert(len(g_x) == len(g_x0t))
@@ -142,9 +143,11 @@ class odeint():
 
         if isinstance(x, list):
             for i, xi in enumerate(x):
-                xi.vector.copy(x0[i].vector)
+                with xi.vector.localForm() as locxi, x0[i].vector.localForm() as locx0:
+                    locxi.copy(locx0)
         else:
-            x.vector.copy(x0.vector)
+            with x.vector.localForm() as locx, x0.vector.localForm() as locx0:
+                locx.copy(locx0)
 
         if isinstance(x, list):
             for i, xi in enumerate(x):

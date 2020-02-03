@@ -6,6 +6,7 @@ def petsc_to_scipy(A):
     """Converts PETSc serial matrix to SciPy CSR matrix"""
     ai, aj, av = A.getValuesCSR()
     mat = csr_matrix((av, aj, ai))
+
     return mat
 
 

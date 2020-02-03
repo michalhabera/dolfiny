@@ -1,6 +1,6 @@
 from petsc4py import PETSc
 import numpy as np
-import dolfin
+import dolfinx
 import ufl
 import dolfiny.snesproblem
 import dolfiny.snesblockproblem
@@ -11,9 +11,9 @@ def test_monolithic(V1, V2, squaremesh_5):
     mesh = squaremesh_5
 
     Wel = ufl.MixedElement([V1.ufl_element(), V2.ufl_element()])
-    W = dolfin.FunctionSpace(mesh, Wel)
+    W = dolfinx.FunctionSpace(mesh, Wel)
 
-    u = dolfin.Function(W)
+    u = dolfinx.Function(W)
     u0, u1 = ufl.split(u)
 
     v = ufl.TestFunction(W)
@@ -46,12 +46,12 @@ def test_monolithic(V1, V2, squaremesh_5):
     assert np.isclose((u1.vector - 4.0 * np.arcsin(0.5)).norm(), 0.0)
 
 
-@pytest.mark.parametrize("nest", [False])
+@pytest.mark.parametrize("nest", [True, False])
 def test_block(V1, V2, squaremesh_5, nest):
     mesh = squaremesh_5
 
-    u0 = dolfin.Function(V1, name="u0")
-    u1 = dolfin.Function(V2, name="u1")
+    u0 = dolfinx.Function(V1, name="u0")
+    u1 = dolfinx.Function(V2, name="u1")
 
     v0 = ufl.TestFunction(V1)
     v1 = ufl.TestFunction(V2)
@@ -83,5 +83,6 @@ def test_block(V1, V2, squaremesh_5, nest):
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, u, opts=opts, nest=nest)
     sol = problem.solve()
 
+    assert problem.snes.getConvergedReason() > 0
     assert np.isclose((sol[0].vector - np.arcsin(0.5)).norm(), 0.0)
     assert np.isclose((sol[1].vector - 4.0 * np.arcsin(0.5)).norm(), 0.0)
