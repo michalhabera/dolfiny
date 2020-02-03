@@ -6,11 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from petsc4py import PETSc
 
-import dolfinx
 from dolfinx import MPI, cpp, Constant, fem, FunctionSpace, Function, log
 from dolfinx.io import XDMFFile
-import dolfinx.io
-import dolfinx.log
 import ufl
 
 from dolfiny.odeint import ODEInt
