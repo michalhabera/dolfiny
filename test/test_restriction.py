@@ -1,6 +1,5 @@
 from petsc4py import PETSc
 import os
-import matplotlib.pyplot as plt
 import ufl
 import numpy
 import dolfinx
@@ -125,13 +124,14 @@ def test_sloped_stokes():
     p = dolfinx.Function(P, name="p")
     q = ufl.TestFunction(P)
 
-    l = dolfinx.Function(L, name="l")
+    lam = dolfinx.Function(L, name="l")
     m = ufl.TestFunction(L)
 
     n = ufl.FacetNormal(mesh)
     ds = ufl.Measure("ds", subdomain_data=boundaries, domain=mesh)
 
-    F0 = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx(mesh) - p * ufl.div(v) * ufl.dx(mesh) + l * ufl.inner(v, n) * ds(1)
+    F0 = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx(mesh) \
+        - p * ufl.div(v) * ufl.dx(mesh) + lam * ufl.inner(v, n) * ds(1)
     F1 = ufl.div(u) * q * ufl.dx(mesh)
     F2 = ufl.inner(u, n) * m * ds(1)
 
@@ -143,13 +143,11 @@ def test_sloped_stokes():
     bctop_facets = numpy.where(boundaries.values == 3)[0]
     bcdofstopV = dolfinx.fem.locate_dofs_topological(V, 1, bctop_facets)
 
-
     def utop(x):
         values = numpy.zeros((2, x.shape[1]))
         values[0] = 1.0
         values[1] = 0.0
         return values
-
 
     u_bc_top.interpolate(utop)
 
@@ -192,7 +190,7 @@ def test_sloped_stokes():
     opts["pc_factor_mat_solver_type"] = "mumps"
     opts['mat_mumps_icntl_24'] = 1
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, p, l], bcs=bcs, opts=opts, restriction=r)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r)
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0

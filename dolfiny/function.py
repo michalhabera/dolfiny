@@ -1,5 +1,4 @@
 import ufl
-import numpy
 import dolfinx
 from ufl.corealg.multifunction import MultiFunction
 from ufl.algorithms.map_integrands import map_integrand_dags

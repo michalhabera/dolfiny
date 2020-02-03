@@ -92,7 +92,8 @@ class Restriction():
 
             with fi.vector.localForm() as loc:
                 loc.set(0.0)
-                loc.array[self.bglobal_dofs_ng[i] - self.boffsets_ng[i]] = rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
+                loc.array[self.bglobal_dofs_ng[i] - self.boffsets_ng[i]] = \
+                    rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
 
             fi.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
             rdof_offset += num_rdofs
