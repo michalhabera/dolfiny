@@ -233,7 +233,6 @@ class SNESBlockProblem():
             subvec_x = x[offset:offset + size_local]
 
             # Need first apply square, only then sum over processes
-            # since sqrt(a^2+b^2) + sqrt(c^2+d^2) != sqrt(a^2+b^2+c^2+d^2)
             # i.e. norm is not a linear function
             ei_r.append(np.sqrt(dolfinx.MPI.sum(self.comm, np.linalg.norm(subvec_r) ** 2)))
             ei_dx.append(np.sqrt(dolfinx.MPI.sum(self.comm, np.linalg.norm(subvec_dx) ** 2)))

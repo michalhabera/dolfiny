@@ -3,20 +3,6 @@ import typing
 import dolfinx
 from petsc4py import PETSc
 import ufl
-from ufl.corealg.multifunction import MultiFunction
-from ufl.algorithms.map_integrands import map_integrand_dags
-
-
-class Replacer(MultiFunction):
-    def __init__(self, mapping):
-        MultiFunction.__init__(self)
-        self._mapping = mapping
-
-    def expr(self, o, *args):
-        if o in self._mapping:
-            return self._mapping[o]
-        else:
-            return self.reuse_if_untouched(o, *args)
 
 
 def extract_blocks(form, test_functions: typing.List[ufl.Argument],
@@ -59,8 +45,7 @@ def extract_blocks(form, test_functions: typing.List[ufl.Argument],
                     if item != tef:
                         to_null[item] = ufl.zero(item.ufl_shape)
 
-                replacer = Replacer(to_null)
-                blocks[i][j] = map_integrand_dags(replacer, form)
+                blocks[i][j] = ufl.replace(form, to_null)
         else:
             to_null = dict()
 
@@ -70,8 +55,7 @@ def extract_blocks(form, test_functions: typing.List[ufl.Argument],
                 if item != tef:
                     to_null[item] = ufl.zero(item.ufl_shape)
 
-            replacer = Replacer(to_null)
-            blocks[i] = map_integrand_dags(replacer, form)
+            blocks[i] = ufl.replace(form, to_null)
 
     return blocks
 
