@@ -1,9 +1,10 @@
-import ufl
+import typing
+
 import dolfinx
+from petsc4py import PETSc
+import ufl
 from ufl.corealg.multifunction import MultiFunction
 from ufl.algorithms.map_integrands import map_integrand_dags
-import typing
-from petsc4py import PETSc
 
 
 class Replacer(MultiFunction):
@@ -76,7 +77,7 @@ def extract_blocks(form, test_functions: typing.List[ufl.Argument],
 
 
 def functions_to_vec(u: typing.List[dolfinx.Function], x):
-    """Copies functions into block vector"""
+    """Copies functions into block vector."""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
             u[i].vector.copy(subvec)
@@ -92,7 +93,7 @@ def functions_to_vec(u: typing.List[dolfinx.Function], x):
 
 
 def vec_to_functions(x, u: typing.List[dolfinx.Function]):
-    """Copies block vector into functions"""
+    """Copies block vector into functions."""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
             subvec.copy(u[i].vector)
