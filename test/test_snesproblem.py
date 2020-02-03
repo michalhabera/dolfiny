@@ -2,7 +2,6 @@ from petsc4py import PETSc
 import numpy as np
 import dolfinx
 import ufl
-import dolfiny.snesproblem
 import dolfiny.snesblockproblem
 import pytest
 
@@ -35,8 +34,8 @@ def test_monolithic(V1, V2, squaremesh_5):
     opts.setValue('pc_type', 'lu')
     opts.setValue('pc_factor_mat_solver_type', 'mumps')
 
-    problem = dolfiny.snesproblem.SNESProblem(F, u, opts=opts)
-    sol = problem.solve()
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F], [u], opts=opts)
+    sol, = problem.solve()
 
     u0, u1 = sol.split()
     u0 = u0.collapse()
