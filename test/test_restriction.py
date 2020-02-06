@@ -206,8 +206,6 @@ def test_sloped_stokes():
 
 @skip_in_parallel
 def test_pipes_stokes():
-    path = os.path.dirname(os.path.realpath(__file__))
-
     import gmsh
 
     gmsh.initialize()
