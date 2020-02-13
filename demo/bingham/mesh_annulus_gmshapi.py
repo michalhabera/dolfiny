@@ -8,6 +8,9 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     px, py, pz = x0, y0, 0.0  # center point
     ax, ay, az = 0.0, 0.0, 1.0  # rotation axis
 
+    tdim = 2 # target topological dimension
+    gdim = 2 # target geometrical dimension
+
     # --- generate geometry and mesh with gmsh
 
     import gmsh
@@ -29,9 +32,10 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     s2 = gmsh.model.geo.revolve(s1[0], px, py, pz, ax, ay, az, angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
     s3 = gmsh.model.geo.revolve(s2[0], px, py, pz, ax, ay, az, angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
 
-    # Define physical groups for domain
-    domain = gmsh.model.addPhysicalGroup(2, [s0[1][1], s1[1][1], s2[1][1], s3[1][1]])  # all sectors
-    gmsh.model.setPhysicalName(2, domain, 'domain')
+    # Define physical groups for subdomains (! target tag > 0)
+    domain = 1
+    gmsh.model.addPhysicalGroup(tdim, [s0[1][1], s1[1][1], s2[1][1], s3[1][1]], domain)  # all sectors
+    gmsh.model.setPhysicalName(tdim, domain, 'domain')
 
     # Determine boundaries
     bs0 = gmsh.model.getBoundary(s0)
@@ -39,116 +43,56 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     bs2 = gmsh.model.getBoundary(s2)
     bs3 = gmsh.model.getBoundary(s3)
 
-    # Define physical groups for boundaries
-    ring_inner = gmsh.model.addPhysicalGroup(1, [bs0[4][1], bs1[4][1], bs2[4][1], bs3[4][1]])  # index 4 by inspection
-    gmsh.model.setPhysicalName(1, ring_inner, 'boundary_ring_inner')
-    ring_outer = gmsh.model.addPhysicalGroup(1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]])  # index 5 by inspection
-    gmsh.model.setPhysicalName(1, ring_outer, 'boundary_ring_outer')
+    # Define physical groups for interfaces (! target tag > 0)
+    ring_inner = 1
+    gmsh.model.addPhysicalGroup(tdim-1, [bs0[4][1], bs1[4][1], bs2[4][1], bs3[4][1]], ring_inner)  # index 4 by inspection
+    gmsh.model.setPhysicalName(tdim-1, ring_inner, 'ring_inner')
+    ring_outer = 2
+    gmsh.model.addPhysicalGroup(tdim-1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]], ring_outer)  # index 5 by inspection
+    gmsh.model.setPhysicalName(tdim-1, ring_outer, 'ring_outer')
 
-    # Check labels
-    pg_domains = gmsh.model.getPhysicalGroups(2)
-    pg_domain_name = gmsh.model.getPhysicalName(2, pg_domains[0][1])
-    print(pg_domain_name)
-    pg_boundaries = gmsh.model.getPhysicalGroups(1)
-    pg_boundary_name = gmsh.model.getPhysicalName(1, pg_boundaries[0][1])
-    print(pg_boundary_name)
-    pg_boundary_name = gmsh.model.getPhysicalName(1, pg_boundaries[1][1])
-    print(pg_boundary_name)
+    # Check and store labels
+    labels = {}
+    for tdim in range(tdim+1):
+        print("gmsh physical groups (topological dimension = {:1d}):".format(tdim))
+        for info in gmsh.model.getPhysicalGroups(tdim):
+            dim = info[0]
+            tag = info[1]
+            gid = gmsh.model.getPhysicalName(tdim, info[1])
+            print("dim = {:1d} | tag = {:3d} | physical name = {:s}".format(dim, tag, gid))
+            labels[gid] = tag
 
-    # sync
+    # Sync
     gmsh.model.geo.synchronize()
 
-    # set refinement along cross-sectional direction
+    # Set refinement along cross-sectional direction
     gmsh.model.mesh.setTransfiniteCurve(l0, numNodes=nR, meshType="Progression", coef=progression)
 
-    # ensure union jack meshing for triangular elements
+    # Ensure union jack meshing for triangular elements
     if not do_quads:
         gmsh.model.mesh.setTransfiniteSurface(s0[1][1], arrangement="Alternate")
         gmsh.model.mesh.setTransfiniteSurface(s1[1][1], arrangement="Alternate")
         gmsh.model.mesh.setTransfiniteSurface(s2[1][1], arrangement="Alternate")
         gmsh.model.mesh.setTransfiniteSurface(s3[1][1], arrangement="Alternate")
 
-    # generate the mesh
+    # Generate the mesh
     gmsh.model.mesh.generate()
 
-    # write the mesh
-    gmsh.write("/tmp/" + name + ".msh")
+    # Write the mesh
+    gmsh.write(name + ".msh")
 
+    # Finalise gmsh
     gmsh.finalize()
 
-    # --- convert mesh with meshio
+    # --- convert msh to xdmf/h5
 
-    import meshio
+    import dolfiny.mesh
 
-    print("Reading Gmsh mesh into meshio")
-    mesh = meshio.read("/tmp/" + name + ".msh")
-    # mesh.prune()
+    dolfiny.mesh.msh2xdmf(name + ".msh", tdim=tdim, gdim=gdim)
 
-    points_pruned_z = mesh.points[:, :2]  # prune z components
+    # --- return labels
 
-    print("Writing mesh for dolfin Mesh")
-    meshio.write("/tmp/" + name + ".xdmf", meshio.Mesh(
-        points=points_pruned_z,
-        cells={key: mesh.cells[key] for key in ["triangle", "quad"] if key in mesh.cells}
-    ))
-
-    print("Writing subdomain data for dolfin MeshValueCollection")
-    meshio.write("/tmp/" + name + "_subdomains" + ".xdmf", meshio.Mesh(
-        points=points_pruned_z,
-        cells={key: mesh.cells[key] for key in ["triangle", "quad"] if key in mesh.cells},
-        cell_data={key: {"name_to_read": mesh.cell_data[key]["gmsh:physical"]}
-                   for key in ["triangle", "quad"] if key in mesh.cells}
-    ))
-
-    print("Writing boundary data for dolfin MeshValueCollection")
-    meshio.write("/tmp/" + name + "_boundaries" + ".xdmf", meshio.Mesh(
-        points=points_pruned_z,
-        cells={key: mesh.cells[key] for key in ["line"] if key in mesh.cells},
-        cell_data={key: {"name_to_read": mesh.cell_data[key]["gmsh:physical"]} for key in ["line"] if key in mesh.cells}
-    ))
-
-    # --- test mesh with dolfin and write
-
-    import dolfinx as df
-    import dolfinx.io as dfio
-
-    # plain mesh
-    print("Reading mesh into dolfin")
-    with dfio.XDMFFile(df.MPI.comm_world, "/tmp/" + name + ".xdmf") as infile:
-        mesh = infile.read_mesh(df.cpp.mesh.GhostMode.none)
-    infile.close()
-
-    print("Writing mesh from dolfin")
-    with dfio.XDMFFile(df.MPI.comm_world, name + ".xdmf") as outfile:
-        outfile.write(mesh)
-
-    # subdomains
-    print("Reading subdomains into dolfin")
-    with dfio.XDMFFile(df.MPI.comm_world, "/tmp/" + name + "_subdomains" + ".xdmf") as infile:
-        msh_subdomains = mesh
-        mvc_subdomains = infile.read_mvc_size_t(msh_subdomains)
-    infile.close()
-
-    mfc_subdomains = df.cpp.mesh.MeshFunctionSizet(msh_subdomains, mvc_subdomains, 11)
-
-    print("Writing subdomains from dolfin")
-    with dfio.XDMFFile(df.MPI.comm_world, name + "_subdomains" + ".xdmf") as outfile:
-        outfile.write(mfc_subdomains)
-
-    # boundaries
-    print("Reading boundaries into dolfin")
-    with dfio.XDMFFile(df.MPI.comm_world, "/tmp/" + name + "_boundaries" + ".xdmf") as infile:
-        msh_boundaries = mesh
-        mvc_boundaries = infile.read_mvc_size_t(msh_boundaries)
-    infile.close()
-
-    mfc_boundaries = df.cpp.mesh.MeshFunctionSizet(msh_boundaries, mvc_boundaries, 11)
-
-    print("Writing boundaries from dolfin")
-    with dfio.XDMFFile(df.MPI.comm_world, name + "_boundaries" + ".xdmf") as outfile:
-        outfile.write(mfc_boundaries)
-
-    return mesh
+    return labels
 
 
 if __name__ == "__main__":
