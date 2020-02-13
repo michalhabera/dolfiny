@@ -32,17 +32,17 @@ y0 = 0.0
 # create the regular mesh of an annulus with given dimensions
 labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
 
-# read mesh, subdomains and boundaries
+# read mesh, subdomains and interfaces
 with XDMFFile(MPI.comm_world, name + ".xdmf") as infile:
     mesh = infile.read_mesh(cpp.mesh.GhostMode.none)
 with XDMFFile(MPI.comm_world, name + "_subdomains" + ".xdmf") as infile:
     msh_subdomains = mesh
     mvc_subdomains = infile.read_mvc_size_t(msh_subdomains)
-    subdomains = cpp.mesh.MeshFunctionSizet(msh_subdomains, mvc_subdomains, np.iinfo(np.uint).max)
+    subdomains = cpp.mesh.MeshFunctionSizet(msh_subdomains, mvc_subdomains, 0)
 with XDMFFile(MPI.comm_world, name + "_interfaces" + ".xdmf") as infile:
     msh_interfaces = mesh
     mvc_interfaces = infile.read_mvc_size_t(msh_interfaces)
-    interfaces = cpp.mesh.MeshFunctionSizet(msh_interfaces, mvc_interfaces, np.iinfo(np.uint).max)
+    interfaces = cpp.mesh.MeshFunctionSizet(msh_interfaces, mvc_interfaces, 0)
 
 inner = labels["ring_inner"]
 outer = labels["ring_outer"]
