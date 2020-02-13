@@ -21,12 +21,11 @@ def msh2xdmf(mshfile, tdim, gdim=3, prune=False):
 
     points_pruned = mesh.points[:, :gdim]  # set active coordinate components
 
-    cell_types = { # meshio cell types per topological dimension
-        3: ["tetra", "hexahedron", "tetra10", "hexahedron20"], 
-        2: ["triangle", "quad", "triangle6", "quad8"], 
-        1: ["line", "line3"], 
-        0: ["vertex"] 
-        }
+    cell_types = {  # meshio cell types per topological dimension
+        3: ["tetra", "hexahedron", "tetra10", "hexahedron20"],
+        2: ["triangle", "quad", "triangle6", "quad8"],
+        1: ["line", "line3"],
+        0: ["vertex"]}
 
     print("Writing mesh for dolfin Mesh")
     meshio.write(path + "/" + base + ".xdmf", meshio.Mesh(
@@ -44,16 +43,16 @@ def msh2xdmf(mshfile, tdim, gdim=3, prune=False):
         points=points_pruned,
         cells={key: mesh.cells[key] for key in cell_types[tdim] if key in mesh.cells},
         cell_data={key: {"name_to_read": size_t(abs(mesh.cell_data[key]["gmsh:physical"]))}
-                   for key in cell_types[tdim] 
+                   for key in cell_types[tdim]
                    if key in mesh.cell_data and "gmsh:physical" in mesh.cell_data[key]}
     ))
 
     print("Writing interface data for dolfin MeshValueCollection")
     meshio.write(path + "/" + base + "_interfaces" + ".xdmf", meshio.Mesh(
         points=points_pruned,
-        cells={key: mesh.cells[key] for key in cell_types[tdim-1] if key in mesh.cells},
-        cell_data={key: {"name_to_read": size_t(abs(mesh.cell_data[key]["gmsh:physical"]))} 
-                   for key in cell_types[tdim-1] 
+        cells={key: mesh.cells[key] for key in cell_types[tdim - 1] if key in mesh.cells},
+        cell_data={key: {"name_to_read": size_t(abs(mesh.cell_data[key]["gmsh:physical"]))}
+                   for key in cell_types[tdim - 1]
                    if key in mesh.cell_data and "gmsh:physical" in mesh.cell_data[key]}
     ))
 

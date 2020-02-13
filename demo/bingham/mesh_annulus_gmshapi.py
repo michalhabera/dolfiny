@@ -8,8 +8,8 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     px, py, pz = x0, y0, 0.0  # center point
     ax, ay, az = 0.0, 0.0, 1.0  # rotation axis
 
-    tdim = 2 # target topological dimension
-    gdim = 2 # target geometrical dimension
+    tdim = 2  # target topological dimension
+    gdim = 2  # target geometrical dimension
 
     # --- generate geometry and mesh with gmsh
 
@@ -45,15 +45,15 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
 
     # Define physical groups for interfaces (! target tag > 0)
     ring_inner = 1
-    gmsh.model.addPhysicalGroup(tdim-1, [bs0[4][1], bs1[4][1], bs2[4][1], bs3[4][1]], ring_inner)  # index 4 by inspection
-    gmsh.model.setPhysicalName(tdim-1, ring_inner, 'ring_inner')
+    gmsh.model.addPhysicalGroup(tdim - 1, [bs0[4][1], bs1[4][1], bs2[4][1], bs3[4][1]], ring_inner)  # idx 4: inspection
+    gmsh.model.setPhysicalName(tdim - 1, ring_inner, 'ring_inner')
     ring_outer = 2
-    gmsh.model.addPhysicalGroup(tdim-1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]], ring_outer)  # index 5 by inspection
-    gmsh.model.setPhysicalName(tdim-1, ring_outer, 'ring_outer')
+    gmsh.model.addPhysicalGroup(tdim - 1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]], ring_outer)  # idx 5: inspection
+    gmsh.model.setPhysicalName(tdim - 1, ring_outer, 'ring_outer')
 
     # Check and store labels
     labels = {}
-    for tdim in range(tdim+1):
+    for tdim in range(tdim + 1):
         print("gmsh physical groups (topological dimension = {:1d}):".format(tdim))
         for info in gmsh.model.getPhysicalGroups(tdim):
             dim = info[0]
