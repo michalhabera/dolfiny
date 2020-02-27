@@ -41,7 +41,6 @@ def test_simple_triangle():
     gmsh.model.mesh.generate()
     gmsh.model.mesh.refine()
 
-
     mesh, mvcs = dolfiny.mesh.gmsh_to_dolfin(gmsh.model, 2, prune_z=True)
 
     assert mesh.geometry.dim == 2
