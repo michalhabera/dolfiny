@@ -19,6 +19,7 @@ skip_in_parallel = pytest.mark.skipif(
     reason="This test should only be run in serial.")
 
 
+@skip_in_parallel
 def test_coupled_poisson():
     # dS integrals in parallel require shared_facet ghost mode
     if dolfinx.MPI.comm_world.size == 1:
@@ -103,6 +104,7 @@ def test_coupled_poisson():
         assert(numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
 
 
+@skip_in_parallel
 def test_sloped_stokes():
 
     path = os.path.dirname(os.path.realpath(__file__))

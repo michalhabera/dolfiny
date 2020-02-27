@@ -53,16 +53,23 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.comm_world,
 
     node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
 
+    # Fetch elements for the mesh
+    cell_types, cell_tags, cell_node_tags = gmsh_model.mesh.getElements(dim=tdim)
+
+    unused_nodes = numpy.setdiff1d(node_tags, cell_node_tags)
+    unused_nodes_indices = numpy.where(node_tags == unused_nodes)[0]
+
     # Every node has 3 components in gmsh
     dim = 3
     points = numpy.reshape(coord, (-1, dim))
 
+    # Delete unreferenced nodes
+    points = numpy.delete(points, unused_nodes_indices, axis=0)
+    node_tags = numpy.delete(node_tags, unused_nodes_indices)
+
     # Prepare a map from node tag to index in coords array
     nmap = numpy.argsort(node_tags - 1)
     cells = {}
-
-    # Fetch elements for the mesh
-    cell_types, cell_tags, cell_node_tags = gmsh_model.mesh.getElements(dim=tdim)
 
     if len(cell_types) > 1:
         raise RuntimeError("Mixed topology meshes not supported.")

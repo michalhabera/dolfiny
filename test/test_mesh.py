@@ -39,9 +39,8 @@ def test_simple_triangle():
 
     gmsh.model.geo.synchronize()
     gmsh.model.mesh.generate()
+    gmsh.model.mesh.refine()
 
-    gmsh.model.mesh.refine()
-    gmsh.model.mesh.refine()
 
     mesh, mvcs = dolfiny.mesh.gmsh_to_dolfin(gmsh.model, 2, prune_z=True)
 
