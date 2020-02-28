@@ -1,9 +1,9 @@
 import numpy
-import pytest
 
-import dolfiny.mesh
 import dolfinx
 import dolfinx.io
+import dolfiny.mesh
+import pytest
 import ufl
 
 skip_in_parallel = pytest.mark.skipif(

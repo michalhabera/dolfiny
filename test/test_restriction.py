@@ -1,18 +1,18 @@
-from petsc4py import PETSc
-import pytest
 import os
-import ufl
+
 import numpy
+
 import dolfinx
 import dolfinx.cpp
 import dolfinx.io
-
 import dolfiny
-import dolfiny.restriction
 import dolfiny.la
-import dolfiny.snesblockproblem
 import dolfiny.mesh
-
+import dolfiny.restriction
+import dolfiny.snesblockproblem
+import pytest
+import ufl
+from petsc4py import PETSc
 
 skip_in_parallel = pytest.mark.skipif(
     dolfinx.MPI.size(dolfinx.MPI.comm_world) > 1,
