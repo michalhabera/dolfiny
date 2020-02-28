@@ -89,22 +89,23 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     print("Writing mesh for dolfin Mesh")
     meshio.write("/tmp/" + name + ".xdmf", meshio.Mesh(
         points=points_pruned_z,
-        cells={key: mesh.cells[key] for key in ["triangle", "quad"] if key in mesh.cells}
+        cells=[(key, mesh.cells_dict[key]) for key in ["triangle", "quad"] if key in mesh.cells_dict]
     ))
 
     print("Writing subdomain data for dolfin MeshValueCollection")
     meshio.write("/tmp/" + name + "_subdomains" + ".xdmf", meshio.Mesh(
         points=points_pruned_z,
-        cells={key: mesh.cells[key] for key in ["triangle", "quad"] if key in mesh.cells},
-        cell_data={key: {"name_to_read": mesh.cell_data[key]["gmsh:physical"]}
-                   for key in ["triangle", "quad"] if key in mesh.cells}
+        cells=[(key, mesh.cells_dict[key]) for key in ["triangle", "quad"] if key in mesh.cells_dict],
+        cell_data={"gmsh:physical": [mesh.cell_data_dict["gmsh:physical"][key]
+                                     for key in ["triangle", "quad"] if key in mesh.cells_dict]}
     ))
 
     print("Writing boundary data for dolfin MeshValueCollection")
     meshio.write("/tmp/" + name + "_boundaries" + ".xdmf", meshio.Mesh(
         points=points_pruned_z,
-        cells={key: mesh.cells[key] for key in ["line"] if key in mesh.cells},
-        cell_data={key: {"name_to_read": mesh.cell_data[key]["gmsh:physical"]} for key in ["line"] if key in mesh.cells}
+        cells=[(key, mesh.cells_dict[key]) for key in ["line"] if key in mesh.cells_dict],
+        cell_data={"gmsh:physical": [mesh.cell_data_dict["gmsh:physical"][key]
+                                     for key in ["line"] if key in mesh.cells_dict]}
     ))
 
     # --- test mesh with dolfin and write

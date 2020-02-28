@@ -1,5 +1,5 @@
-import ufl
 import dolfiny.function
+import ufl
 
 
 def test_ufl_block_extraction(V1, V2, squaremesh_5):
