@@ -2,10 +2,11 @@ import logging
 import os
 
 import numpy
+
 import dolfinx.cpp as cpp
 import dolfinx.fem as fem
-from dolfinx.cpp.mesh import CellType
 from dolfinx import MPI, MeshValueCollection
+from dolfinx.cpp.mesh import CellType
 
 
 def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.comm_world,
@@ -161,17 +162,30 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.comm_world,
     return mesh, mvcs
 
 
-def msh2xdmf(mshfile, tdim, gdim=3, prune=False):
+def msh_to_xdmf(mshfile, tdim, gdim=3, prune=False):
+    """Converts msh file to a set of [mesh, subdomains, interfaces] xdmf/h5 files for use in dolfinx.
+
+    Parameters
+    ----------
+    mshfile
+        Name of .msh file (incl. extension)
+    tdim
+        Topological dimension of the mesh
+    gdim: optional
+        Geometrical dimension of the mesh
+    prune:
+        Prune z-components from points geometry, i.e. embedd the mesh into XY plane.
+
     """
-    Convert msh file to a set of [mesh, subdomains, interfaces] xdmf/h5 files for use in dolfinx.
-    """
+
+    logger = logging.getLogger("dolfiny")
 
     path = os.path.dirname(os.path.abspath(mshfile))
     base = os.path.splitext(os.path.basename(mshfile))[0]
 
     import meshio
 
-    print("Reading Gmsh mesh into meshio")
+    logger.info("Reading Gmsh mesh into meshio")
     mesh = meshio.read(mshfile)
 
     if prune:
@@ -188,9 +202,8 @@ def msh2xdmf(mshfile, tdim, gdim=3, prune=False):
     # The target data type for dolfin MeshValueCollection is size_t
     # Furthermore, gmsh may invert the entity orientation and flip the sign of the marker,
     # which is reverted with abs(). This way chosen labels and markers are kept consistent.
-    from numpy import uint as size_t
 
-    # extract relevant cell blocks depending on supported cell types
+    # Extract relevant cell blocks depending on supported cell types
     subdomains_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim]]))
     interfaces_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim - 1]]))
 
@@ -210,33 +223,33 @@ def msh2xdmf(mshfile, tdim, gdim=3, prune=False):
     else:
         interfaces_cells_dolfin_supported = []
 
-    # extract relevant cell data for supported cell blocks
+    # Extract relevant cell data for supported cell blocks
     if subdomains_celltype is not None:
-        subdomains_celldata_dolfin_supported = {"name_to_read":
-                                                [size_t(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
+        subdomains_celldata_dolfin_supported = \
+            {"name_to_read": [numpy.int(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
     else:
         subdomains_celldata_dolfin_supported = {}
 
     if interfaces_celltype is not None:
-        interfaces_celldata_dolfin_supported = {"name_to_read":
-                                                [size_t(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
+        interfaces_celldata_dolfin_supported = \
+            {"name_to_read": [numpy.int(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
     else:
         interfaces_celldata_dolfin_supported = {}
 
-    print("Writing mesh for dolfin Mesh")
+    logger.info("Writing mesh for dolfin Mesh")
     meshio.write(path + "/" + base + ".xdmf", meshio.Mesh(
         points=points_pruned,
         cells=subdomains_cells_dolfin_supported
     ))
 
-    print("Writing subdomain data for dolfin MeshValueCollection")
+    logger.info("Writing subdomain data for dolfin MeshValueCollection")
     meshio.write(path + "/" + base + "_subdomains" + ".xdmf", meshio.Mesh(
         points=points_pruned,
         cells=subdomains_cells_dolfin_supported,
         cell_data=subdomains_celldata_dolfin_supported
     ))
 
-    print("Writing interface data for dolfin MeshValueCollection")
+    logger.info("Writing interface data for dolfin MeshValueCollection")
     meshio.write(path + "/" + base + "_interfaces" + ".xdmf", meshio.Mesh(
         points=points_pruned,
         cells=interfaces_cells_dolfin_supported,
