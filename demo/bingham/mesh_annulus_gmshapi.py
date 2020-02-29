@@ -87,7 +87,7 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     # --- convert msh to xdmf/h5
     import dolfiny.mesh
 
-    dolfiny.mesh.msh2xdmf(name + ".msh", tdim=tdim, gdim=gdim)
+    dolfiny.mesh.msh_to_xdmf(name + ".msh", tdim=tdim, gdim=gdim)
 
     # --- return labels
 
