@@ -27,33 +27,62 @@ def msh2xdmf(mshfile, tdim, gdim=3, prune=False):
         1: ["line", "line3"],
         0: ["vertex"]}
 
-    print("Writing mesh for dolfin Mesh")
-    meshio.write(path + "/" + base + ".xdmf", meshio.Mesh(
-        points=points_pruned,
-        cells={key: mesh.cells[key] for key in cell_types[tdim] if key in mesh.cells}
-    ))
-
     # The target data type for dolfin MeshValueCollection is size_t
     # Furthermore, gmsh may invert the entity orientation and flip the sign of the marker,
     # which is reverted with abs(). This way chosen labels and markers are kept consistent.
     from numpy import uint as size_t
 
+    # extract relevant cell blocks depending on supported cell types
+    subdomains_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim]]))
+    interfaces_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim - 1]]))
+
+    assert(len(subdomains_celltypes) <= 1)
+    assert(len(interfaces_celltypes) <= 1)
+
+    subdomains_celltype = subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
+    interfaces_celltype = interfaces_celltypes[0] if len(subdomains_celltypes) > 0 else None
+
+    if subdomains_celltype is not None:
+        subdomains_cells_dolfin_supported = [(subdomains_celltype, mesh.get_cells_type(subdomains_celltype))]
+    else:
+        subdomains_cells_dolfin_supported = []
+
+    if interfaces_celltype is not None:
+        interfaces_cells_dolfin_supported = [(interfaces_celltype, mesh.get_cells_type(interfaces_celltype))]
+    else:
+        interfaces_cells_dolfin_supported = []
+
+    # extract relevant cell data for supported cell blocks
+    if subdomains_celltype is not None:
+        subdomains_celldata_dolfin_supported = {"name_to_read":
+                                                [size_t(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
+    else:
+        subdomains_celldata_dolfin_supported = {}
+
+    if interfaces_celltype is not None:
+        interfaces_celldata_dolfin_supported = {"name_to_read":
+                                                [size_t(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
+    else:
+        interfaces_celldata_dolfin_supported = {}
+
+    print("Writing mesh for dolfin Mesh")
+    meshio.write(path + "/" + base + ".xdmf", meshio.Mesh(
+        points=points_pruned,
+        cells=subdomains_cells_dolfin_supported
+    ))
+
     print("Writing subdomain data for dolfin MeshValueCollection")
     meshio.write(path + "/" + base + "_subdomains" + ".xdmf", meshio.Mesh(
         points=points_pruned,
-        cells={key: mesh.cells[key] for key in cell_types[tdim] if key in mesh.cells},
-        cell_data={key: {"name_to_read": size_t(abs(mesh.cell_data[key]["gmsh:physical"]))}
-                   for key in cell_types[tdim]
-                   if key in mesh.cell_data and "gmsh:physical" in mesh.cell_data[key]}
+        cells=subdomains_cells_dolfin_supported,
+        cell_data=subdomains_celldata_dolfin_supported
     ))
 
     print("Writing interface data for dolfin MeshValueCollection")
     meshio.write(path + "/" + base + "_interfaces" + ".xdmf", meshio.Mesh(
         points=points_pruned,
-        cells={key: mesh.cells[key] for key in cell_types[tdim - 1] if key in mesh.cells},
-        cell_data={key: {"name_to_read": size_t(abs(mesh.cell_data[key]["gmsh:physical"]))}
-                   for key in cell_types[tdim - 1]
-                   if key in mesh.cell_data and "gmsh:physical" in mesh.cell_data[key]}
+        cells=interfaces_cells_dolfin_supported,
+        cell_data=interfaces_celldata_dolfin_supported
     ))
 
     return mesh
