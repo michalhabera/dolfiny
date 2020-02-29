@@ -1,9 +1,10 @@
-from petsc4py import PETSc
 import numpy as np
+
 import dolfinx
-import ufl
 import dolfiny.snesblockproblem
 import pytest
+import ufl
+from petsc4py import PETSc
 
 
 def test_monolithic(V1, V2, squaremesh_5):

@@ -1,10 +1,10 @@
-import scipy.sparse
 import numpy as np
-from petsc4py import PETSc
-import pytest
-import dolfinx
 
+import dolfinx
 import dolfiny.la
+import pytest
+import scipy.sparse
+from petsc4py import PETSc
 
 skip_in_parallel = pytest.mark.skipif(
     dolfinx.MPI.size(dolfinx.MPI.comm_world) > 1,

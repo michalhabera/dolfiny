@@ -52,3 +52,15 @@ jobs:
           command: |
             cd demo/bingham
             python3 plain_bingham_block.py
+
+workflows:
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 1 * * *"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - build
