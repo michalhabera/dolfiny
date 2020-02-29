@@ -28,23 +28,24 @@ nR = 10 * 4
 nT = 7 * 4
 x0 = 0.0
 y0 = 0.0
-inner = 0
-outer = 3
 
 # create the regular mesh of an annulus with given dimensions
-mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
+labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
 
-# read mesh, subdomains and boundaries
+# read mesh, subdomains and interfaces
 with XDMFFile(MPI.comm_world, name + ".xdmf") as infile:
     mesh = infile.read_mesh(cpp.mesh.GhostMode.none)
 with XDMFFile(MPI.comm_world, name + "_subdomains" + ".xdmf") as infile:
     msh_subdomains = mesh
     mvc_subdomains = infile.read_mvc_size_t(msh_subdomains)
-    subdomains = cpp.mesh.MeshFunctionSizet(msh_subdomains, mvc_subdomains, 11)
-with XDMFFile(MPI.comm_world, name + "_boundaries" + ".xdmf") as infile:
-    msh_boundaries = mesh
-    mvc_boundaries = infile.read_mvc_size_t(msh_boundaries)
-    boundaries = cpp.mesh.MeshFunctionSizet(msh_boundaries, mvc_boundaries, 11)
+    subdomains = cpp.mesh.MeshFunctionSizet(msh_subdomains, mvc_subdomains, 0)
+with XDMFFile(MPI.comm_world, name + "_interfaces" + ".xdmf") as infile:
+    msh_interfaces = mesh
+    mvc_interfaces = infile.read_mvc_size_t(msh_interfaces)
+    interfaces = cpp.mesh.MeshFunctionSizet(msh_interfaces, mvc_interfaces, 0)
+
+inner = labels["ring_inner"]
+outer = labels["ring_outer"]
 
 # Fluid material parameters
 rho = Constant(mesh, 2.0)  # [kg/m^3]
@@ -65,7 +66,7 @@ TS = 40
 
 # Define measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=boundaries)
+ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Check geometry data
 area_msh = fem.assemble_scalar(1 * dx)
@@ -213,9 +214,9 @@ opts["mat_mumps_icntl_24"] = 1
 
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
 
-outerdofs_V = fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(boundaries.values == outer)[0])
-innerdofs_V = fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(boundaries.values == inner)[0])
-innerdofs_P = fem.locate_dofs_topological(P, mesh.topology.dim - 1, np.where(boundaries.values == inner)[0])
+outerdofs_V = fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(interfaces.values == outer)[0])
+innerdofs_V = fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(interfaces.values == inner)[0])
+innerdofs_P = fem.locate_dofs_topological(P, mesh.topology.dim - 1, np.where(interfaces.values == inner)[0])
 
 # Process time steps
 for i in range(TS + 1):
@@ -273,7 +274,7 @@ selection = np.greater(array_shear_gammad, threshold)
 x = array_shear_gammad[selection]
 y = array_shear_stress[selection]
 A = np.vstack([x, np.ones(len(x))]).T
-m, c = np.linalg.lstsq(A, y)[0]  # determine linear fct param: y = m*x + c
+m, c = np.linalg.lstsq(A, y, rcond=-1)[0]  # determine linear fct param: y = m*x + c
 mu_a = 0.5 * m
 tau_a = c  # slope m = 2*mu_a
 print("apparent viscosity    = %4.3e" % mu_a)

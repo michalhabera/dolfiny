@@ -54,6 +54,9 @@ jobs:
             python3 plain_bingham_block.py
 
 workflows:
+  build-and-test:
+    jobs:
+      - build
   nightly:
     triggers:
       - schedule:
