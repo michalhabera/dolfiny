@@ -226,13 +226,13 @@ def msh_to_xdmf(mshfile, tdim, gdim=3, prune=False):
     # Extract relevant cell data for supported cell blocks
     if subdomains_celltype is not None:
         subdomains_celldata_dolfin_supported = \
-            {"name_to_read": [numpy.int(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
+            {"name_to_read": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
     else:
         subdomains_celldata_dolfin_supported = {}
 
     if interfaces_celltype is not None:
         interfaces_celldata_dolfin_supported = \
-            {"name_to_read": [numpy.int(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
+            {"name_to_read": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
     else:
         interfaces_celldata_dolfin_supported = {}
 
