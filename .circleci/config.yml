@@ -25,7 +25,7 @@ build-dolfinx-python: &build-dolfinx-python
 jobs:
   build:
     docker:
-      - image: quay.io/fenicsproject/dolfinx:dev-env-real
+      - image: dolfinx/dev-env-real
     steps:
       - checkout
       - run:
