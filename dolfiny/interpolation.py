@@ -70,7 +70,7 @@ def interpolate(expr, target_func):
     geom_pos = mesh.geometry.dofmap().offsets()
     geom = mesh.geometry.x
 
-    dofmap = target_func.function_space.dofmap.dof_array
+    dofmap = target_func.function_space.dofmap.list.array()
 
     # Prepare coefficients and their dofmaps
     # Global vectors and dofmaps are prepared here, local are
@@ -86,7 +86,7 @@ def interpolate(expr, target_func):
     coeffs_vectors = List.empty_list(numba.types.Array(numba.typeof(PETSc.ScalarType()), 1, "C", readonly=True))
 
     for i in range(num_coeffs):
-        coeffs_dofmaps.append(coeffs[cpos[i]].function_space.dofmap.dof_array)
+        coeffs_dofmaps.append(coeffs[cpos[i]].function_space.dofmap.list.array())
         coeffs_vectors.append(np.asarray(coeffs[cpos[i]].vector))
 
     local_coeffs_sizes = np.asarray([coeff.function_space.element.space_dimension()

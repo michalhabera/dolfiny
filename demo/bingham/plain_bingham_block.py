@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from petsc4py import PETSc
 
-from dolfinx import MPI, cpp, Constant, fem, FunctionSpace, Function, log
+from dolfinx import MPI, Constant, fem, FunctionSpace, Function, log
 from dolfinx.io import XDMFFile
 import ufl
 
@@ -33,16 +33,15 @@ y0 = 0.0
 labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
 
 # read mesh, subdomains and interfaces
-with XDMFFile(MPI.comm_world, name + ".xdmf") as infile:
-    mesh = infile.read_mesh(cpp.mesh.GhostMode.none)
-with XDMFFile(MPI.comm_world, name + "_subdomains" + ".xdmf") as infile:
-    msh_subdomains = mesh
-    mvc_subdomains = infile.read_mvc_size_t(msh_subdomains)
-    subdomains = cpp.mesh.MeshFunctionSizet(msh_subdomains, mvc_subdomains, 0)
-with XDMFFile(MPI.comm_world, name + "_interfaces" + ".xdmf") as infile:
-    msh_interfaces = mesh
-    mvc_interfaces = infile.read_mvc_size_t(msh_interfaces)
-    interfaces = cpp.mesh.MeshFunctionSizet(msh_interfaces, mvc_interfaces, 0)
+with XDMFFile(MPI.comm_world, name + ".xdmf", "r") as infile:
+    mesh = infile.read_mesh("Grid")
+    mesh.create_connectivity_all()
+
+with XDMFFile(MPI.comm_world, name + "_subdomains" + ".xdmf", "r") as infile:
+    subdomains = infile.read_meshtags(mesh, "Grid")
+
+with XDMFFile(MPI.comm_world, name + "_interfaces" + ".xdmf", "r") as infile:
+    interfaces = infile.read_meshtags(mesh, "Grid")
 
 inner = labels["ring_inner"]
 outer = labels["ring_outer"]
@@ -190,8 +189,8 @@ def f(m, time_instant):
 F = [g + f for g, f in zip(odeint.g_(g, m, m0, m0t), odeint.f_(f, m, m0))]
 
 # output files
-ofile_p = XDMFFile(MPI.comm_world, name + "_pressure.xdmf")
-ofile_v = XDMFFile(MPI.comm_world, name + "_velocity.xdmf")
+ofile_p = XDMFFile(MPI.comm_world, name + "_pressure.xdmf", "w")
+ofile_v = XDMFFile(MPI.comm_world, name + "_velocity.xdmf", "w")
 
 # record some values
 array_time_instant = np.zeros(TS + 1)
@@ -214,9 +213,13 @@ opts["mat_mumps_icntl_24"] = 1
 
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
 
-outerdofs_V = fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(interfaces.values == outer)[0])
-innerdofs_V = fem.locate_dofs_topological(V, mesh.topology.dim - 1, np.where(interfaces.values == inner)[0])
-innerdofs_P = fem.locate_dofs_topological(P, mesh.topology.dim - 1, np.where(interfaces.values == inner)[0])
+outerdofs_V = fem.locate_dofs_topological(
+    V, mesh.topology.dim - 1, interfaces.indices[np.where(interfaces.values == outer)[0]])
+innerdofs_V = fem.locate_dofs_topological(
+    V, mesh.topology.dim - 1, interfaces.indices[np.where(interfaces.values == inner)[0]])
+innerdofs_P = fem.locate_dofs_topological(
+    P, mesh.topology.dim - 1, interfaces.indices[np.where(interfaces.values == inner)[0]])
+
 
 # Process time steps
 for i in range(TS + 1):
@@ -249,8 +252,8 @@ for i in range(TS + 1):
 
     # Write output
     log.set_log_level(log.LogLevel.OFF)
-    ofile_p.write_checkpoint(p_, "pressure", float(time.value))
-    ofile_v.write_checkpoint(v_, "velocity", float(time.value))
+    ofile_p.write(p_, float(time.value))
+    ofile_v.write_function(v_, float(time.value))
     log.set_log_level(log.LogLevel.WARNING)
 
     # Extract and analyse data
