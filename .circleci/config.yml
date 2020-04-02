@@ -11,7 +11,7 @@ install-python-components: &install-python-components
 build-dolfinx-cpp: &build-dolfinx-cpp
   name: Build dolfinx cpp
   command: |
-            git clone --branch michal/meshtags-io https://github.com/FEniCS/dolfinx.git
+            git clone --branch michal/meshtags-io-bug https://github.com/FEniCS/dolfinx.git
             cd dolfinx
             mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Developer ../cpp/
             make -j3 install
