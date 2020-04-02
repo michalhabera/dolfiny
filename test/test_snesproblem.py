@@ -7,6 +7,9 @@ import ufl
 from petsc4py import PETSc
 
 
+dolfinx.log.set_log_level(dolfinx.cpp.log.LogLevel.INFO)
+
+
 def test_monolithic(V1, V2, squaremesh_5):
     mesh = squaremesh_5
 
