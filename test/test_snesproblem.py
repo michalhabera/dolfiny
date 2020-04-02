@@ -46,7 +46,7 @@ def test_monolithic(V1, V2, squaremesh_5):
     assert np.isclose((u1.vector - 4.0 * np.arcsin(0.5)).norm(), 0.0)
 
 
-@pytest.mark.parametrize("nest", [True, False])
+@pytest.mark.parametrize("nest", [False])
 def test_block(V1, V2, squaremesh_5, nest):
     mesh = squaremesh_5
 
