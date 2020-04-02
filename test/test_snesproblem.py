@@ -72,7 +72,7 @@ def test_block(V1, V2, squaremesh_5, nest):
     opts.setValue('snes_max_it', 12)
 
     if nest:
-        opts.setValue('ksp_type', 'gmres')
+        opts.setValue('ksp_type', 'cg')
         opts.setValue('pc_type', 'fieldsplit')
         opts.setValue('fieldsplit_pc_type', 'lu')
         opts.setValue('ksp_rtol', 1.0e-10)
