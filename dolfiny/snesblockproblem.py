@@ -124,7 +124,11 @@ class SNESBlockProblem():
             x.copy(self.x)
             self.x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
+        print(self.comm.rank, "F solutions updated")
+
         dolfinx.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
+
+        print(self.comm.rank, "F vector assembled")
 
         if self.restriction is not None:
             self.restriction.restrict_vector(self.F).copy(self.rF)
