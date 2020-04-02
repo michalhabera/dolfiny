@@ -1,7 +1,9 @@
 import typing
+
 import numpy as np
-import ufl
+
 import dolfinx
+import ufl
 from dolfiny.function import functions_to_vec, vec_to_functions
 from petsc4py import PETSc
 
@@ -66,7 +68,7 @@ class SNESBlockProblem():
 
             self.J = dolfinx.fem.create_matrix_nest(self.J_form)
             self.F = dolfinx.fem.create_vector_nest(self.F_form)
-            self.x = dolfinx.fem.create_vector_nest(self.F_form)
+            self.x = self.F.copy()
 
             self.snes.setFunction(self._F_nest, self.F)
             self.snes.setJacobian(self._J_nest, self.J)
@@ -154,9 +156,9 @@ class SNESBlockProblem():
             self.restriction.restrict_matrix(self.J).copy(self.rJ)
 
     def _J_nest(self, snes, u, J, P):
-        J.zeroEntries()
-        dolfinx.fem.assemble_matrix_nest(J, self.J_form, self.bcs, diagonal=1.0)
-        J.assemble()
+        self.J.zeroEntries()
+        dolfinx.fem.assemble_matrix_nest(self.J, self.J_form, self.bcs, diagonal=1.0)
+        self.J.assemble()
 
     def _converged(self, snes, it, norms):
         it = snes.getIterationNumber()

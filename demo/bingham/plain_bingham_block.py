@@ -189,8 +189,8 @@ def f(m, time_instant):
 F = [g + f for g, f in zip(odeint.g_(g, m, m0, m0t), odeint.f_(f, m, m0))]
 
 # output files
-ofile_p = XDMFFile(MPI.comm_world, name + "_pressure.xdmf", "w")
-ofile_v = XDMFFile(MPI.comm_world, name + "_velocity.xdmf", "w")
+ofile = XDMFFile(MPI.comm_world, name + "_results.xdmf", "w")
+ofile.write_mesh(mesh)
 
 # record some values
 array_time_instant = np.zeros(TS + 1)
@@ -252,8 +252,8 @@ for i in range(TS + 1):
 
     # Write output
     log.set_log_level(log.LogLevel.OFF)
-    ofile_p.write(p_, float(time.value))
-    ofile_v.write_function(v_, float(time.value))
+    ofile.write_function(p_, float(time.value))
+    ofile.write_function(v_, float(time.value))
     log.set_log_level(log.LogLevel.WARNING)
 
     # Extract and analyse data
@@ -270,6 +270,8 @@ for i in range(TS + 1):
 
     # Update solution states for time integration
     m0, m0t = odeint.update(m, m0, m0t)
+
+ofile.close()
 
 # Identify apparent yield stress tau_a and apparent viscosity mu_a by linear regression
 threshold = 0.05  # minimum dot gamma
