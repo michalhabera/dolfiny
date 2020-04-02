@@ -108,7 +108,10 @@ class SNESBlockProblem():
             self.snes.getKSP().setFromOptions()
             self.snes.getKSP().getPC().setFromOptions()
 
+            print(self.comm.rank, " Initialised problem")
+
     def _F_block(self, snes, x, F):
+        print(self.comm.rank, " F block start")
         with self.F.localForm() as f_local:
             f_local.set(0.0)
 
@@ -125,6 +128,7 @@ class SNESBlockProblem():
 
         if self.restriction is not None:
             self.restriction.restrict_vector(self.F).copy(self.rF)
+        print(self.comm.rank, " F block done")
 
     def _F_nest(self, snes, x, F):
         vec_to_functions(x, self.u)
@@ -147,6 +151,8 @@ class SNESBlockProblem():
         F.assemble()
 
     def _J_block(self, snes, u, J, P):
+        print(self.comm.rank, " J block start")
+
         self.J.zeroEntries()
 
         dolfinx.fem.assemble_matrix_block(self.J, self.J_form, self.bcs, diagonal=1.0)
@@ -154,6 +160,7 @@ class SNESBlockProblem():
 
         if self.restriction is not None:
             self.restriction.restrict_matrix(self.J).copy(self.rJ)
+        print(self.comm.rank, " J block done")
 
     def _J_nest(self, snes, u, J, P):
         self.J.zeroEntries()
