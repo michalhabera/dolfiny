@@ -5,9 +5,9 @@ import dolfiny.snesblockproblem
 import pytest
 import ufl
 from petsc4py import PETSc
+import logging
 
-
-dolfinx.log.set_log_level(dolfinx.cpp.log.LogLevel.INFO)
+logging.getLogger().setLevel(10)
 
 
 def test_monolithic(V1, V2, squaremesh_5):
@@ -49,7 +49,7 @@ def test_monolithic(V1, V2, squaremesh_5):
     assert np.isclose((u1.vector - 4.0 * np.arcsin(0.5)).norm(), 0.0)
 
 
-@pytest.mark.parametrize("nest", [False])
+@pytest.mark.parametrize("nest", [True, False])
 def test_block(V1, V2, squaremesh_5, nest):
     mesh = squaremesh_5
 

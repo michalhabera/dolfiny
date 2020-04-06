@@ -33,7 +33,8 @@ def test_expr():
     h_interp = Function(TCG1)
     interpolation.interpolate(expr1, h_interp)
 
-    h_project = projection.project(expr1, TCG1)
+    h_project = Function(TCG1)
+    projection.project(expr1, h_project)
 
     h_project.vector.axpy(-1.0, h_interp.vector)
     h_project.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
@@ -44,7 +45,8 @@ def test_expr():
     h_interp2 = Function(TDG0)
     interpolation.interpolate(expr2, h_interp2)
 
-    h_project2 = projection.project(expr2, TDG0)
+    h_project2 = Function(TDG0)
+    projection.project(expr2, h_project2)
 
     h_project2.vector.axpy(-1.0, h_interp2.vector)
     h_project2.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
@@ -60,7 +62,8 @@ def test_diff():
     x = ufl.SpatialCoordinate(mesh)
     expr = x[0] + x[1] + f
 
-    h_project = projection.project(expr, CG1)
+    h_project = Function(CG1)
+    projection.project(expr, h_project)
 
     h_interp = Function(CG1)
     interpolation.interpolate(expr, h_interp)

@@ -1,15 +1,13 @@
 from dolfinx.fem import assemble_vector, apply_lifting, set_bc, assemble_matrix
-from dolfinx.function import Function
 from dolfinx.la import solve
 import ufl
 from petsc4py import PETSc
 
 
-def project(v, V=None, bcs=[], mesh=None, funct=None):
+def project(v, target_func, bcs=[]):
     # Ensure we have a mesh and attach to measure
-    if mesh is None:
-        mesh = V.mesh
-    dx = ufl.dx(mesh)
+    V = target_func.function_space
+    dx = ufl.dx(V.mesh)
 
     # Define variational problem for projection
     w = ufl.TestFunction(V)
@@ -25,9 +23,4 @@ def project(v, V=None, bcs=[], mesh=None, funct=None):
     b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
     set_bc(b, bcs)
 
-    # Solve linear system for projection
-    if funct is None:
-        funct = Function(V)
-    solve(A, funct.vector, b)
-
-    return funct
+    solve(A, target_func.vector, b)
