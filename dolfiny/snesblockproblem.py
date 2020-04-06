@@ -39,8 +39,12 @@ class SNESBlockProblem():
 
             for i in range(len(self.u)):
                 for j in range(len(self.u)):
-                    self.J_form[i][j] = ufl.derivative(
-                        F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space))
+                    self.J_form[i][j] = ufl.algorithms.expand_derivatives(ufl.derivative(
+                        F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space)))
+
+                    # If the form happens to be empty replace with None
+                    if self.J_form[i][j].empty():
+                        self.J_form[i][j] = None
         else:
             self.J_form = J_form
 
