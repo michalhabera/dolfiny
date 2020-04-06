@@ -5,6 +5,9 @@ import dolfiny.snesblockproblem
 import pytest
 import ufl
 from petsc4py import PETSc
+import logging
+
+logging.getLogger().setLevel(10)
 
 
 def test_monolithic(V1, V2, squaremesh_5):
@@ -73,7 +76,8 @@ def test_block(V1, V2, squaremesh_5, nest):
 
     if nest:
         opts.setValue('ksp_type', 'cg')
-        opts.setValue('pc_type', 'none')
+        opts.setValue('pc_type', 'fieldsplit')
+        opts.setValue('fieldsplit_pc_type', 'lu')
         opts.setValue('ksp_rtol', 1.0e-10)
     else:
         opts.setValue('ksp_type', 'preonly')
