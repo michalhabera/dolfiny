@@ -180,7 +180,7 @@ def msh_to_xdmf(mshfile, tdim, gdim=3, prune=False):
 
     import meshio
 
-    logger.info("Reading Gmsh mesh into meshio")
+    logger.info("Reading Gmsh mesh into meshio from path {}".format(mshfile))
     mesh = meshio.read(mshfile)
 
     if prune:
@@ -206,12 +206,18 @@ def msh_to_xdmf(mshfile, tdim, gdim=3, prune=False):
     assert(len(interfaces_celltypes) <= 1)
 
     subdomains_celltype = subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
-    interfaces_celltype = interfaces_celltypes[0] if len(subdomains_celltypes) > 0 else None
+    interfaces_celltype = interfaces_celltypes[0] if len(interfaces_celltypes) > 0 else None
 
     if subdomains_celltype is not None:
         subdomains_cells_dolfin_supported = [(subdomains_celltype, mesh.get_cells_type(subdomains_celltype))]
     else:
         subdomains_cells_dolfin_supported = []
+
+    logger.info("Writing mesh for dolfin Mesh")
+    meshio.write(path + "/" + base + ".xdmf", meshio.Mesh(
+        points=points_pruned,
+        cells=subdomains_cells_dolfin_supported
+    ))
 
     if interfaces_celltype is not None:
         interfaces_cells_dolfin_supported = [(interfaces_celltype, mesh.get_cells_type(interfaces_celltype))]
@@ -221,34 +227,24 @@ def msh_to_xdmf(mshfile, tdim, gdim=3, prune=False):
     # Extract relevant cell data for supported cell blocks
     if subdomains_celltype is not None:
         subdomains_celldata_dolfin_supported = \
-            {"name_to_read": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
-    else:
-        subdomains_celldata_dolfin_supported = {}
+            {"subdomains": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
+
+        logger.info("Writing subdomain data for dolfin MeshValueCollection")
+        meshio.write(path + "/" + base + "_subdomains" + ".xdmf", meshio.Mesh(
+            points=points_pruned,
+            cells=subdomains_cells_dolfin_supported,
+            cell_data=subdomains_celldata_dolfin_supported
+        ))
 
     if interfaces_celltype is not None:
         interfaces_celldata_dolfin_supported = \
-            {"name_to_read": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
-    else:
-        interfaces_celldata_dolfin_supported = {}
+            {"interfaces": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
 
-    logger.info("Writing mesh for dolfin Mesh")
-    meshio.write(path + "/" + base + ".xdmf", meshio.Mesh(
-        points=points_pruned,
-        cells=subdomains_cells_dolfin_supported
-    ))
-
-    logger.info("Writing subdomain data for dolfin MeshValueCollection")
-    meshio.write(path + "/" + base + "_subdomains" + ".xdmf", meshio.Mesh(
-        points=points_pruned,
-        cells=subdomains_cells_dolfin_supported,
-        cell_data=subdomains_celldata_dolfin_supported
-    ))
-
-    logger.info("Writing interface data for dolfin MeshValueCollection")
-    meshio.write(path + "/" + base + "_interfaces" + ".xdmf", meshio.Mesh(
-        points=points_pruned,
-        cells=interfaces_cells_dolfin_supported,
-        cell_data=interfaces_celldata_dolfin_supported
-    ))
+        logger.info("Writing interface data for dolfin MeshValueCollection")
+        meshio.write(path + "/" + base + "_interfaces" + ".xdmf", meshio.Mesh(
+            points=points_pruned,
+            cells=interfaces_cells_dolfin_supported,
+            cell_data=interfaces_celldata_dolfin_supported
+        ))
 
     return mesh
