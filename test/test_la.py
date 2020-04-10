@@ -1,7 +1,6 @@
 import numpy as np
 from mpi4py import MPI
 
-import dolfinx
 import dolfiny.la
 import pytest
 import scipy.sparse
