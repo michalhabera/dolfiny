@@ -1,10 +1,12 @@
+from mpi4py import MPI
+
 import dolfinx
 import pytest
 
 
 @pytest.fixture(scope="module")
 def squaremesh_5():
-    return dolfinx.generation.UnitSquareMesh(dolfinx.MPI.comm_world, 5, 5)
+    return dolfinx.generation.UnitSquareMesh(MPI.COMM_WORLD, 5, 5)
 
 
 @pytest.fixture(scope="module")

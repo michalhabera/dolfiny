@@ -13,22 +13,23 @@ import dolfiny.restriction
 import dolfiny.snesblockproblem
 import pytest
 import ufl
+from mpi4py import MPI
 from petsc4py import PETSc
 
 skip_in_parallel = pytest.mark.skipif(
-    dolfinx.MPI.size(dolfinx.MPI.comm_world) > 1,
+    MPI.COMM_WORLD.size > 1,
     reason="This test should only be run in serial.")
 
 
 @skip_in_parallel
 def test_coupled_poisson():
     # dS integrals in parallel require shared_facet ghost mode
-    if dolfinx.MPI.comm_world.size == 1:
+    if MPI.COMM_WORLD.size == 1:
         ghost_mode = dolfinx.cpp.mesh.GhostMode.none
     else:
         ghost_mode = dolfinx.cpp.mesh.GhostMode.shared_facet
 
-    mesh = dolfinx.generation.UnitSquareMesh(dolfinx.MPI.comm_world, 16, 16, ghost_mode=ghost_mode)
+    mesh = dolfinx.generation.UnitSquareMesh(MPI.COMM_WORLD, 16, 16, ghost_mode=ghost_mode)
     mesh.create_connectivity_all()
 
     left_half = locate_entities_geometrical(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
@@ -114,12 +115,12 @@ def test_sloped_stokes():
     path = os.path.dirname(os.path.realpath(__file__))
 
     # Read mesh, subdomains and boundaries
-    with dolfinx.io.XDMFFile(dolfinx.MPI.comm_world,
+    with dolfinx.io.XDMFFile(MPI.COMM_WORLD,
                              os.path.join(path, "data", "sloped_triangle_mesh.xdmf"), "r") as infile:
         mesh = infile.read_mesh(name="Grid")
         mesh.create_connectivity_all()
 
-    with dolfinx.io.XDMFFile(dolfinx.MPI.comm_world, os.path.join(path, "data", "sloped_line_mvc.xdmf"), "r") as infile:
+    with dolfinx.io.XDMFFile(MPI.COMM_WORLD, os.path.join(path, "data", "sloped_line_mvc.xdmf"), "r") as infile:
         boundaries = infile.read_meshtags(mesh, name="Grid")
 
     V = dolfinx.VectorFunctionSpace(mesh, ("P", 2))
@@ -241,7 +242,7 @@ def test_sloped_stokes():
 
 #     mesh, mvcs = dolfiny.mesh.gmsh_to_dolfin(gmsh.model, 2, prune_z=True)
 
-#     with dolfinx.io.XDMFFile(dolfinx.MPI.comm_world, "mesh.xdmf") as out:
+#     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "mesh.xdmf") as out:
 #         out.write(mesh)
 
 #     V = dolfinx.VectorFunctionSpace(mesh, ("P", 2))

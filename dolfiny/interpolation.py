@@ -66,8 +66,8 @@ def interpolate(expr, target_func):
 
     # Unpack mesh and dofmap data
     mesh = target_func.function_space.mesh
-    geom_dofmap = mesh.geometry.dofmap().array()
-    geom_pos = mesh.geometry.dofmap().offsets()
+    geom_dofmap = mesh.geometry.dofmap.array()
+    geom_pos = mesh.geometry.dofmap.offsets()
     geom = mesh.geometry.x
 
     dofmap = target_func.function_space.dofmap.list.array()

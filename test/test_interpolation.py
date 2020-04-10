@@ -1,7 +1,7 @@
 import time
 
 from dolfinx.generation import UnitCubeMesh, UnitSquareMesh
-from dolfinx import MPI
+from mpi4py import MPI
 import ufl
 from dolfinx import Function, FunctionSpace, TensorFunctionSpace
 from dolfiny import interpolation, projection
@@ -9,7 +9,7 @@ from petsc4py import PETSc
 
 
 N = 10
-mesh = UnitCubeMesh(MPI.comm_world, N, N, N)
+mesh = UnitCubeMesh(MPI.COMM_WORLD, N, N, N)
 
 DG0 = FunctionSpace(mesh, ("DG", 0))
 DG1 = FunctionSpace(mesh, ("DG", 1))
@@ -18,7 +18,7 @@ TCG1 = TensorFunctionSpace(mesh, ("CG", 1))
 TDG0 = TensorFunctionSpace(mesh, ("DG", 0))
 
 CG2 = FunctionSpace(mesh, ("CG", 2))
-VCG1 = FunctionSpace(mesh, DG0.mesh.ufl_coordinate_element())
+VCG1 = FunctionSpace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
 
 
 def test_expr():
@@ -76,7 +76,7 @@ def test_diff():
 
 def test_perf():
     N = 500
-    mesh = UnitSquareMesh(MPI.comm_world, N, N)
+    mesh = UnitSquareMesh(MPI.COMM_WORLD, N, N)
 
     P1 = FunctionSpace(mesh, ("P", 1))
     P2 = FunctionSpace(mesh, ("P", 2))

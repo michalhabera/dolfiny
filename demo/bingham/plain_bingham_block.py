@@ -5,8 +5,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 from petsc4py import PETSc
+from mpi4py import MPI
 
-from dolfinx import MPI, Constant, fem, FunctionSpace, Function, log
+from dolfinx import Constant, fem, FunctionSpace, Function, log
 from dolfinx.io import XDMFFile
 import ufl
 
@@ -33,14 +34,14 @@ y0 = 0.0
 labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
 
 # read mesh, subdomains and interfaces
-with XDMFFile(MPI.comm_world, name + ".xdmf", "r") as infile:
+with XDMFFile(MPI.COMM_WORLD, name + ".xdmf", "r") as infile:
     mesh = infile.read_mesh("Grid")
     mesh.create_connectivity_all()
 
-with XDMFFile(MPI.comm_world, name + "_subdomains" + ".xdmf", "r") as infile:
+with XDMFFile(MPI.COMM_WORLD, name + "_subdomains" + ".xdmf", "r") as infile:
     subdomains = infile.read_meshtags(mesh, "Grid")
 
-with XDMFFile(MPI.comm_world, name + "_interfaces" + ".xdmf", "r") as infile:
+with XDMFFile(MPI.COMM_WORLD, name + "_interfaces" + ".xdmf", "r") as infile:
     interfaces = infile.read_meshtags(mesh, "Grid")
 
 inner = labels["ring_inner"]
@@ -189,7 +190,7 @@ def f(m, time_instant):
 F = [g + f for g, f in zip(odeint.g_(g, m, m0, m0t), odeint.f_(f, m, m0))]
 
 # output files
-ofile = XDMFFile(MPI.comm_world, name + "_results.xdmf", "w")
+ofile = XDMFFile(MPI.COMM_WORLD, name + "_results.xdmf", "w")
 ofile.write_mesh(mesh)
 
 # record some values

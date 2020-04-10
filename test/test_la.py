@@ -1,4 +1,5 @@
 import numpy as np
+from mpi4py import MPI
 
 import dolfinx
 import dolfiny.la
@@ -7,7 +8,7 @@ import scipy.sparse
 from petsc4py import PETSc
 
 skip_in_parallel = pytest.mark.skipif(
-    dolfinx.MPI.size(dolfinx.MPI.comm_world) > 1,
+    MPI.COMM_WORLD.size > 1,
     reason="This test should only be run in serial.")
 
 
