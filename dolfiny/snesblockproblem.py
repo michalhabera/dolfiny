@@ -1,6 +1,7 @@
 import typing
 
 import numpy as np
+import mpi4py
 
 import dolfinx
 import ufl
@@ -240,9 +241,9 @@ class SNESBlockProblem():
 
             # Need first apply square, only then sum over processes
             # i.e. norm is not a linear function
-            ei_r.append(np.sqrt(dolfinx.MPI.sum(self.comm, np.linalg.norm(subvec_r) ** 2)))
-            ei_dx.append(np.sqrt(dolfinx.MPI.sum(self.comm, np.linalg.norm(subvec_dx) ** 2)))
-            ei_x.append(np.sqrt(dolfinx.MPI.sum(self.comm, np.linalg.norm(subvec_x) ** 2)))
+            ei_r.append(np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_r) ** 2, op=mpi4py.MPI.SUM)))
+            ei_dx.append(np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_dx) ** 2, op=mpi4py.MPI.SUM)))
+            ei_x.append(np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_x) ** 2, op=mpi4py.MPI.SUM)))
 
             offset += size_local
 
