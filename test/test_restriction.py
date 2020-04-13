@@ -30,7 +30,7 @@ def test_coupled_poisson():
         ghost_mode = dolfinx.cpp.mesh.GhostMode.shared_facet
 
     mesh = dolfinx.generation.UnitSquareMesh(MPI.COMM_WORLD, 16, 16, ghost_mode=ghost_mode)
-    mesh.create_connectivity_all()
+    mesh.topology.create_connectivity_all()
 
     left_half = locate_entities_geometrical(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
     right_half = locate_entities_geometrical(mesh, mesh.topology.dim, lambda x: numpy.greater_equal(x[0], 0.5))
@@ -121,7 +121,7 @@ def test_sloped_stokes():
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD,
                              os.path.join(path, "data", "sloped_triangle_mesh.xdmf"), "r") as infile:
         mesh = infile.read_mesh(name="Grid")
-        mesh.create_connectivity_all()
+        mesh.topology.create_connectivity_all()
 
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, os.path.join(path, "data", "sloped_line_mvc.xdmf"), "r") as infile:
         boundaries = infile.read_meshtags(mesh, name="Grid")
