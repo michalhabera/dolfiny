@@ -5,7 +5,6 @@ import dolfiny.snesblockproblem
 import pytest
 import ufl
 from petsc4py import PETSc
-import logging
 
 
 def test_monolithic(V1, V2, squaremesh_5):
