@@ -7,8 +7,6 @@ import ufl
 from petsc4py import PETSc
 import logging
 
-logging.getLogger().setLevel(10)
-
 
 def test_monolithic(V1, V2, squaremesh_5):
     mesh = squaremesh_5
