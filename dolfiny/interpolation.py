@@ -2,7 +2,7 @@ import numpy as np
 
 import cffi
 import dolfinx
-import ffcx
+import ffcx.fiatinterface
 import numba
 import numba.cffi_support
 import ufl
