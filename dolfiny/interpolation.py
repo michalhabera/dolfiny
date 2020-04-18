@@ -4,7 +4,7 @@ import cffi
 import dolfinx
 import ffcx.fiatinterface
 import numba
-import numba.cffi_support
+import numba.core.typing.cffi_utils as cffi_support
 import ufl
 from numba.typed import List
 from petsc4py import PETSc
@@ -57,10 +57,10 @@ def interpolate(expr, target_func):
     kernel = module.tabulate_expression
 
     # Register complex types
-    numba.cffi_support.register_type(ffi.typeof('double _Complex'),
-                                     numba.types.complex128)
-    numba.cffi_support.register_type(ffi.typeof('float _Complex'),
-                                     numba.types.complex64)
+    cffi_support.register_type(ffi.typeof('double _Complex'),
+                               numba.types.complex128)
+    cffi_support.register_type(ffi.typeof('float _Complex'),
+                               numba.types.complex64)
 
     reference_geometry = np.asarray(fiat_element.ref_el.get_vertices())
 
