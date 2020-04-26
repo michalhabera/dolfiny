@@ -1,4 +1,4 @@
-FROM quay.io/fenicsproject/dolfinx:dev-env-real
+FROM dolfinx/dev-env-real
 
 RUN pip3 install git+https://github.com/FEniCS/fiat.git --upgrade \
     && \
