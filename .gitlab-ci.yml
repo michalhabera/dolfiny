@@ -1,0 +1,9 @@
+docker_image:
+   image: docker:latest
+   stage: build
+   tags: 
+     - docker
+   script:
+     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+     - docker build --pull -t $CI_REGISTRY_IMAGE:latest .
+     - docker push $CI_REGISTRY_IMAGE:latest
