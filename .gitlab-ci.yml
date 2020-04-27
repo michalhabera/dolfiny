@@ -1,41 +1,68 @@
+stages:
+   - lint
+   - build
+   - test
+   - release
+
+default:
+   tags:
+      - docker
+
+variables:
+   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:dev-$CI_COMMIT_REF_SLUG
+   CONTAINER_RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
+
+
+
+flake8:
+   stage: lint
+   image: pipelinecomponents/flake8:latest
+   script:
+      - flake8 --verbose .
+
 docker_image:
    image: docker:latest
    stage: build
-   tags: 
-     - docker
    script:
-     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-     - docker build --pull -t $CI_REGISTRY_IMAGE:latest .
-     - docker push $CI_REGISTRY_IMAGE:latest
+      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+      - docker build --pull -t $CONTAINER_TEST_IMAGE .
+      - docker push $CONTAINER_TEST_IMAGE
 
-flake:
-   image: $CI_REGISTRY_IMAGE:latest
-   stage: build
-   tags:
-      - docker
-   script:
-      - flake8 .
-
-unit_tests:
-   image: $CI_REGISTRY_IMAGE:latest
+unit_tests_serial:
+   image: $CONTAINER_TEST_IMAGE
    stage: test
-   tags:
-      - docker
    script:
       # Install dolfin-y package
       - pip3 install .
       # Run Python unit tests (serial)
       - python3 -m pytest -vsx test/.
+
+unit_tests_parallel:
+   image: $CONTAINER_TEST_IMAGE
+   stage: test
+   script:
+      # Install dolfin-y package
+      - pip3 install .
       # Run Python unit tests (parallel)
+      - mpirun -n 2 python3 -u -m pytest -vsx test/.
       - mpirun -n 3 python3 -u -m pytest -vsx test/.
+      - mpirun -n 4 python3 -u -m pytest -vsx test/.
 
 demos:
-   image: $CI_REGISTRY_IMAGE:latest
+   image: $CONTAINER_TEST_IMAGE
    stage: test
-   tags:
-      - docker
    script:
       # Install dolfin-y package
       - pip3 install .
       # Run bingham demo
       - cd demo/bingham && python3 bingham_block.py
+
+docker_latest:
+   image: docker:latest
+   stage: release
+   script:
+      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+      - docker tag $CONTAINER_TEST_IMAGE $CONTAINER_RELEASE_IMAGE
+      - docker push $CONTAINER_RELEASE_IMAGE
+   only:
+      - master
