@@ -44,14 +44,14 @@ jobs:
           command: |
             python3 -m pytest -vsx test/.
       - run:
-          name: Run Python unit tests (perallel)
+          name: Run Python unit tests (parallel)
           command: |
             mpirun -n 3 python3 -u -m pytest -vsx test/.
       - run:
           name: Run bingham demo
           command: |
             cd demo/bingham
-            python3 plain_bingham_block.py
+            python3 bingham_block.py
 
 workflows:
   build-and-test:
