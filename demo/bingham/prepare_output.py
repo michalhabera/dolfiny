@@ -16,7 +16,7 @@ def init(name='default', wdir='./output', fext=['xdmf', 'h5']):
     except OSError:
         raise Exception("Cannot change to directory '%s'." % wdir)
 
-    # Detetct files to erase
+    # Detect files to erase
     files = itertools.chain.from_iterable(glob.glob(name + '*.' + e) for e in fext)
 
     # Remove files

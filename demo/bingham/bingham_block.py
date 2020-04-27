@@ -17,7 +17,7 @@ import mesh_annulus_gmshapi as mg
 import prepare_output as po
 
 # Basic settings
-name = "plain_bingham"
+name = "bingham"
 
 # Init files and folders
 po.init(name)
@@ -120,7 +120,7 @@ p = Function(P, name="p")
 δv = ufl.TestFunction(V)
 δp = ufl.TestFunction(P)
 
-# Create (zero) intial conditions
+# Create (zero) initial conditions
 v0 = Function(V)
 v0t = Function(V)
 p0 = Function(P)
@@ -153,7 +153,8 @@ def J2(A):
 
 
 def rJ2(A):
-    return ufl.sqrt(J2(A) + np.finfo(np.float).eps)
+    """Square root of J2."""
+    return ufl.sqrt(J2(A) + np.finfo(np.float).eps)  # eps for AD
 
 
 def T(v, p):
