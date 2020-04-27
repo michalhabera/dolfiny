@@ -12,7 +12,7 @@ variables:
    CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:dev-$CI_COMMIT_REF_SLUG
    CONTAINER_RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
 
-
+# jobs
 
 flake8:
    stage: lint
@@ -44,9 +44,7 @@ unit_tests_parallel:
       # Install dolfin-y package
       - pip3 install .
       # Run Python unit tests (parallel)
-      - mpirun -n 2 python3 -u -m pytest -vsx test/.
       - mpirun -n 3 python3 -u -m pytest -vsx test/.
-      - mpirun -n 4 python3 -u -m pytest -vsx test/.
 
 demos:
    image: $CONTAINER_TEST_IMAGE
