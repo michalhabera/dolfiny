@@ -9,7 +9,8 @@ default:
       - docker
 
 variables:
-   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:dev-$CI_COMMIT_REF_SLUG
+   CONTAINER_TAG: dev-$CI_COMMIT_REF_SLUG
+   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:$CONTAINER_TAG
    CONTAINER_RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
 
 # jobs
@@ -28,7 +29,7 @@ docker_image:
       - docker build --pull -t $CONTAINER_TEST_IMAGE .
       - docker push $CONTAINER_TEST_IMAGE
 
-unit_tests_serial:
+pytest:
    image: $CONTAINER_TEST_IMAGE
    stage: test
    script:
@@ -36,16 +37,10 @@ unit_tests_serial:
       - pip3 install .
       # Run Python unit tests (serial)
       - python3 -m pytest -vsx test/.
-
-unit_tests_parallel:
-   image: $CONTAINER_TEST_IMAGE
-   stage: test
-   script:
-      # Install dolfin-y package
-      - pip3 install .
       # Run Python unit tests (parallel)
-      - python3 -m pytest -vsx test/.
+      - mpirun -n 2 python3 -u -m pytest -vsx test/.
       - mpirun -n 3 python3 -u -m pytest -vsx test/.
+      - mpirun -n 4 python3 -u -m pytest -vsx test/.
 
 demos:
    image: $CONTAINER_TEST_IMAGE
@@ -55,6 +50,11 @@ demos:
       - pip3 install .
       # Run bingham demo
       - cd demo/bingham && python3 bingham_block.py
+   artifacts:
+      name: "$CI_JOB_NAME-$CONTAINER_TAG"
+      paths:
+         - demo/*/output/*
+      expire_in: 1 week
 
 docker_latest:
    image: docker:latest
