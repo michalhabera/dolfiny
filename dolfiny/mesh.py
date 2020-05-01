@@ -304,13 +304,16 @@ def xdmfs_to_xdmf(xdmf_domainmesh, xdmf_subdomains, xdmf_interfaces, xdmf_file=N
     from dolfinx.io import XDMFFile
 
     # Read mesh, subdomains and interfaces from separate input files
+    logger.info(f"Reading XDMF domain mesh from {xdmf_domainmesh:s}")
     with XDMFFile(comm, xdmf_domainmesh, "r") as ifile:
         mesh = ifile.read_mesh("Grid")
         mesh.topology.create_connectivity_all()
 
+    logger.info(f"Reading XDMF subdomain meshtags from {xdmf_subdomains:s}")
     with XDMFFile(comm, xdmf_subdomains, "r") as ifile:
         subdomains = ifile.read_meshtags(mesh, "Grid")
 
+    logger.info(f"Reading XDMF interfaces meshtags from {xdmf_interfaces:s}")
     with XDMFFile(comm, xdmf_interfaces, "r") as ifile:
         interfaces = ifile.read_meshtags(mesh, "Grid")
 
@@ -319,6 +322,7 @@ def xdmfs_to_xdmf(xdmf_domainmesh, xdmf_subdomains, xdmf_interfaces, xdmf_file=N
     interfaces.name = "Interfaces"
 
     # Write mesh, subdomains and interfaces to single output file
+    logger.info(f"Writing XDMF all-in-one file to {xdmf_file:s}")
     with XDMFFile(comm, xdmf_file, "w") as ofile:
         ofile.write_mesh(mesh)
         ofile.write_meshtags(subdomains)
