@@ -6,12 +6,13 @@ from mpi4py import MPI
 import dolfinx
 import ufl
 from dolfiny.function import functions_to_vec, vec_to_functions
+from dolfiny.utils import pprint
 from petsc4py import PETSc
 
 
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
-                 opts=None, nest=False, restriction=None):
+                 opts=None, nest=False, restriction=None, comm=MPI.COMM_WORLD):
         """SNES problem and solver wrapper
 
         Parameters
@@ -33,7 +34,7 @@ class SNESBlockProblem():
         """
         self.F_form = F_form
         self.u = u
-        self.comm = MPI.COMM_WORLD
+        self.comm = comm
 
         if J_form is None:
             self.J_form = [[None for i in range(len(self.u))] for j in range(len(self.u))]
@@ -200,28 +201,25 @@ class SNESBlockProblem():
             return 4
 
     def _monitor_block(self, snes, it, norm):
-        if self.comm.rank == 0:
-            print("\n### SNES iteration {}".format(it))
+        pprint("\n### SNES iteration {}".format(it))
         self.compute_norms_block(snes)
         it = snes.getIterationNumber()
         self.print_norms(it)
 
     def _monitor_nest(self, snes, it, norm):
-        if self.comm.rank == 0:
-            print("\n### SNES iteration {}".format(it))
+        pprint("\n### SNES iteration {}".format(it))
         self.compute_norms_nest(snes)
         it = snes.getIterationNumber()
         self.print_norms(it)
 
     def print_norms(self, it):
-        if self.comm.rank == 0:
-            for i, ui in enumerate(self.u):
-                print("# sub {:2d} |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(
-                    i, self.norm_x[it][i], self.norm_dx[it][i], self.norm_r[it][i], ui.name))
-            print("# all    |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(
-                np.linalg.norm(np.asarray(self.norm_x[it])),
-                np.linalg.norm(np.asarray(self.norm_dx[it])),
-                np.linalg.norm(np.asarray(self.norm_r[it]))))
+        for i, ui in enumerate(self.u):
+            pprint("# sub {:2d} |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(
+                i, self.norm_x[it][i], self.norm_dx[it][i], self.norm_r[it][i], ui.name))
+        pprint("# all    |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(
+            np.linalg.norm(np.asarray(self.norm_x[it])),
+            np.linalg.norm(np.asarray(self.norm_dx[it])),
+            np.linalg.norm(np.asarray(self.norm_r[it]))))
 
     def compute_norms_block(self, snes):
         r = snes.getFunction()[0].getArray(readonly=True)
