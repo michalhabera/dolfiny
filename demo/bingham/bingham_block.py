@@ -1,26 +1,22 @@
 #!/usr/bin/env python3
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 from petsc4py import PETSc
 from mpi4py import MPI
 
-from dolfinx import Constant, fem, FunctionSpace, Function, log
+from dolfinx import Constant, fem, FunctionSpace, Function
 from dolfinx.io import XDMFFile
 import ufl
 
+from dolfiny.utils import pprint
 from dolfiny.odeint import ODEInt
 import dolfiny.snesblockproblem
+
 import mesh_annulus_gmshapi as mg
-import prepare_output as po
 
 # Basic settings
-name = "bingham"
-
-# Init files and folders
-po.init(name)
+name = "bingham_block"
+comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 iR = 1.0
@@ -30,20 +26,17 @@ nT = 7 * 4
 x0 = 0.0
 y0 = 0.0
 
-# create the regular mesh of an annulus with given dimensions
+# Create the regular mesh of an annulus with given dimensions
 labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
 
-# read mesh, subdomains and interfaces
-with XDMFFile(MPI.COMM_WORLD, name + ".xdmf", "r") as infile:
-    mesh = infile.read_mesh("Grid")
+# Read mesh, subdomains and interfaces
+with XDMFFile(comm, name + ".xdmf", "r") as ifile:
+    mesh = ifile.read_mesh("Grid")
     mesh.topology.create_connectivity_all()
+    subdomains = ifile.read_meshtags(mesh, "Subdomains")
+    interfaces = ifile.read_meshtags(mesh, "Interfaces")
 
-with XDMFFile(MPI.COMM_WORLD, name + "_subdomains" + ".xdmf", "r") as infile:
-    subdomains = infile.read_meshtags(mesh, "Grid")
-
-with XDMFFile(MPI.COMM_WORLD, name + "_interfaces" + ".xdmf", "r") as infile:
-    interfaces = infile.read_meshtags(mesh, "Grid")
-
+# Get subdomain/interface tags from labels
 inner = labels["ring_inner"]
 outer = labels["ring_outer"]
 
@@ -55,32 +48,18 @@ tau_zero = Constant(mesh, 0.2)  # [kg/m/s^2]
 # Max inner ring velocity
 v_inner_max = 0.1  # [m/s]
 # Stabilisation material (for tau_zero)
-stab_material = Constant(mesh, 1.e-3)
+stab_material = Constant(mesh, 1.e-3)  # [-]
 
 # Global time
 time = Constant(mesh, 0.0)  # [s]
 # Time step size
 dt = 0.1  # [s]
 # Number of time steps
-TS = 40
+nT = 40
 
 # Define measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
-
-# Check geometry data
-area_msh = fem.assemble_scalar(1 * dx)
-area_ana = np.pi * (oR ** 2 - iR ** 2)
-print("geometry subdomain area      = %4.3e (rel error = %4.3e)" %
-      (area_msh, np.sqrt((area_msh - area_ana) ** 2 / area_ana ** 2)))
-ring_msh = fem.assemble_scalar(1 * ds(outer))
-ring_ana = 2.0 * np.pi * oR
-print("geometry boundary outer ring = %4.3e (rel error = %4.3e)" %
-      (ring_msh, np.sqrt((ring_msh - ring_ana) ** 2 / ring_ana ** 2)))
-ring_msh = fem.assemble_scalar(1 * ds(inner))
-ring_ana = 2.0 * np.pi * iR
-print("geometry boundary inner ring = %4.3e (rel error = %4.3e)" %
-      (ring_msh, np.sqrt((ring_msh - ring_ana) ** 2 / ring_ana ** 2)))
 
 
 # Inner ring velocity
@@ -135,9 +114,6 @@ v_vector_o = Function(V)
 v_vector_i = Function(V)
 p_scalar_i = Function(P)
 
-n_vector = Function(V)
-t_vector = Function(V)
-
 # Time integrator
 odeint = ODEInt(dt=dt)
 
@@ -190,17 +166,10 @@ def f(m, time_instant):
 # Overall form
 F = [g + f for g, f in zip(odeint.g_(g, m, m0, m0t), odeint.f_(f, m, m0))]
 
-# output files
-ofile = XDMFFile(MPI.COMM_WORLD, name + "_results.xdmf", "w")
-ofile.write_mesh(mesh)
+# Define output file (appending to existing file: "a") -- open in Paraview with Xdmf3ReaderT
+ofile = XDMFFile(comm, name + ".xdmf", "a")
 
-# record some values
-array_time_instant = np.zeros(TS + 1)
-array_shear_stress = np.zeros(TS + 1)
-array_shear_gammad = np.zeros(TS + 1)
-array_tangent_velocity = np.zeros(TS + 1)
-array_tangent_traction = np.zeros(TS + 1)
-
+# Options for PETSc backend
 opts = PETSc.Options()
 
 opts["snes_type"] = "newtonls"
@@ -213,8 +182,10 @@ opts["pc_factor_mat_solver_type"] = "mumps"
 opts["mat_mumps_icntl_14"] = 500
 opts["mat_mumps_icntl_24"] = 1
 
+# Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
 
+# Identify dofs of functions spaces associated with interfaces/boundaries
 outerdofs_V = fem.locate_dofs_topological(
     V, mesh.topology.dim - 1, interfaces.indices[np.where(interfaces.values == outer)[0]])
 innerdofs_V = fem.locate_dofs_topological(
@@ -224,18 +195,16 @@ innerdofs_P = fem.locate_dofs_topological(
 
 
 # Process time steps
-for i in range(TS + 1):
+for time_step in range(nT + 1):
 
     # Set current time
-    time.value = i * odeint.dt
+    time.value = time_step * odeint.dt
 
-    # Update functions
+    # Update functions (taking up time.value)
     v_vector_o.interpolate(v_vector_o_)
     v_vector_i.interpolate(v_vector_i_)
-    n_vector.interpolate(n_vector_)
-    t_vector.interpolate(t_vector_)
 
-    print("Processing time instant = %4.3f in step %d " % (time.value, i), end="\n")
+    pprint(f"\n+++ Processing time instant = {time.value:4.3f} in step {time_step:d}")
 
     # Set/update boundary conditions
     problem.bcs = [
@@ -247,72 +216,17 @@ for i in range(TS + 1):
     # Solve nonlinear problem
     m = problem.solve()
 
+    # Assert convergence of nonlinear solver
+    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+
     # Extract solution
     v_, p_ = m
 
-    assert problem.snes.getKSP().getConvergedReason() > 0
-
     # Write output
-    log.set_log_level(log.LogLevel.OFF)
-    ofile.write_function(p_, float(time.value))
-    ofile.write_function(v_, float(time.value))
-    log.set_log_level(log.LogLevel.WARNING)
-
-    # Extract and analyse data
-    array_time_instant[i] = time.value
-    array_shear_stress[i] = fem.assemble_scalar(
-        rJ2(ufl.dev(T(v_, p_))) * ds(inner)) / fem.assemble_scalar(1.0 * ds(inner))
-    array_shear_gammad[i] = fem.assemble_scalar(
-        rJ2(ufl.dev(D(v_))) * ds(inner)) / fem.assemble_scalar(1.0 * ds(inner))
-    array_tangent_velocity[i] = fem.assemble_scalar(
-        ufl.sqrt(ufl.dot(v_, v_)) * ds(inner)) / fem.assemble_scalar(1.0 * ds(inner))
-    t_ = ufl.dot(ufl.dev(T(v_, p_)), n_vector)
-    array_tangent_traction[i] = fem.assemble_scalar(
-        ufl.sqrt(ufl.dot(t_, t_)) * ds(inner)) / fem.assemble_scalar(1.0 * ds(inner))
+    ofile.write_function(p_, time.value)
+    ofile.write_function(v_, time.value)
 
     # Update solution states for time integration
     m0, m0t = odeint.update(m, m0, m0t)
 
 ofile.close()
-
-# Identify apparent yield stress tau_a and apparent viscosity mu_a by linear regression
-threshold = 0.05  # minimum dot gamma
-selection = np.greater(array_shear_gammad, threshold)
-x = array_shear_gammad[selection]
-y = array_shear_stress[selection]
-A = np.vstack([x, np.ones(len(x))]).T
-m, c = np.linalg.lstsq(A, y, rcond=-1)[0]  # determine linear fct param: y = m*x + c
-mu_a = 0.5 * m
-tau_a = c  # slope m = 2*mu_a
-print("apparent viscosity    = %4.3e" % mu_a)
-print("apparent yield stress = %4.3e" % tau_a)
-
-# Plot shear stress - shear strain rate curve
-fig, ax1 = plt.subplots()
-color = "tab:green"
-ax1.plot(array_shear_gammad, array_shear_stress, "o-", color=color)
-ax1.set_xlabel(r"shear strain rate ${\dot\gamma} = \sqrt{J_2(D_{dev})}$ $[1/s]$", fontsize=12)
-ax1.set_ylabel(r"shear wall stress ${\tau} = \sqrt{J_2(T_{dev})}$ $[N/m^2]$", fontsize=12, color=color)
-ax1.grid(linewidth=0.5)
-ax1.set_title(r"Co-axial cylinder rheometer: Bingham fluid", fontsize=12)
-fig.tight_layout()
-fig.savefig(name + "_shear.pdf")
-
-# Plot values over time
-fig, ax1 = plt.subplots()
-color = "tab:red"
-ax1.plot(array_time_instant, array_tangent_velocity, color=color)
-ax1.set_xlabel(r"time $t$ $[s]$", fontsize=12)
-ax1.set_xlim([0, dt * TS])
-ax1.set_ylabel(r"boundary tangent velocity $|v|$ $[m/s]$", fontsize=12, color=color)
-ax1.set_ylim([0, 0.1])
-ax2 = ax1.twinx()
-color = "tab:blue"
-ax2.plot(array_time_instant, array_tangent_traction, color=color)
-ax2.yaxis.tick_right()
-ax2.yaxis.set_label_position("right")
-ax2.set_ylabel(r"boundary tangent stress $|\lambda|$ $[N/m^2]$", fontsize=12, color=color)
-ax2.set_ylim([-0.1, 1.0])
-ax2.set_title(r"Co-axial cylinder rheometer: Bingham fluid", fontsize=12)
-fig.tight_layout()
-fig.savefig(name + "_time.pdf")
