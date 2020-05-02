@@ -12,7 +12,7 @@ from petsc4py import PETSc
 
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
-                 opts=None, nest=False, restriction=None, comm=MPI.COMM_WORLD):
+                 opts=None, nest=False, restriction=None, comm=None):
         """SNES problem and solver wrapper
 
         Parameters
@@ -34,7 +34,15 @@ class SNESBlockProblem():
         """
         self.F_form = F_form
         self.u = u
-        self.comm = comm
+
+        assert len(self.F_form) > 0, "List of residual forms is empty!"
+        assert len(self.u) > 0, "List of current solution functions is empty!"
+        assert isinstance(self.u[0], dolfinx.Function), "Provided solution function not of type dolfinx.Function!"
+
+        if comm is None:
+            self.comm = self.u[0].function_space.mesh.mpi_comm()
+        else:
+            self.comm = comm
 
         if J_form is None:
             self.J_form = [[None for i in range(len(self.u))] for j in range(len(self.u))]
