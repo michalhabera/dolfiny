@@ -169,11 +169,11 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
         Topological dimension of the mesh
     gdim: optional
         Geometrical dimension of the mesh
-    prune:
+    prune: optional
         Prune z-components from points geometry, i.e. embed the mesh into XY plane
-    xdmf_file:
+    xdmf_file: optional
         XDMF file for output, subdomains/interfaces extension is derived from base name
-    comm:
+    comm: optional
         MPI communicator
 
     Returns
@@ -222,8 +222,8 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
         subdomains_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim]]))
         interfaces_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim - 1]]))
 
-        assert(len(subdomains_celltypes) <= 1)
-        assert(len(interfaces_celltypes) <= 1)
+        assert len(subdomains_celltypes) <= 1, "Meshes of mixed elements are not supported!"
+        assert len(interfaces_celltypes) <= 1, "Meshes of mixed elements are not supported!"
 
         subdomains_celltype = subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
         interfaces_celltype = interfaces_celltypes[0] if len(interfaces_celltypes) > 0 else None
@@ -280,12 +280,18 @@ def xdmfs_to_xdmf(xdmf_domainmesh, xdmf_subdomains, xdmf_interfaces, xdmf_file=N
         Name of the xdmf file containing the subdomains meshtag data
     xdmf_interfaces
         Name of the xdmf file containing the interfaces meshtag data
-    xdmf_file
+    xdmf_file: optional
         Name of the single xdmf file containing the merged data
+    comm: optional
+        MPI communicator
 
     Returns
     -------
     The string of the generated xdmf file.
+
+    Note
+    ----
+    If xdmf_file is not provided, the file name is determined as `basename(xdmf_domainmesh)` + "_merged.xdmf"
 
     """
 
