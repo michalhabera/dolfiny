@@ -30,6 +30,8 @@ class SNESBlockProblem():
         restriction: optional
             ``Restriction`` class used to provide information about degree-of-freedom
             indices for which this solver should solve.
+        comm: optional
+            MPI communicator
 
         """
         self.F_form = F_form
