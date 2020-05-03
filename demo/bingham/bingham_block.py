@@ -9,7 +9,8 @@ from dolfinx.io import XDMFFile
 import ufl
 
 from dolfiny.utils import pprint
-from dolfiny.odeint import ODEInt
+import dolfiny.odeint
+import dolfiny.function
 import dolfiny.snesblockproblem
 
 import mesh_annulus_gmshapi as mg
@@ -44,11 +45,10 @@ outer = labels["ring_outer"]
 rho = Constant(mesh, 2.0)  # [kg/m^3]
 mu = Constant(mesh, 1.0)  # [kg/m/s]
 tau_zero = Constant(mesh, 0.2)  # [kg/m/s^2]
+tau_zero_regularisation = Constant(mesh, 1.e-3)  # [-]
 
 # Max inner ring velocity
 v_inner_max = 0.1  # [m/s]
-# Stabilisation material (for tau_zero)
-stab_material = Constant(mesh, 1.e-3)  # [-]
 
 # Global time
 time = Constant(mesh, 0.0)  # [s]
@@ -57,9 +57,9 @@ dt = 0.1  # [s]
 # Number of time steps
 nT = 40
 
-# Define measures
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
+# Define integration measures
+dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
+ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 2})
 
 
 # Inner ring velocity
@@ -105,9 +105,11 @@ v0t = Function(V)
 p0 = Function(P)
 p0t = Function(P)
 
+# Define state as (ordered) list of functions
 m = [v, p]
 m0 = [v0, p0]
 m0t = [v0t, p0t]
+δm = [δv, δp]
 
 # Create other functions
 v_vector_o = Function(V)
@@ -115,7 +117,7 @@ v_vector_i = Function(V)
 p_scalar_i = Function(P)
 
 # Time integrator
-odeint = ODEInt(dt=dt)
+odeint = dolfiny.odeint.ODEInt(dt=dt, x=m, x0=m0, x0t=m0t)
 
 
 def D(v):
@@ -140,34 +142,40 @@ def T(v, p):
     # Second invariant
     rJ2_ = rJ2(D_)
     # Regularisation
-    mu_effective = mu + tau_zero * 1.0 / (2. * (rJ2_ + stab_material))
+    mu_effective = mu + tau_zero * 1.0 / (2. * (rJ2_ + tau_zero_regularisation))
     # Cauchy stress
     T = -p * ufl.Identity(2) + 2.0 * mu_effective * D_
     return T
 
 
-# Weak form: time-rate-dependent components
-def g(dmdt, time_instant):
-    dvdt = dmdt[0]
-    g = [ufl.inner(δv, rho * dvdt) * dx, 0 * dx]
+# Weak form: time-rate-dependent components (as one-form)
+@odeint.form_hook
+def g(dmdt):
+    dvdt, _ = dmdt
+    g = ufl.inner(δv, rho * dvdt) * dx
     return g
 
 
-# Weak form: time-rate-independent components
-def f(m, time_instant):
-    v = m[0]
-    p = m[1]
-    f = [ufl.inner(δv, rho * ufl.grad(v) * v) * dx
-         + ufl.inner(ufl.grad(δv), T(v, p)) * dx,
-         ufl.inner(δp, ufl.div(v)) * dx]
+# Weak form: time-rate-independent components (as one-form)
+@odeint.form_hook
+def f(m):
+    v, p = m
+    f = ufl.inner(δv, rho * ufl.grad(v) * v) * dx \
+        + ufl.inner(ufl.grad(δv), T(v, p)) * dx \
+        + ufl.inner(δp, ufl.div(v)) * dx
     return f
 
 
-# Overall form
-F = [g + f for g, f in zip(odeint.g_(g, m, m0, m0t), odeint.f_(f, m, m0))]
+# Overall form (as one-form)
+F = odeint.discretise_in_time(g, f)
+# Overall form (as list of forms)
+F = dolfiny.function.extract_blocks(F, δm)
 
-# Define output file (appending to existing file: "a") -- open in Paraview with Xdmf3ReaderT
-ofile = XDMFFile(comm, name + ".xdmf", "a")
+# Write mesh, subdomains, interfaces + later computation results -- open in Paraview with Xdmf3ReaderT
+ofile = XDMFFile(comm, name + ".xdmf", "w")
+ofile.write_mesh(mesh)
+ofile.write_meshtags(subdomains)
+ofile.write_meshtags(interfaces)
 
 # Options for PETSc backend
 opts = PETSc.Options()
@@ -227,6 +235,6 @@ for time_step in range(nT + 1):
     ofile.write_function(v_, time.value)
 
     # Update solution states for time integration
-    m0, m0t = odeint.update(m, m0, m0t)
+    m0, m0t = odeint.update()
 
 ofile.close()
