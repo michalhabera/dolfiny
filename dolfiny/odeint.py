@@ -179,7 +179,7 @@ class ODEInt():
         discretised_g = self.g_(g, x, x0, x0t)
         discretised_f = self.f_(f, x, x0)
 
-        # Combine into overall form (list of forms or one-form) 
+        # Combine into overall form (list of forms or one-form)
         if isinstance(g, list) and isinstance(f, list):
             return [g + f for g, f in zip(discretised_g, discretised_f)]
         elif not isinstance(g, list) and not isinstance(f, list):
@@ -190,7 +190,7 @@ class ODEInt():
     @staticmethod
     def form_hook(fn):
         """Decorator for hook functions to be used with ODEInt.
-           
+
            Clears the "time_instant" function parameter in `ODEInt.g_` and `ODEInt.f_`
            if not needed in the implementation of the hook function.
         """
@@ -205,5 +205,5 @@ class ODEInt():
                 kwargs.pop("time_instant")
             # Call fn with cured kwargs
             return fn(*args, **kwargs)
-        
+
         return wrapper
