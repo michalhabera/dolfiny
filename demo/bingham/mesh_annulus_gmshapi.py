@@ -2,8 +2,6 @@
 
 from mpi4py import MPI
 
-from dolfiny.utils import pprint
-
 
 def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y0=0.0,
                          do_quads=False, progression=1.0, comm=MPI.COMM_WORLD):
@@ -63,21 +61,22 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         gmsh.model.addPhysicalGroup(tdim - 1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]], ring_outer)
         gmsh.model.setPhysicalName(tdim - 1, ring_outer, 'ring_outer')
 
-        # Check and store labels
-        labels = {}
-        for tdim in range(tdim + 1):
-            pprint(f"gmsh physical groups (topological dimension = {tdim:1d}):")
-            for info in gmsh.model.getPhysicalGroups(tdim):
-                dim = info[0]
-                tag = info[1]
-                gid = gmsh.model.getPhysicalName(tdim, info[1])
-                pprint(f"dim = {dim:1d} | tag = {tag:3d} | physical name = {gid:s}")
-                labels[gid] = tag
+        # # Check and store labels
+        # from dolfiny.utils import pprint
+        # labels = {}
+        # for tdim in range(tdim + 1):
+        #     pprint(f"gmsh physical groups (topological dimension = {tdim:1d}):")
+        #     for info in gmsh.model.getPhysicalGroups(tdim):
+        #         dim = info[0]
+        #         tag = info[1]
+        #         gid = gmsh.model.getPhysicalName(tdim, info[1])
+        #         pprint(f"dim = {dim:1d} | tag = {tag:3d} | physical name = {gid:s}")
+        #         labels[gid] = tag
 
         # Sync
         gmsh.model.geo.synchronize()
 
-        # Set refinement along cross-sectional direction
+        # Set refinement in radial direction
         gmsh.model.mesh.setTransfiniteCurve(l0, numNodes=nR, meshType="Progression", coef=progression)
 
         # Ensure union jack meshing for triangular elements
@@ -96,30 +95,19 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         # Finalise gmsh
         gmsh.finalize()
 
-    else:
-
-        labels = None
-
-    labels = comm.bcast(labels, root=0)
+    comm.barrier()
 
     # === convert msh to xdmf/h5
 
-    from dolfiny.mesh import msh_to_xdmf, xdmfs_to_xdmf
+    from dolfiny.mesh import msh_to_xdmf
 
-    xdmf_domainmesh, xdmf_subdomains, xdmf_interfaces = \
-        msh_to_xdmf(msh_file=f"{name:s}.msh", tdim=tdim, gdim=gdim, xdmf_file=f"{name:s}_meshio.xdmf")
-
-    xdmf = \
-        xdmfs_to_xdmf(xdmf_domainmesh, xdmf_subdomains, xdmf_interfaces, xdmf_file=f"{name:s}.xdmf")
+    labels = msh_to_xdmf(msh_file=f"{name:s}.msh", tdim=tdim, gdim=gdim, xdmf_file=f"{name:s}.xdmf")
 
     # === remove intermediate files
 
     import os
 
     files = [f"{name:s}.msh"]
-    files += [f"{os.path.splitext(xdmf_domainmesh)[0]:s}.{ext:s}" for ext in ["xdmf", "h5"]]
-    files += [f"{os.path.splitext(xdmf_subdomains)[0]:s}.{ext:s}" for ext in ["xdmf", "h5"]]
-    files += [f"{os.path.splitext(xdmf_interfaces)[0]:s}.{ext:s}" for ext in ["xdmf", "h5"]]
 
     if comm.rank == 0:
         for f in files:
@@ -129,8 +117,6 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
                 raise Exception("Cannot remove file '%s'." % f)
 
     comm.barrier()
-
-    assert os.path.exists(xdmf), "Mesh generation as xdfm/h5 file failed!"
 
     # === return labels
 
