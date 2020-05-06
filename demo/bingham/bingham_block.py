@@ -28,18 +28,22 @@ x0 = 0.0
 y0 = 0.0
 
 # Create the regular mesh of an annulus with given dimensions
+# gmsh, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
+# xdmf_file_name, labels = gmsh_to_xdmf(gmsh, tdim, gdim)
+# mesh, meshtags, labels = gmsh_to_dolfin(gmsh, tdim, gdim)
+
 labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
 
 # Read mesh, subdomains and interfaces
 with XDMFFile(comm, name + ".xdmf", "r") as ifile:
     mesh = ifile.read_mesh("Grid")
     mesh.topology.create_connectivity_all()
-    subdomains = ifile.read_meshtags(mesh, "Subdomains")
-    interfaces = ifile.read_meshtags(mesh, "Interfaces")
+    subdomains = ifile.read_meshtags(mesh, "codimension0")
+    interfaces = ifile.read_meshtags(mesh, "codimension1")
 
 # Get subdomain/interface tags from labels
-inner = labels["ring_inner"]
-outer = labels["ring_outer"]
+inner = labels["ring_inner"][0]
+outer = labels["ring_outer"][0]
 
 # Fluid material parameters
 rho = Constant(mesh, 2.0)  # [kg/m^3]
