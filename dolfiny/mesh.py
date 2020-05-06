@@ -158,8 +158,8 @@ from mpi4py import MPI
 #     return mesh, mvcs
 
 
-def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.COMM_WORLD):
-    """Converts msh file to a set of [mesh, subdomains, interfaces] xdmf/h5 files for use in dolfinx.
+def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=True, comm=MPI.COMM_WORLD):
+    """Converts msh file to a set of codimensionX xdmf/h5 files for use in dolfinx.
 
     Parameters
     ----------
@@ -178,7 +178,7 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
 
     Returns
     -------
-    The strings of the generated xdmf files.
+    The generated xdmf files as strings.
 
     """
 
@@ -191,9 +191,9 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
         path = os.path.dirname(os.path.abspath(xdmf_file))
         base = os.path.splitext(os.path.basename(xdmf_file))[0]
 
-    xdmf_domainmesh = f"{path:s}/{base:s}.xdmf"
-    xdmf_subdomains = f"{path:s}/{base:s}_subdomains.xdmf"
-    xdmf_interfaces = f"{path:s}/{base:s}_interfaces.xdmf"
+    xdmf_codimension = {}
+
+    label_meshtag_map = None
 
     # Conversion with meshio is serial
     if comm.rank == 0:
@@ -208,130 +208,118 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
 
         points_pruned = mesh.points[:, :gdim]  # set active coordinate components
 
-        cell_types = {  # meshio cell types per topological dimension
+        table_cell_types = {  # meshio cell types per topological dimension
             3: ["tetra", "hexahedron", "tetra10", "hexahedron20"],
             2: ["triangle", "quad", "triangle6", "quad8"],
             1: ["line", "line3"],
             0: ["vertex"]}
 
-        # The target data type for dolfin MeshValueCollection is size_t
-        # Furthermore, gmsh may invert the entity orientation and flip the sign of the marker,
+        # Gmsh may invert the entity orientation and flip the sign of the marker,
         # which is reverted with abs(). This way chosen labels and markers are kept consistent.
 
-        # Extract relevant cell blocks depending on supported cell types
-        subdomains_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim]]))
-        interfaces_celltypes = list(set([cb.type for cb in mesh.cells if cb.type in cell_types[tdim - 1]]))
+        # Extract relevant entity blocks depending on supported cell types
+        for codim in range(0, tdim + 1):
 
-        assert len(subdomains_celltypes) <= 1, "Meshes of mixed elements are not supported!"
-        assert len(interfaces_celltypes) <= 1, "Meshes of mixed elements are not supported!"
+            present_entities = list(set([cb.type for cb in mesh.cells if cb.type in table_cell_types[tdim - codim]]))
 
-        subdomains_celltype = subdomains_celltypes[0] if len(subdomains_celltypes) > 0 else None
-        interfaces_celltype = interfaces_celltypes[0] if len(interfaces_celltypes) > 0 else None
+            assert len(present_entities) <= 1, "Meshes of mixed elements are not supported!"
 
-        if subdomains_celltype is not None:
-            subdomains_cells_dolfin_supported = [(subdomains_celltype, mesh.get_cells_type(subdomains_celltype))]
-        else:
-            subdomains_cells_dolfin_supported = []
+            entity = present_entities[0] if len(present_entities) > 0 else None
 
-        logger.info("Writing mesh for dolfin Mesh")
-        mesh_dolfin_supported = meshio.Mesh(points=points_pruned,
-                                            cells=subdomains_cells_dolfin_supported)
-        meshio.write(xdmf_domainmesh, mesh_dolfin_supported)
+            if entity is not None:
 
-        if interfaces_celltype is not None:
-            interfaces_cells_dolfin_supported = [(interfaces_celltype, mesh.get_cells_type(interfaces_celltype))]
-        else:
-            interfaces_cells_dolfin_supported = []
+                entity_dolfin_supported = [(entity, mesh.get_cells_type(entity))]
 
-        # Extract relevant cell data for supported cell blocks
-        if subdomains_celltype is not None:
-            subdomains_celldata_dolfin_supported = \
-                {"subdomains": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", subdomains_celltype)))]}
+                celldata_entity_dolfin_supported = \
+                    {"codimension{codim:1d}": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", entity)))]}
 
-            logger.info("Writing subdomain data for dolfin MeshTags")
-            subdomains_dolfin_supported = meshio.Mesh(points=points_pruned,
-                                                      cells=subdomains_cells_dolfin_supported,
-                                                      cell_data=subdomains_celldata_dolfin_supported)
-            meshio.write(xdmf_subdomains, subdomains_dolfin_supported)
+                logger.info("Writing codimension {codim:1d} data for dolfin MeshTags")
 
-        if interfaces_celltype is not None:
-            interfaces_celldata_dolfin_supported = \
-                {"interfaces": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", interfaces_celltype)))]}
+                xdmf_codimension[codim] = f"{path:s}/{base:s}_codimension{codim:1d}.xdmf"
 
-            logger.info("Writing interface data for dolfin MeshTags")
-            interfaces_dolfin_supported = meshio.Mesh(points=points_pruned,
-                                                      cells=interfaces_cells_dolfin_supported,
-                                                      cell_data=interfaces_celldata_dolfin_supported)
-            meshio.write(xdmf_interfaces, interfaces_dolfin_supported)
+                celldata_mesh_dolfin_supported = meshio.Mesh(points=points_pruned,
+                                                             cells=entity_dolfin_supported,
+                                                             cell_data=celldata_entity_dolfin_supported)
+
+                meshio.write(xdmf_codimension[codim], celldata_mesh_dolfin_supported)
+
+        # Extract relevant field data for supported cell blocks
+        label_meshtag_map = mesh.field_data
+
+    # Broadcast mapping: label -> meshtag
+    label_meshtag_map = comm.bcast(label_meshtag_map, root=0)
+
+    # Broadcast xdmf_codimension files
+    xdmf_codimension = comm.bcast(xdmf_codimension, root=0)
+
+    # Optional: Merge into single xdfm/h5
+    if merge_xdmf:
+
+        # Produce single xdmf/h5 file
+        xdmfs_to_xdmf(xdmf_codimension, xdmf_file)
+
+        # Remove subdomains and interfaces files
+        objs = xdmf_codimension.values()
+        exts = ["xdmf", "h5"]
+        if comm.rank == 0:
+            for f in [f"{os.path.splitext(obj)[0]:s}.{ext:s}" for obj in objs for ext in exts]:
+                try:
+                    os.remove(f)
+                except OSError:
+                    raise Exception("Cannot remove file '%s'." % f)
+
+        assert os.path.exists(xdmf_file), "Mesh generation as xdfm/h5 file failed!"
 
     comm.barrier()
 
-    return xdmf_domainmesh, xdmf_subdomains, xdmf_interfaces
+    return label_meshtag_map
 
 
-def xdmfs_to_xdmf(xdmf_domainmesh, xdmf_subdomains, xdmf_interfaces, xdmf_file=None, comm=MPI.COMM_WORLD):
-    """Merges a set of separate [mesh, subdomains, interfaces] xdmf/h5 files into one single xdmf/h5 file.
+def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
+    """Merges a set of codimensionX xdmf/h5 files into a single xdmf/h5 file.
 
     Parameters
     ----------
-    xdmf_domainmesh
-        Name of the xdmf file containing the domain mesh data
-    xdmf_subdomains
-        Name of the xdmf file containing the subdomains meshtag data
-    xdmf_interfaces
-        Name of the xdmf file containing the interfaces meshtag data
-    xdmf_file: optional
+    xdmf_codimension
+        Dictionary of xdmf files containing the codimension mesh data
+    xdmf_file
         Name of the single xdmf file containing the merged data
     comm: optional
         MPI communicator
 
     Returns
     -------
-    The string of the generated xdmf file.
+    The generated xdmf file as string.
 
-    Note
-    ----
-    If xdmf_file is not provided, the file name is determined as `basename(xdmf_domainmesh)` + "_merged.xdmf"
 
     """
 
     logger = logging.getLogger("dolfiny")
 
-    if xdmf_file is None:
-        path = os.path.dirname(os.path.abspath(xdmf_domainmesh))
-        base = os.path.splitext(os.path.basename(xdmf_domainmesh))[0] + "_merged"
-    else:
-        path = os.path.dirname(os.path.abspath(xdmf_file))
-        base = os.path.splitext(os.path.basename(xdmf_file))[0]
+    path = os.path.dirname(os.path.abspath(xdmf_file))
+    base = os.path.splitext(os.path.basename(xdmf_file))[0]
 
     xdmf_file = f"{path:s}/{base:s}.xdmf"
 
     # Combine meshio outputs into one mesh using dolfin
     from dolfinx.io import XDMFFile
 
-    # Read mesh, subdomains and interfaces from separate input files
-    logger.info(f"Reading XDMF domain mesh from {xdmf_domainmesh:s}")
-    with XDMFFile(comm, xdmf_domainmesh, "r") as ifile:
-        mesh = ifile.read_mesh("Grid")
-        mesh.topology.create_connectivity_all()
+    meshtags = {}
 
-    logger.info(f"Reading XDMF subdomain meshtags from {xdmf_subdomains:s}")
-    with XDMFFile(comm, xdmf_subdomains, "r") as ifile:
-        subdomains = ifile.read_meshtags(mesh, "Grid")
+    for codim in sorted(xdmf_codimension):
+        logger.info(f"Reading XDMF codimension from {xdmf_codimension[codim]:s}")
+        with XDMFFile(comm, xdmf_codimension[codim], "r") as ifile:
+            if codim == 0:
+                mesh = ifile.read_mesh("Grid")
+                mesh.topology.create_connectivity_all()
+            meshtags[codim] = ifile.read_meshtags(mesh, "Grid")
+            meshtags[codim].name = f"codimension{codim:1d}"
 
-    logger.info(f"Reading XDMF interfaces meshtags from {xdmf_interfaces:s}")
-    with XDMFFile(comm, xdmf_interfaces, "r") as ifile:
-        interfaces = ifile.read_meshtags(mesh, "Grid")
-
-    # Give MeshTags proper names
-    subdomains.name = "Subdomains"
-    interfaces.name = "Interfaces"
-
-    # Write mesh, subdomains and interfaces to single output file
+    # Write mesh and meshtags to single xdmf file
     logger.info(f"Writing XDMF all-in-one file to {xdmf_file:s}")
     with XDMFFile(comm, xdmf_file, "w") as ofile:
         ofile.write_mesh(mesh)
-        ofile.write_meshtags(subdomains)
-        ofile.write_meshtags(interfaces)
+        for codim, mt in sorted(meshtags.items()):
+            ofile.write_meshtags(mt)
 
     return xdmf_file
