@@ -4,12 +4,11 @@ import dolfiny.slepcblockproblem
 import dolfiny.la
 
 import ufl
-from dolfinx.function import Function, FunctionSpace, VectorFunctionSpace, TensorFunctionSpace, Constant
+from dolfinx.function import Function, FunctionSpace, VectorFunctionSpace
 from dolfinx.generation import UnitCubeMesh
 from dolfinx.io import XDMFFile
 from mpi4py import MPI
 from petsc4py import PETSc
-from scipy.sparse import linalg
 
 
 def test_neohooke():

@@ -2,7 +2,7 @@ import typing
 
 import dolfinx
 import ufl
-from dolfiny.function import functions_to_vec, vec_to_functions
+from dolfiny.function import vec_to_functions
 from slepc4py import SLEPc
 
 
