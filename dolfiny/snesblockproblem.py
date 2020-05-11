@@ -11,7 +11,7 @@ from petsc4py import PETSc
 
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
-                 opts=None, nest=False, restriction=None):
+                 opts=None, nest=False, restriction=None, prefix=None):
         """SNES problem and solver wrapper
 
         Parameters
@@ -78,11 +78,6 @@ class SNESBlockProblem():
             self.snes.setFunction(self._F_nest, self.F)
             self.snes.setJacobian(self._J_nest, self.J)
             self.snes.setMonitor(self._monitor_nest)
-            self.snes.setConvergenceTest(self._converged)
-
-            self.snes.setFromOptions()
-            self.snes.getKSP().setFromOptions()
-            self.snes.getKSP().getPC().setFromOptions()
 
         else:
             self.J = dolfinx.fem.create_matrix_block(self.J_form)
@@ -107,11 +102,10 @@ class SNESBlockProblem():
                 self.snes.setJacobian(self._J_block, self.J)
 
             self.snes.setMonitor(self._monitor_block)
-            self.snes.setConvergenceTest(self._converged)
 
-            self.snes.setFromOptions()
-            self.snes.getKSP().setFromOptions()
-            self.snes.getKSP().getPC().setFromOptions()
+        self.snes.setConvergenceTest(self._converged)
+        self.snes.setOptionsPrefix(prefix)
+        self.snes.setFromOptions()
 
     def _F_block(self, snes, x, F):
         with self.F.localForm() as f_local:

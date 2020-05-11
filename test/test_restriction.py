@@ -84,7 +84,7 @@ def test_coupled_poisson():
 
     r = dolfiny.restriction.Restriction([U0, U1, L], [rdofsU0, rdofsU1, rdofsL])
 
-    opts = PETSc.Options()
+    opts = PETSc.Options("poisson")
 
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
@@ -94,7 +94,8 @@ def test_coupled_poisson():
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [w0, w1, lam], bcs=bcs, opts=opts, restriction=r)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(
+        [F0, F1, F2], [w0, w1, lam], bcs=bcs, opts=opts, restriction=r, prefix="poisson")
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -183,7 +184,7 @@ def test_sloped_stokes():
 
     r = dolfiny.restriction.Restriction([V, P, L], [rdofsV, rdofsP, rdofsL])
 
-    opts = PETSc.Options()
+    opts = PETSc.Options("stokes")
 
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
@@ -194,7 +195,8 @@ def test_sloped_stokes():
     opts["pc_factor_mat_solver_type"] = "mumps"
     opts['mat_mumps_icntl_24'] = 1
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(
+        [F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r, prefix="stokes")
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -315,7 +317,7 @@ def test_sloped_stokes():
 
 #     r = dolfiny.restriction.Restriction([V, P, L], [rdofsV, rdofsP, lagrangedofsL])
 
-#     opts = PETSc.Options()
+#     opts = PETSc.Options("pipes")
 
 #     opts["snes_type"] = "newtonls"
 #     opts["snes_linesearch_type"] = "basic"
@@ -326,7 +328,8 @@ def test_sloped_stokes():
 #     opts["pc_factor_mat_solver_type"] = "mumps"
 #     opts['mat_mumps_icntl_24'] = 1
 
-#     problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r)
+    # problem = dolfiny.snesblockproblem.SNESBlockProblem(
+    #     [F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r, prefix="pipes")
 #     s0, s1, s2 = problem.solve()
 
 #     assert problem.snes.getConvergedReason() > 0

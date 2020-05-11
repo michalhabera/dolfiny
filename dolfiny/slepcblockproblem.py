@@ -64,15 +64,13 @@ class SLEPcBlockProblem():
 
         self.eps = SLEPc.EPS().create(self.comm)
         self.eps.setOptionsPrefix(prefix)
+        self.eps.setFromOptions()
 
         self.A = dolfinx.fem.create_matrix_block(self.A_form)
 
         self.B = None
         if not self.empty_B():
             self.B = dolfinx.fem.create_matrix_block(self.B_form)
-
-        self.eps.setProblemType(SLEPc.EPS.ProblemType.HEP)
-        self.eps.setFromOptions()
 
     def solve(self):
         self.A.zeroEntries()

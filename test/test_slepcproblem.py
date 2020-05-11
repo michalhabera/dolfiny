@@ -42,7 +42,7 @@ def test_neohooke():
     F1 = ufl.derivative(pi, p, q)
 
     # Number of eigenvalues to find
-    nev = 10
+    nev = 8
 
     opts = PETSc.Options("neohooke")
     opts["eps_smallest_magnitude"] = True
@@ -58,8 +58,6 @@ def test_neohooke():
 
     slepcp = dolfiny.slepcblockproblem.SLEPcBlockProblem([F0, F1], [u, p], lmbda0, prefix="neohooke")
     slepcp.solve()
-
-    slepcp.eps.view()
 
     # mat = dolfiny.la.petsc_to_scipy(slepcp.eps.getOperators()[0])
     # eigvals, eigvecs = linalg.eigsh(mat, which="SM", k=nev)
