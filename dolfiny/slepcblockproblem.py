@@ -12,6 +12,28 @@ class SLEPcBlockProblem():
         """SLEPc problem and solver wrapper.
 
         Wrapper for a generalised eigenvalue problem obtained from UFL residual forms.
+
+        Parameters
+        ----------
+        F_form
+            Residual forms
+        u
+            Current solution vectors
+        lmbda
+            Eigenvalue function. Residual forms must be linear in lmbda for
+            linear eigenvalue problems.
+        A_form, optional
+            Override automatically derived A
+        B_form, optional
+            Override automatically derived B
+
+        Note
+        ----
+        In general, eigenvalue problems have form T(lmbda) * x = 0,
+        where T(lmbda) is a matrix-valued function.
+        Linear eigenvalue problems have T(lmbda) = A + lmbda * B, and if B is not identity matrix
+        then this problem is called generalized (linear) eigenvalue problem.
+
         """
         self.F_form = F_form
         self.u = u
@@ -31,36 +53,35 @@ class SLEPcBlockProblem():
                 self.M0[i][j] = ufl.algorithms.expand_derivatives(ufl.derivative(
                     F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space)))
 
-        if A_form is None:
-            A0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]
-
-            for i in range(len(self.u)):
-                for j in range(len(self.u)):
-                    # If the form happens to be empty replace with None
-                    if self.M0[i][j].empty():
-                        A0[i][j] = None
-                        continue
-
-                    # Differentiate wrt. lambda and replace all remaining lambda with Zero
-                    A0[i][j] = ufl.algorithms.expand_derivatives(ufl.diff(self.M0[i][j], lmbda))
-                    A0[i][j] = ufl.replace(A0[i][j], {lmbda: ufl.zero()})
-            self.A_form = A0
-        else:
-            self.A_form = A_form
-
         if B_form is None:
             B0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]
 
             for i in range(len(self.u)):
                 for j in range(len(self.u)):
-                    B0[i][j] = ufl.replace(self.M0[i][j], {lmbda: ufl.zero()})
+                    # Differentiate wrt. lambda and replace all remaining lambda with Zero
+                    B0[i][j] = ufl.algorithms.expand_derivatives(ufl.diff(self.M0[i][j], lmbda))
+                    B0[i][j] = ufl.replace(B0[i][j], {lmbda: ufl.zero()})
 
                     if B0[i][j].empty():
                         B0[i][j] = None
-                        continue
+
             self.B_form = B0
         else:
             self.B_form = B_form
+
+        if A_form is None:
+            A0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]
+
+            for i in range(len(self.u)):
+                for j in range(len(self.u)):
+                    A0[i][j] = ufl.replace(self.M0[i][j], {lmbda: ufl.zero()})
+
+                    if A0[i][j].empty():
+                        A0[i][j] = None
+                        continue
+            self.A_form = A0
+        else:
+            self.A_form = A_form
 
         self.eps = SLEPc.EPS().create(self.comm)
         self.eps.setOptionsPrefix(prefix)

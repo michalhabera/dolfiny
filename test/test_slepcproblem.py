@@ -35,7 +35,7 @@ def test_neohooke():
     E_, nu_ = 10.0, 0.3
     mu, lmbda = E_ / (2 * (1 + nu_)), E_ * nu_ / ((1 + nu_) * (1 - 2 * nu_))
     psi = (mu / 2) * (ufl.tr(C) - 3) - mu * ufl.ln(J) + lmbda / 2 * ufl.ln(J) ** 2 + (p - 1.0) ** 2
-    pi = lmbda0 * psi * ufl.dx
+    pi = psi * ufl.dx
 
     F0 = ufl.derivative(pi, u, v)
     F1 = ufl.derivative(pi, p, q)
