@@ -3,7 +3,7 @@ import os
 import numpy
 
 import dolfinx
-from dolfinx.mesh import locate_entities_geometrical
+from dolfinx.mesh import locate_entities
 import dolfinx.cpp
 import dolfinx.io
 import dolfiny
@@ -32,8 +32,8 @@ def test_coupled_poisson():
     mesh = dolfinx.generation.UnitSquareMesh(MPI.COMM_WORLD, 16, 16, ghost_mode=ghost_mode)
     mesh.topology.create_connectivity_all()
 
-    left_half = locate_entities_geometrical(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
-    right_half = locate_entities_geometrical(mesh, mesh.topology.dim, lambda x: numpy.greater_equal(x[0], 0.5))
+    left_half = locate_entities(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
+    right_half = locate_entities(mesh, mesh.topology.dim, lambda x: numpy.greater_equal(x[0], 0.5))
 
     left_values = numpy.full(left_half.shape, 1, dtype=numpy.intc)
     right_values = numpy.full(right_half.shape, 2, dtype=numpy.intc)
@@ -43,7 +43,7 @@ def test_coupled_poisson():
     indices, pos = numpy.unique(indices, return_index=True)
     mt = dolfinx.mesh.MeshTags(mesh, mesh.topology.dim, indices, values[pos])
 
-    interface_facets = dolfinx.mesh.locate_entities_geometrical(
+    interface_facets = dolfinx.mesh.locate_entities(
         mesh, mesh.topology.dim - 1, lambda x: numpy.isclose(x[0], 0.5))
     indices = numpy.unique(interface_facets)
     mt_interface = dolfinx.mesh.MeshTags(mesh, mesh.topology.dim - 1, indices, 1)
