@@ -3,7 +3,7 @@ import os
 import numpy
 
 import dolfinx
-from dolfinx.mesh import locate_entities_geometrical
+from dolfinx.mesh import locate_entities
 import dolfinx.cpp
 import dolfinx.io
 import dolfiny
@@ -32,8 +32,8 @@ def test_coupled_poisson():
     mesh = dolfinx.generation.UnitSquareMesh(MPI.COMM_WORLD, 16, 16, ghost_mode=ghost_mode)
     mesh.topology.create_connectivity_all()
 
-    left_half = locate_entities_geometrical(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
-    right_half = locate_entities_geometrical(mesh, mesh.topology.dim, lambda x: numpy.greater_equal(x[0], 0.5))
+    left_half = locate_entities(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
+    right_half = locate_entities(mesh, mesh.topology.dim, lambda x: numpy.greater_equal(x[0], 0.5))
 
     left_values = numpy.full(left_half.shape, 1, dtype=numpy.intc)
     right_values = numpy.full(right_half.shape, 2, dtype=numpy.intc)
@@ -43,7 +43,7 @@ def test_coupled_poisson():
     indices, pos = numpy.unique(indices, return_index=True)
     mt = dolfinx.mesh.MeshTags(mesh, mesh.topology.dim, indices, values[pos])
 
-    interface_facets = dolfinx.mesh.locate_entities_geometrical(
+    interface_facets = dolfinx.mesh.locate_entities(
         mesh, mesh.topology.dim - 1, lambda x: numpy.isclose(x[0], 0.5))
     indices = numpy.unique(interface_facets)
     mt_interface = dolfinx.mesh.MeshTags(mesh, mesh.topology.dim - 1, indices, 1)
@@ -84,7 +84,7 @@ def test_coupled_poisson():
 
     r = dolfiny.restriction.Restriction([U0, U1, L], [rdofsU0, rdofsU1, rdofsL])
 
-    opts = PETSc.Options()
+    opts = PETSc.Options("poisson")
 
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
@@ -94,7 +94,8 @@ def test_coupled_poisson():
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [w0, w1, lam], bcs=bcs, opts=opts, restriction=r)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(
+        [F0, F1, F2], [w0, w1, lam], bcs=bcs, opts=opts, restriction=r, prefix="poisson")
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -183,7 +184,7 @@ def test_sloped_stokes():
 
     r = dolfiny.restriction.Restriction([V, P, L], [rdofsV, rdofsP, rdofsL])
 
-    opts = PETSc.Options()
+    opts = PETSc.Options("stokes")
 
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
@@ -194,7 +195,8 @@ def test_sloped_stokes():
     opts["pc_factor_mat_solver_type"] = "mumps"
     opts['mat_mumps_icntl_24'] = 1
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(
+        [F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r, prefix="stokes")
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -315,7 +317,7 @@ def test_sloped_stokes():
 
 #     r = dolfiny.restriction.Restriction([V, P, L], [rdofsV, rdofsP, lagrangedofsL])
 
-#     opts = PETSc.Options()
+#     opts = PETSc.Options("pipes")
 
 #     opts["snes_type"] = "newtonls"
 #     opts["snes_linesearch_type"] = "basic"
@@ -326,7 +328,8 @@ def test_sloped_stokes():
 #     opts["pc_factor_mat_solver_type"] = "mumps"
 #     opts['mat_mumps_icntl_24'] = 1
 
-#     problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r)
+    # problem = dolfiny.snesblockproblem.SNESBlockProblem(
+    #     [F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r, prefix="pipes")
 #     s0, s1, s2 = problem.solve()
 
 #     assert problem.snes.getConvergedReason() > 0
