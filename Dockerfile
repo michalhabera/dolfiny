@@ -1,5 +1,7 @@
 FROM dolfinx/dev-env-real
 
+ARG DOLFINY_BUILD_TYPE=Release
+
 RUN pip3 install git+https://github.com/FEniCS/fiat.git --upgrade \
     && \
 	 pip3 install git+https://github.com/FEniCS/ufl.git --upgrade \
@@ -12,7 +14,7 @@ RUN git clone --branch master https://github.com/FEniCS/dolfinx.git \
     && \
 	 cd dolfinx \
     && \
-	 mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=Developer ../cpp/ \
+	 mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=$DOLFINY_BUILD_TYPE ../cpp/ \
     && \
 	 make -j3 install \
 	 && \
