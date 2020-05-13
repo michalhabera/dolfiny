@@ -35,7 +35,7 @@ labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, p
 
 # read mesh, subdomains and interfaces
 with XDMFFile(MPI.COMM_WORLD, name + ".xdmf", "r") as infile:
-    mesh = infile.read_mesh("Grid")
+    mesh = infile.read_mesh(name="Grid")
     mesh.topology.create_connectivity_all()
 
 with XDMFFile(MPI.COMM_WORLD, name + "_subdomains" + ".xdmf", "r") as infile:
