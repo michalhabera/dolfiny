@@ -36,7 +36,7 @@ labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, p
 
 # Read mesh, subdomains and interfaces
 with XDMFFile(comm, name + ".xdmf", "r") as ifile:
-    mesh = ifile.read_mesh("Grid")
+    mesh = ifile.read_mesh(name="Grid")
     mesh.topology.create_connectivity_all()
     subdomains = ifile.read_meshtags(mesh, "codimension0")
     interfaces = ifile.read_meshtags(mesh, "codimension1")
