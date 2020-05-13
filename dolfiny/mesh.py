@@ -220,13 +220,14 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
         # Extract relevant entity blocks depending on supported cell types
         for codim in range(0, tdim + 1):
 
-            present_entities = list(set([cb.type for cb in mesh.cells if cb.type in table_cell_types[tdim - codim]]))
+            cell_types = list(set([cb.type for cb in mesh.cells if cb.type in table_cell_types[tdim - codim]]))
 
-            assert len(present_entities) <= 1, "Meshes of mixed elements are not supported!"
+            if len(cell_types) > 1:
+                raise RuntimeError("Mixed topology meshes not supported.")
 
-            entity = present_entities[0] if len(present_entities) > 0 else None
+            if len(cell_types) == 1:
 
-            if entity is not None:
+                entity = cell_types[0]
 
                 entity_dolfin_supported = [(entity, mesh.get_cells_type(entity))]
 
@@ -310,7 +311,7 @@ def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
         logger.info(f"Reading XDMF codimension from {xdmf_codimension[codim]:s}")
         with XDMFFile(comm, xdmf_codimension[codim], "r") as ifile:
             if codim == 0:
-                mesh = ifile.read_mesh("Grid")
+                mesh = ifile.read_mesh(name="Grid")
                 mesh.topology.create_connectivity_all()
             meshtags[codim] = ifile.read_meshtags(mesh, "Grid")
             meshtags[codim].name = f"codimension{codim:1d}"
