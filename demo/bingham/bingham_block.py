@@ -9,6 +9,7 @@ from dolfinx.io import XDMFFile
 import ufl
 
 from dolfiny.utils import pprint
+import dolfiny.mesh
 import dolfiny.odeint
 import dolfiny.function
 import dolfiny.snesblockproblem
@@ -28,22 +29,27 @@ x0 = 0.0
 y0 = 0.0
 
 # Create the regular mesh of an annulus with given dimensions
+labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
+# better:
 # gmsh, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
-# xdmf_file_name, labels = gmsh_to_xdmf(gmsh, tdim, gdim)
+# xdmf_file_name, labels = gmsh_to_xdmfh5(gmsh, tdim, gdim)
 # mesh, meshtags, labels = gmsh_to_dolfin(gmsh, tdim, gdim)
 
-labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
-
-# Read mesh, subdomains and interfaces
+# Read mesh and meshtags
 with XDMFFile(comm, name + ".xdmf", "r") as ifile:
     mesh = ifile.read_mesh(name="Grid")
     mesh.topology.create_connectivity_all()
-    subdomains = ifile.read_meshtags(mesh, "codimension0")
-    interfaces = ifile.read_meshtags(mesh, "codimension1")
+    meshtags = {}
+    meshtags["codimension0"] = ifile.read_meshtags(mesh, "codimension0")
+    meshtags["codimension1"] = ifile.read_meshtags(mesh, "codimension1")
 
-# Get subdomain/interface tags from labels
-inner = labels["ring_inner"][0]
-outer = labels["ring_outer"][0]
+# Define shorthands for meshtags
+subdomains = meshtags["codimension0"]
+interfaces = meshtags["codimension1"]
+
+# Define shorthands for tag labels
+ring_inner = labels["ring_inner"][0]
+ring_outer = labels["ring_outer"][0]
 
 # Fluid material parameters
 rho = Constant(mesh, 2.0)  # [kg/m^3]
@@ -198,13 +204,9 @@ opts["mat_mumps_icntl_24"] = 1
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
 
 # Identify dofs of functions spaces associated with interfaces/boundaries
-outerdofs_V = fem.locate_dofs_topological(
-    V, mesh.topology.dim - 1, interfaces.indices[np.where(interfaces.values == outer)[0]])
-innerdofs_V = fem.locate_dofs_topological(
-    V, mesh.topology.dim - 1, interfaces.indices[np.where(interfaces.values == inner)[0]])
-innerdofs_P = fem.locate_dofs_topological(
-    P, mesh.topology.dim - 1, interfaces.indices[np.where(interfaces.values == inner)[0]])
-
+ring_outer_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_outer)
+ring_inner_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_inner)
+ring_inner_dofs_P = dolfiny.mesh.locate_dofs_topological(P, interfaces, ring_inner)
 
 # Process time steps
 for time_step in range(nT + 1):
@@ -220,9 +222,9 @@ for time_step in range(nT + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        fem.DirichletBC(v_vector_o, outerdofs_V),  # velo outer
-        fem.DirichletBC(v_vector_i, innerdofs_V),  # velo inner
-        fem.DirichletBC(p_scalar_i, innerdofs_P),  # pressure inner
+        fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velo ring_outer
+        fem.DirichletBC(v_vector_i, ring_inner_dofs_V),  # velo ring_inner
+        fem.DirichletBC(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
     ]
 
     # Solve nonlinear problem
