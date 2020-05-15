@@ -203,7 +203,7 @@ opts["mat_mumps_icntl_24"] = 1
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
 
-# Identify dofs of functions spaces associated with interfaces/boundaries
+# Identify dofs of function spaces associated with tagged interfaces/boundaries
 ring_outer_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_outer)
 ring_inner_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_inner)
 ring_inner_dofs_P = dolfiny.mesh.locate_dofs_topological(P, interfaces, ring_inner)
