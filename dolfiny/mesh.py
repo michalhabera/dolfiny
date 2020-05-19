@@ -214,9 +214,6 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
             1: ["line", "line3"],
             0: ["vertex"]}
 
-        # Gmsh may invert the entity orientation and flip the sign of the marker,
-        # which is reverted with abs(). This way chosen labels and markers are kept consistent.
-
         # Extract relevant entity blocks depending on supported cell types
         for codim in range(0, tdim + 1):
 
@@ -231,6 +228,8 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
 
                 entity_dolfin_supported = [(entity, mesh.get_cells_type(entity))]
 
+                # Gmsh may invert the entity orientation and flip the sign of the tag,
+                # which is reverted with abs(). This way chosen tags are kept consistent.
                 celldata_entity_dolfin_supported = \
                     {"codimension{codim:1d}": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", entity)))]}
 
