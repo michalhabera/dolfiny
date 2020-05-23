@@ -38,19 +38,19 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
     if rank == 0:
         # Map from internal gmsh cell type number to gmsh cell name
         gmsh_name = {1: 'line', 2: 'triangle', 3: "quad", 5: "hexahedron",
-                    4: 'tetra', 8: 'line3', 9: 'triangle6', 10: "quad9", 11: 'tetra10',
-                    15: 'vertex'}
+                     4: 'tetra', 8: 'line3', 9: 'triangle6', 10: "quad9", 11: 'tetra10',
+                     15: 'vertex'}
 
         gmsh_dolfin = {"vertex": (CellType.point, 0), "line": (CellType.interval, 1),
-                    "line3": (CellType.interval, 2), "triangle": (CellType.triangle, 1),
-                    "triangle6": (CellType.triangle, 2), "quad": (CellType.quadrilateral, 1),
-                    "quad9": (CellType.quadrilateral, 2), "tetra": (CellType.tetrahedron, 1),
-                    "tetra10": (CellType.tetrahedron, 2), "hexahedron": (CellType.hexahedron, 1),
-                    "hexahedron27": (CellType.hexahedron, 2)}
+                       "line3": (CellType.interval, 2), "triangle": (CellType.triangle, 1),
+                       "triangle6": (CellType.triangle, 2), "quad": (CellType.quadrilateral, 1),
+                       "quad9": (CellType.quadrilateral, 2), "tetra": (CellType.tetrahedron, 1),
+                       "tetra10": (CellType.tetrahedron, 2), "hexahedron": (CellType.hexahedron, 1),
+                       "hexahedron27": (CellType.hexahedron, 2)}
 
         # Number of nodes for gmsh cell type
         nodes = {'line': 2, 'triangle': 3, 'tetra': 4, 'line3': 3,
-                'triangle6': 6, 'tetra10': 10, 'vertex': 1, "quad": 4, "quad9": 9}
+                 'triangle6': 6, 'tetra10': 10, 'vertex': 1, "quad": 4, "quad9": 9}
 
         node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
 

@@ -4,7 +4,6 @@ from mpi4py import MPI
 import dolfinx
 from dolfinx.io import XDMFFile
 import dolfiny.mesh
-import pytest
 import ufl
 
 
