@@ -1,7 +1,8 @@
-from mpi4py import MPI
+import gc
 
 import dolfinx
 import pytest
+from mpi4py import MPI
 
 
 def pytest_runtest_teardown(item):
