@@ -41,6 +41,7 @@ def test_simple_triangle():
     gmsh.model.mesh.setOrder(2)
 
     mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh.model, 2, prune_z=True)
+    mt, keys = dolfiny.mesh.merge_meshtags(mts, 1)
 
     assert mesh.geometry.dim == 2
     assert mesh.topology.dim == 2
@@ -51,8 +52,10 @@ def test_simple_triangle():
         mesh.topology.create_connectivity(1, 2)
         file.write_meshtags(mts["arc"])
 
-    ds_arc = ufl.Measure("ds", subdomain_data=mts["arc"], domain=mesh, subdomain_id=3)
+    ds = ufl.Measure("ds", subdomain_data=mt, domain=mesh)
 
-    val = dolfinx.fem.assemble_scalar(1.0 * ds_arc)
+    form = 1.0 * ds(keys["sides"]) + 1.0 * ds(keys["arc"])
+    val = dolfinx.fem.assemble_scalar(form)
+
     val = mesh.mpi_comm().allreduce(val, op=MPI.SUM)
-    assert numpy.isclose(val, 2.0 * numpy.pi * 0.5 / 2.0, rtol=1.0e-3)
+    assert numpy.isclose(val, 2.0 + 2.0 * numpy.pi * 0.5 / 2.0, rtol=1.0e-3)

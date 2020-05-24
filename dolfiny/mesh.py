@@ -5,7 +5,7 @@ from mpi4py import MPI
 import numpy
 from dolfinx.cpp.mesh import CellType
 from dolfinx import cpp
-from dolfinx.mesh import create_mesh, create_meshtags
+from dolfinx.mesh import create_mesh, create_meshtags, MeshTags
 from dolfinx.io import ufl_mesh_from_gmsh
 from dolfinx.cpp.io import extract_local_entities
 
@@ -37,9 +37,9 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
     logger = logging.getLogger("dolfiny")
     if rank == 0:
         # Map from internal gmsh cell type number to gmsh cell name
-        gmsh_name = {1: 'line', 2: 'triangle', 3: "quad", 5: "hexahedron",
-                     4: 'tetra', 8: 'line3', 9: 'triangle6', 10: "quad9", 11: 'tetra10',
-                     15: 'vertex'}
+        gmsh_cellname = {1: 'line', 2: 'triangle', 3: "quad", 5: "hexahedron",
+                         4: 'tetra', 8: 'line3', 9: 'triangle6', 10: "quad9", 11: 'tetra10',
+                         15: 'vertex'}
 
         gmsh_dolfin = {"vertex": (CellType.point, 0), "line": (CellType.interval, 1),
                        "line3": (CellType.interval, 2), "triangle": (CellType.triangle, 1),
@@ -75,14 +75,14 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         if len(cell_types) > 1:
             raise RuntimeError("Mixed topology meshes not supported.")
 
-        name = gmsh_name[cell_types[0]]
-        num_nodes = nodes[name]
+        cellname = gmsh_cellname[cell_types[0]]
+        num_nodes = nodes[cellname]
 
-        logger.info("Processing mesh of gmsh cell name \"{}\"".format(name))
+        logger.info("Processing mesh of gmsh cell name \"{}\"".format(cellname))
 
         # Shift 1-based numbering and apply node map
-        cells[name] = nmap[cell_node_tags[0] - 1]
-        cells[name] = numpy.reshape(cells[name], (-1, num_nodes))
+        cells[cellname] = nmap[cell_node_tags[0] - 1]
+        cells[cellname] = numpy.reshape(cells[cellname], (-1, num_nodes))
 
         if prune_z:
             if not numpy.allclose(points[:, 2], 0.0):
@@ -100,22 +100,22 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             else:
                 points = points[:, [0, 2]]
 
-        dolfin_cell_type, order = gmsh_dolfin[name]
+        dolfin_cell_type, order = gmsh_dolfin[cellname]
 
         perm = cpp.io.perm_gmsh(dolfin_cell_type, num_nodes)
         logger.info("Mesh will be permuted with {}".format(perm))
-        cells = cells[name][:, perm]
+        cells = cells[cellname][:, perm]
 
         logger.info("Constructing mesh for tdim: {}, gdim: {}".format(tdim, points.shape[1]))
         logger.info("Number of elements: {}".format(cells.shape[0]))
 
-        cells_shape, pts_shape, name = comm.bcast([cells.shape, points.shape, name], root=0)
+        cells_shape, pts_shape, cellname = comm.bcast([cells.shape, points.shape, cellname], root=0)
     else:
-        cells_shape, pts_shape, name = comm.bcast([None, None, None], root=0)
+        cells_shape, pts_shape, cellname = comm.bcast([None, None, None], root=0)
         cells = numpy.empty((0, cells_shape[1]))
         points = numpy.empty((0, pts_shape[1]))
 
-    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(name, pts_shape[1]))
+    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(cellname, pts_shape[1]))
     mts = {}
 
     # Get physical groups (dimension, tag)
@@ -138,8 +138,8 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
                 pgcell_types, pgcell_tags, pgnode_tags = gmsh_model.mesh.getElements(pgdim, entity_tag)
 
                 assert(len(pgcell_types) == 1)
-                pgname = gmsh_name[pgcell_types[0]]
-                pgnum_nodes = nodes[pgname]
+                pgcellname = gmsh_cellname[pgcell_types[0]]
+                pgnum_nodes = nodes[pgcellname]
 
                 # Shift 1-based numbering and apply node map
                 pgnode_tags[0] = nmap[pgnode_tags[0] - 1]
@@ -152,7 +152,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             _mt_cells = numpy.vstack(_mt_cells)
 
             # Fetch the permutation needed for physical group
-            pgdolfin_cell_type, pgorder = gmsh_dolfin[pgname]
+            pgdolfin_cell_type, pgorder = gmsh_dolfin[pgcellname]
             pgpermutation = cpp.io.perm_gmsh(pgdolfin_cell_type, pgnum_nodes)
 
             _mt_cells[:, :] = _mt_cells[:, pgpermutation]
@@ -269,3 +269,45 @@ def msh_to_xdmf(mshfile, tdim, gdim=3, prune=False):
         ))
 
     return mesh
+
+
+def merge_meshtags(mts, dim):
+    """ Merge multiple MeshTags into one.
+
+    Parameters
+    ----------
+    mts:
+        List of meshtags
+    dim:
+        Dimension of MeshTags which should be merged. Note it is
+        not possible to merge MeshTags with different dimensions into one
+        MeshTags object.
+
+    """
+    mts = [(mt, name) for name, mt in mts.items() if mt.dim == dim]
+    if len(mts) == 0:
+        raise RuntimeError(f"Cannot find MeshTags of dimension {dim}")
+
+    indices = numpy.hstack([mt.indices for mt, name in mts])
+    values = numpy.hstack([mt.values for mt, name in mts])
+
+    keys = {}
+    for mt, name in mts:
+        comm = mt.mesh.mpi_comm()
+        # In some cases this process could receive a MeshTags which are empty
+        # We need to return correct "keys" mapping on each process, so this
+        # communicates the value from processes which don't have empty meshtags
+        if len(mt.values) == 0:
+            value = -1
+        else:
+            if numpy.max(mt.values) < 0:
+                raise RuntimeError("Not expecting negative values for MeshTags")
+            value = int(mt.values[0])
+        value = comm.allreduce(value, op=MPI.MAX)
+
+        keys[name] = value
+
+    indices, pos = numpy.unique(indices, return_index=True)
+    mt = MeshTags(mts[0][0].mesh, dim, indices, values[pos])
+
+    return mt, keys
