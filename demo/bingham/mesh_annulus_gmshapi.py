@@ -16,11 +16,11 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
 
     # === MPI: gmsh only on rank = 0
 
+    import gmsh
+
     if comm.rank == 0:
 
         # --- generate geometry and mesh with gmsh
-
-        import gmsh
 
         gmsh.initialize()
         gmsh.option.setNumber("General.Terminal", 1)
@@ -89,39 +89,13 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         # Generate the mesh
         gmsh.model.mesh.generate()
 
-        # Write the mesh
-        gmsh.write(f"{name:s}.msh")
+    # Broadcast gmsh model
+    gmsh.model = comm.bcast(gmsh.model, root=0)
 
-        # Finalise gmsh
-        gmsh.finalize()
-
-    comm.barrier()
-
-    # === convert msh to xdmf/h5
-
-    from dolfiny.mesh import msh_to_xdmf
-
-    labels = msh_to_xdmf(msh_file=f"{name:s}.msh", tdim=tdim, gdim=gdim, xdmf_file=f"{name:s}.xdmf")
-
-    # === remove intermediate files
-
-    import os
-
-    files = [f"{name:s}.msh"]
-
-    if comm.rank == 0:
-        for f in files:
-            try:
-                os.remove(f)
-            except OSError:
-                raise Exception("Cannot remove file '%s'." % f)
-
-    comm.barrier()
-
-    # === return labels
-
-    return labels
+    return gmsh, tdim, gdim
 
 
 if __name__ == "__main__":
-    mesh_annulus_gmshapi()
+    gmsh, tdim, gdim = mesh_annulus_gmshapi()
+    # gmsh.write(f"{name:s}.msh")
+    gmsh.finalize()

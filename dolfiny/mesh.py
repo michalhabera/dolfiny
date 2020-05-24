@@ -158,8 +158,28 @@ from mpi4py import MPI
 #     return mesh, mvcs
 
 
-def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=True, comm=MPI.COMM_WORLD):
-    """Converts msh file to a set of codimensionX xdmf/h5 files for use in dolfinx.
+def gmsh_to_msh_to_xdmfh5(gmsh, tdim, gdim, comm=MPI.COMM_WORLD):
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+
+        name = gmsh.model.getCurrent()
+        
+        msh_file = f"{tmp:s}/{name:s}.msh"
+        
+        if comm.rank == 0:
+            gmsh.write(msh_file)
+        
+        xdmf_file_name = f"{name:s}.xdmf"
+        
+        msh_to_xdmf(msh_file, tdim, gdim, xdmf_file=xdmf_file_name)
+
+    return xdmf_file_name
+
+
+def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.COMM_WORLD):
+    """Converts msh file to a set of codimensionX xdmf/h5 files. Uses meshio.
 
     Parameters
     ----------
@@ -172,7 +192,7 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
     prune: optional
         Prune z-components from points geometry, i.e. embed the mesh into XY plane
     xdmf_file: optional
-        XDMF file for output, subdomains/interfaces extension is derived from base name
+        Name of the XDMF file for merged output of mesh and codimension data
     comm: optional
         MPI communicator
 
@@ -184,12 +204,8 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
 
     logger = logging.getLogger("dolfiny")
 
-    if xdmf_file is None:
-        path = os.path.dirname(os.path.abspath(msh_file))
-        base = os.path.splitext(os.path.basename(msh_file))[0]
-    else:
-        path = os.path.dirname(os.path.abspath(xdmf_file))
-        base = os.path.splitext(os.path.basename(xdmf_file))[0]
+    path = os.path.dirname(os.path.abspath(msh_file))
+    base = os.path.splitext(os.path.basename(msh_file))[0]
 
     xdmf_codimension = {}
 
@@ -214,6 +230,9 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
             1: ["line", "line3"],
             0: ["vertex"]}
 
+        # Extract mesh field data (gmsh names and tags)
+        names_to_tags = mesh.field_data
+
         # Extract relevant entity blocks depending on supported cell types
         for codim in range(0, tdim + 1):
 
@@ -228,14 +247,18 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
 
                 entity_dolfin_supported = [(entity, mesh.get_cells_type(entity))]
 
+                celldata_name = f"codimension{codim:1d}"
+
                 # Gmsh may invert the entity orientation and flip the sign of the tag,
                 # which is reverted with abs(). This way chosen tags are kept consistent.
                 celldata_entity_dolfin_supported = \
-                    {"codimension{codim:1d}": [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", entity)))]}
+                    {celldata_name: [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", entity)))]}
 
-                logger.info("Writing codimension {codim:1d} data for dolfin MeshTags")
+                names_to_tags_entity = { k:v[0] for k,v in names_to_tags.items() if v[1] == (tdim - codim) }
 
-                xdmf_codimension[codim] = f"{path:s}/{base:s}_codimension{codim:1d}.xdmf"
+                logger.info(f"Writing codimension {codim:1d} data for dolfin MeshTags")
+
+                xdmf_codimension[codim] = f"{path:s}/{base:s}_{celldata_name:s}.xdmf"
 
                 celldata_mesh_dolfin_supported = meshio.Mesh(points=points_pruned,
                                                              cells=entity_dolfin_supported,
@@ -243,36 +266,24 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, merge_xdmf=
 
                 meshio.write(xdmf_codimension[codim], celldata_mesh_dolfin_supported)
 
-        # Extract relevant field data for supported cell blocks
-        label_meshtag_map = mesh.field_data
+                # Add information to XDMF: names_to_tags_entity as str(dict)
+                import xml.etree.ElementTree as ET
 
-    # Broadcast mapping: label -> meshtag
-    label_meshtag_map = comm.bcast(label_meshtag_map, root=0)
+                parser = ET.XMLParser()
+                tree = ET.parse(xdmf_codimension[codim], parser)
+
+                try:
+                    mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{celldata_name}']")
+                    mt_xml_node.set('Information', str(names_to_tags_entity))
+                    tree.write(xdmf_codimension[codim])
+                except RuntimeError:
+                    print(f"Attribute node with Name='{celldata_name}' not found in {xdmf_codimension[codim]}.")
 
     # Broadcast xdmf_codimension files
     xdmf_codimension = comm.bcast(xdmf_codimension, root=0)
 
-    # Optional: Merge into single xdfm/h5
-    if merge_xdmf:
-
-        # Produce single xdmf/h5 file
-        xdmfs_to_xdmf(xdmf_codimension, xdmf_file)
-
-        # Remove subdomains and interfaces files
-        objs = xdmf_codimension.values()
-        exts = ["xdmf", "h5"]
-        if comm.rank == 0:
-            for f in [f"{os.path.splitext(obj)[0]:s}.{ext:s}" for obj in objs for ext in exts]:
-                try:
-                    os.remove(f)
-                except OSError:
-                    raise Exception("Cannot remove file '%s'." % f)
-
-        assert os.path.exists(xdmf_file), "Mesh generation as xdfm/h5 file failed!"
-
-    comm.barrier()
-
-    return label_meshtag_map
+    # Optional: Produce single xdmf/h5 file
+    if xdmf_file is not None: xdmfs_to_xdmf(xdmf_codimension, xdmf_file)
 
 
 def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
@@ -296,16 +307,13 @@ def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
 
     logger = logging.getLogger("dolfiny")
 
-    path = os.path.dirname(os.path.abspath(xdmf_file))
-    base = os.path.splitext(os.path.basename(xdmf_file))[0]
-
-    xdmf_file = f"{path:s}/{base:s}.xdmf"
-
-    # Combine meshio outputs into one mesh using dolfin
     from dolfinx.io import XDMFFile
+    import ast
 
     meshtags = {}
+    labelmap = {}
 
+    # Read mesh and meshtags from separate (meshio-generated) xdmf files
     for codim in sorted(xdmf_codimension):
         logger.info(f"Reading XDMF codimension from {xdmf_codimension[codim]:s}")
         with XDMFFile(comm, xdmf_codimension[codim], "r") as ifile:
@@ -314,6 +322,20 @@ def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
                 mesh.topology.create_connectivity_all()
             meshtags[codim] = ifile.read_meshtags(mesh, "Grid")
             meshtags[codim].name = f"codimension{codim:1d}"
+            # TODO: labelmap[codim] = ast.literal_eval(ifile.read_information("Grid"))
+
+    # -- 8< --- FIXME: until read_information is available --------------------
+    for codim in sorted(xdmf_codimension):
+        import xml.etree.ElementTree as ET
+        parser = ET.XMLParser()
+        tree = ET.parse(xdmf_codimension[codim], parser)
+        try:
+            mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{meshtags[codim].name}']")
+            information = mt_xml_node.get('Information')
+            labelmap[codim] = ast.literal_eval(information)
+        except:
+            pass
+    # -- >8 -------------------------------------------------------------------
 
     # Write mesh and meshtags to single xdmf file
     logger.info(f"Writing XDMF all-in-one file to {xdmf_file:s}")
@@ -321,9 +343,20 @@ def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
         ofile.write_mesh(mesh)
         for codim, mt in sorted(meshtags.items()):
             ofile.write_meshtags(mt)
+            # TODO: ofile.write_information(str(labelmap[codim]), mt.name)
 
-    return xdmf_file
-
+    # -- 8< --- FIXME: until write_information is available -------------------
+    import xml.etree.ElementTree as ET
+    parser = ET.XMLParser()
+    tree = ET.parse(xdmf_file, parser)
+    for codim, mt in sorted(meshtags.items()):
+        try:
+            mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{mt.name}']")
+            mt_xml_node.set('Information', str(labelmap[codim]))
+            tree.write(xdmf_file)
+        except RuntimeError:
+            print(f"Attribute node with Name='{celldata_name}' not found in {xdmf_codimension[codim]}.")
+    # -- >8 -------------------------------------------------------------------
 
 def locate_dofs_topological(V, meshtags, value):
     """Identifes the degrees of freedom of a given function space associated with a given meshtags value.

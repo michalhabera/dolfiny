@@ -29,27 +29,51 @@ x0 = 0.0
 y0 = 0.0
 
 # Create the regular mesh of an annulus with given dimensions
-labels = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
-# better:
-# gmsh, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
-# xdmf_file_name, labels = gmsh_to_xdmfh5(gmsh, tdim, gdim)
-# mesh, meshtags, labels = gmsh_to_dolfin(gmsh, tdim, gdim)
+gmsh, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
+xdmf_file_name = dolfiny.mesh.gmsh_to_msh_to_xdmfh5(gmsh, tdim, gdim)
+# xdmf_file_name = gmsh_to_xdmfh5(gmsh, tdim, gdim)
+# mesh, meshtags, labelmap = gmsh_to_dolfin(gmsh, tdim, gdim)
+
+# import tempfile
+
+# with tempfile.TemporaryDirectory() as tmp:
+#     msh_file = f"{tmp:s}/{name:s}.msh"
+#     if comm.rank == 0: gmsh.write(msh_file)
+#     xdmf_file_name = f"{name:s}.xdmf"
+#     dolfiny.mesh.msh_to_xdmf(msh_file, tdim, gdim, xdmf_file=xdmf_file_name)
 
 # Read mesh and meshtags
-with XDMFFile(comm, name + ".xdmf", "r") as ifile:
+with XDMFFile(comm, xdmf_file_name, "r") as ifile:
     mesh = ifile.read_mesh(name="Grid")
     mesh.topology.create_connectivity_all()
     meshtags = {}
     meshtags["codimension0"] = ifile.read_meshtags(mesh, "codimension0")
     meshtags["codimension1"] = ifile.read_meshtags(mesh, "codimension1")
+    labelmap = {}
+    # labelmap["codimension0"] = ast.literal_eval(ifile.read_information("codimension0"))
+    # labelmap["codimension1"] = ast.literal_eval(ifile.read_information("codimension1"))
+    # -- 8< --- FIXME ---------------------------------------------------------
+    import xml.etree.ElementTree as ET
+    import ast
+    parser = ET.XMLParser()
+    tree = ET.parse(xdmf_file_name, parser)
+    for key_codim in meshtags.keys():
+        mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{key_codim}']")
+        information = mt_xml_node.get('Information')
+        labelmap[key_codim] = ast.literal_eval(information)
+    # -- >8 -------------------------------------------------------------------
 
 # Define shorthands for meshtags
 subdomains = meshtags["codimension0"]
 interfaces = meshtags["codimension1"]
 
-# Define shorthands for tag labels
-ring_inner = labels["ring_inner"][0]
-ring_outer = labels["ring_outer"][0]
+# Define shorthands for labelmap
+subdomains_labels = labelmap["codimension0"]
+interfaces_labels = labelmap["codimension1"]
+
+# Define shorthands for labelled tags
+ring_inner = interfaces_labels["ring_inner"]
+ring_outer = interfaces_labels["ring_outer"]
 
 # Fluid material parameters
 rho = Constant(mesh, 2.0)  # [kg/m^3]
@@ -184,8 +208,8 @@ F = dolfiny.function.extract_blocks(F, δm)
 # Write mesh, subdomains, interfaces + later computation results -- open in Paraview with Xdmf3ReaderT
 ofile = XDMFFile(comm, name + ".xdmf", "w")
 ofile.write_mesh(mesh)
-ofile.write_meshtags(subdomains)
-ofile.write_meshtags(interfaces)
+for xp, mt in meshtags.items(): ofile.write_meshtags(mt, xp)
+# for xp, lm in labelmap.items(): ofile.write_information(str(lm), xp)
 
 # Options for PETSc backend
 opts = PETSc.Options()
