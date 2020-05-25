@@ -1,5 +1,4 @@
 import logging
-import os
 
 from mpi4py import MPI
 import numpy
@@ -155,7 +154,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             raise RuntimeError(f"Cannot determine dolfin cell type for Gmsh cell type \"{cellname:s}\".")
 
         perm = cpp.io.perm_gmsh(dolfin_cell_type, num_nodes)
-        logger.info(f"Mesh will be permuted with {perm:s}")
+        logger.info(f"Mesh will be permuted with {perm}")
         cells = cells[cellname][:, perm]
 
         logger.info(f"Constructing mesh for tdim: {tdim:d}, gdim: {points.shape[1]:d}")
@@ -232,204 +231,38 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
     return mesh, mts
 
 
-def gmsh_to_msh_to_xdmfh5(gmsh, tdim, gdim, comm=MPI.COMM_WORLD):
-
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as tmp:
-
-        name = gmsh.model.getCurrent()
-
-        msh_file = f"{tmp:s}/{name:s}.msh"
-
-        if comm.rank == 0:
-            gmsh.write(msh_file)
-
-        xdmf_file_name = f"{name:s}.xdmf"
-
-        msh_to_xdmf(msh_file, tdim, gdim, xdmf_file=xdmf_file_name)
-
-    return xdmf_file_name
-
-
-def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.COMM_WORLD):
-    """Converts msh file to a set of codimensionX xdmf/h5 files. Uses meshio.
+def msh_to_gmsh(msh_file, order=1, comm=MPI.COMM_WORLD):
+    """Read msh file with gmsh and return the gmsh model
 
     Parameters
     ----------
-    msh_file
-        Name of .msh file (incl. extension)
-    tdim
-        Topological dimension of the mesh
-    gdim: optional
-        Geometrical dimension of the mesh
-    prune: optional
-        Prune z-components from points geometry, i.e. embed the mesh into XY plane
-    xdmf_file: optional
-        Name of the XDMF file for merged output of mesh and codimension data
+    msh_file:
+        The msh file
+    order: optional
+        Adjust order of gmsh mesh cells
     comm: optional
-        MPI communicator
 
     Returns
     -------
-    The generated xdmf files as strings.
+    gmsh_model:
+        The gmsh model
+    tdim:
+        The highest topological dimension of the mesh entities
 
     """
 
-    logger = logging.getLogger("dolfiny")
-
-    path = os.path.dirname(os.path.abspath(msh_file))
-    base = os.path.splitext(os.path.basename(msh_file))[0]
-
-    xdmf_codimension = {}
-
-    # Conversion with meshio is serial
     if comm.rank == 0:
 
-        import meshio
+        import gmsh
 
-        logger.info(f"Reading Gmsh mesh into meshio from path {msh_file:s}")
-        mesh = meshio.read(msh_file)
+        gmsh.read(msh_file)
+        gmsh.model.geo.synchronize()
+        gmsh.model.mesh.generate()
+        gmsh.model.mesh.setOrder(order)
 
-        if prune:
-            mesh.prune()
+        tdim = max([dim for dim, _ in gmsh.model.getEntities()])
 
-        points_pruned = mesh.points[:, :gdim]  # set active coordinate components
-
-        table_cell_types = {  # meshio cell types per topological dimension
-            3: ["tetra", "hexahedron", "tetra10", "hexahedron20"],
-            2: ["triangle", "quad", "triangle6", "quad8"],
-            1: ["line", "line3"],
-            0: ["vertex"]}
-
-        # Extract mesh field data (gmsh names and tags)
-        names_to_tags = mesh.field_data
-
-        # Extract relevant entity blocks depending on supported cell types
-        for codim in range(0, tdim + 1):
-
-            cell_types = list(set([cb.type for cb in mesh.cells if cb.type in table_cell_types[tdim - codim]]))
-
-            if len(cell_types) > 1:
-                raise RuntimeError("Mixed topology meshes not supported.")
-
-            if len(cell_types) == 1:
-
-                entity = cell_types[0]
-
-                entity_dolfin_supported = [(entity, mesh.get_cells_type(entity))]
-
-                celldata_name = f"codimension{codim:1d}"
-
-                # Gmsh may invert the entity orientation and flip the sign of the tag,
-                # which is reverted with abs(). This way chosen tags are kept consistent.
-                celldata_entity_dolfin_supported = \
-                    {celldata_name: [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", entity)))]}
-
-                names_to_tags_entity = {k: v[0] for k, v in names_to_tags.items() if v[1] == (tdim - codim)}
-
-                logger.info(f"Writing codimension {codim:1d} data for dolfin MeshTags")
-
-                xdmf_codimension[codim] = f"{path:s}/{base:s}_{celldata_name:s}.xdmf"
-
-                celldata_mesh_dolfin_supported = meshio.Mesh(points=points_pruned,
-                                                             cells=entity_dolfin_supported,
-                                                             cell_data=celldata_entity_dolfin_supported)
-
-                meshio.write(xdmf_codimension[codim], celldata_mesh_dolfin_supported)
-
-                # Add information to XDMF: names_to_tags_entity as str(dict)
-                import xml.etree.ElementTree as ET
-
-                parser = ET.XMLParser()
-                tree = ET.parse(xdmf_codimension[codim], parser)
-
-                try:
-                    mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{celldata_name}']")
-                    mt_xml_node.set('Information', str(names_to_tags_entity))
-                    tree.write(xdmf_codimension[codim])
-                except RuntimeError:
-                    print(f"Attribute node with Name='{celldata_name}' not found in {xdmf_codimension[codim]}.")
-
-    # Broadcast xdmf_codimension files
-    xdmf_codimension = comm.bcast(xdmf_codimension, root=0)
-
-    # Optional: Produce single xdmf/h5 file
-    if xdmf_file is not None:
-        xdmfs_to_xdmf(xdmf_codimension, xdmf_file)
-
-
-def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
-    """Merges a set of codimensionX xdmf/h5 files into a single xdmf/h5 file.
-
-    Parameters
-    ----------
-    xdmf_codimension
-        Dictionary of xdmf files containing the codimension mesh data
-    xdmf_file
-        Name of the single xdmf file containing the merged data
-    comm: optional
-        MPI communicator
-
-    Returns
-    -------
-    The generated xdmf file as string.
-
-
-    """
-
-    logger = logging.getLogger("dolfiny")
-
-    from dolfinx.io import XDMFFile
-    import ast
-
-    meshtags = {}
-    labelmap = {}
-
-    # Read mesh and meshtags from separate (meshio-generated) xdmf files
-    for codim in sorted(xdmf_codimension):
-        logger.info(f"Reading XDMF codimension from {xdmf_codimension[codim]:s}")
-        with XDMFFile(comm, xdmf_codimension[codim], "r") as ifile:
-            if codim == 0:
-                mesh = ifile.read_mesh(name="Grid")
-                mesh.topology.create_connectivity_all()
-            meshtags[codim] = ifile.read_meshtags(mesh, "Grid")
-            meshtags[codim].name = f"codimension{codim:1d}"
-            # TODO: labelmap[codim] = ast.literal_eval(ifile.read_information("Grid"))
-
-    # -- 8< --- FIXME: until read_information is available --------------------
-    for codim in sorted(xdmf_codimension):
-        import xml.etree.ElementTree as ET
-        parser = ET.XMLParser()
-        tree = ET.parse(xdmf_codimension[codim], parser)
-        try:
-            mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{meshtags[codim].name}']")
-            information = mt_xml_node.get('Information')
-            labelmap[codim] = ast.literal_eval(information)
-        except RuntimeError:
-            pass
-    # -- >8 -------------------------------------------------------------------
-
-    # Write mesh and meshtags to single xdmf file
-    logger.info(f"Writing XDMF all-in-one file to {xdmf_file:s}")
-    with XDMFFile(comm, xdmf_file, "w") as ofile:
-        ofile.write_mesh(mesh)
-        for codim, mt in sorted(meshtags.items()):
-            ofile.write_meshtags(mt)
-            # TODO: ofile.write_information(str(labelmap[codim]), mt.name)
-
-    # -- 8< --- FIXME: until write_information is available -------------------
-    import xml.etree.ElementTree as ET
-    parser = ET.XMLParser()
-    tree = ET.parse(xdmf_file, parser)
-    for codim, mt in sorted(meshtags.items()):
-        try:
-            mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{mt.name}']")
-            mt_xml_node.set('Information', str(labelmap[codim]))
-            tree.write(xdmf_file)
-        except RuntimeError:
-            print(f"Attribute node with Name='{mt.name}' not found in {xdmf_codimension[codim]}.")
-    # -- >8 -------------------------------------------------------------------
+    return gmsh.model if comm.rank == 0 else None, tdim if comm.rank == 0 else None
 
 
 def locate_dofs_topological(V, meshtags, value):
