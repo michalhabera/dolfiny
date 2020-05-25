@@ -8,8 +8,9 @@ import dolfinx
 import dolfinx.io
 import ufl
 
-import dolfiny.utils
+import dolfiny.io
 import dolfiny.mesh
+import dolfiny.utils
 import dolfiny.odeint
 import dolfiny.function
 import dolfiny.snesblockproblem
@@ -33,6 +34,13 @@ gmsh_model, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, d
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
+
+# ofile = dolfinx.io.XDMFFile(comm, f"{name}.xdmf", "w")
+# dolfiny.io.write(ofile, mesh, mts)
+# ofile.close()
+# ifile = dolfinx.io.XDMFFile(comm, f"{name}.xdmf", "r")
+# mesh, mts = dolfiny.io.read(ifile)
+# ifile.close()
 
 # Get merged MeshTags for each codimension
 subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
@@ -170,13 +178,10 @@ F = odeint.discretise_in_time(g, f)
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
 
-# Write mesh, meshtags + later computation results -- open in Paraview with Xdmf3ReaderT
-ofile = dolfinx.io.XDMFFile(comm, name + ".xdmf", "w")
-ofile.write_mesh(mesh)
-ofile.write_information("KeysOfMeshTags", str({key: mt.dim for key, mt in mts.items()}))
-for mt in mts.values():
-    mesh.topology.create_connectivity(mt.dim, mesh.topology.dim)
-    ofile.write_meshtags(mt)
+# Create output xdmf file -- open in Paraview with Xdmf3ReaderT
+ofile = dolfinx.io.XDMFFile(comm, f"{name}.xdmf", "w")
+# Write mesh, meshtags + later computation results
+dolfiny.io.write(ofile, mesh, mts)
 
 # Options for PETSc backend
 opts = PETSc.Options()
