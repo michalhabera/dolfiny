@@ -34,12 +34,12 @@ pytest:
    script:
       # Install dolfin-y package
       - pip3 install .
-      # Run Python unit tests (serial)
-      - python3 -m pytest -vsx test/.
       # Run Python unit tests (parallel)
       - mpirun -n 2 python3 -u -m pytest -vsx test/.
       - mpirun -n 3 python3 -u -m pytest -vsx test/.
       - mpirun -n 4 python3 -u -m pytest -vsx test/.
+      # Run Python unit tests (serial)
+      - python3 -m pytest -vsx test/.
 
 demos:
    image: $CONTAINER_TEST_IMAGE

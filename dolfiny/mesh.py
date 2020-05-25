@@ -1,161 +1,182 @@
 import logging
 import os
 
+from mpi4py import MPI
 import numpy
+from dolfinx.cpp.mesh import CellType
+from dolfinx import cpp
+from dolfinx.mesh import create_mesh, create_meshtags, MeshTags
+from dolfinx.io import ufl_mesh_from_gmsh
+from dolfinx.cpp.io import extract_local_entities
 
 from mpi4py import MPI
 
-# def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.comm_world,
-#                    ghost_mode=cpp.mesh.GhostMode.none, prune_y=False, prune_z=False):
-#     """Converts a gmsh model object into `dolfinx.Mesh` and `dolfinx.MeshValueCollection`
-#     for physical tags.
+def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, prune_z=False):
+    """Converts a gmsh model object into `dolfinx.Mesh` and `dolfinx.MeshTags`
+    for physical tags.
 
-#     Parameters
-#     ----------
-#     gmsh_model
-#     tdim
-#         Topological dimension on the mesh
-#     order: optional
-#         Order of mesh geometry, e.g. 2 for quadratic elements.
-#     comm: optional
-#     ghost_mode: optional
-#     prune_y: optional
-#         Prune y-components. Used to embed a flat geometries into lower dimension.
-#     prune_z: optional
-#         Prune z-components. Used to embed a flat geometries into lower dimension.
+    Parameters
+    ----------
+    gmsh_model
+    tdim
+        Topological dimension of the mesh
+    comm: optional
+    ghost_mode: optional
+    prune_y: optional
+        Prune y-components. Used to embed a flat geometries into lower dimension.
+    prune_z: optional
+        Prune z-components. Used to embed a flat geometries into lower dimension.
 
-#     Note
-#     ----
-#     User must call `geo.synchronize()` and `mesh.generate()` before passing the model into
-#     this method.
-#     """
+    Note
+    ----
+    User must call `geo.synchronize()` and `mesh.generate()` before passing the model into
+    this method.
+    """
 
-#     logger = logging.getLogger("dolfiny")
+    rank = comm.rank
 
-#     # Map from internal gmsh cell type number to gmsh cell name
-#     gmsh_name = {1: 'line', 2: 'triangle', 3: "quad", 5: "hexahedron",
-#                  4: 'tetra', 8: 'line3', 9: 'triangle6', 10: "quad9", 11: 'tetra10',
-#                  15: 'vertex'}
+    logger = logging.getLogger("dolfiny")
+    if rank == 0:
+        # Map from internal gmsh cell type number to gmsh cell name
+        gmsh_cellname = {1: 'line', 2: 'triangle', 3: "quad", 5: "hexahedron",
+                         4: 'tetra', 8: 'line3', 9: 'triangle6', 10: "quad9", 11: 'tetra10',
+                         15: 'vertex'}
 
-#     gmsh_dolfin = {"vertex": (CellType.point, 0), "line": (CellType.interval, 1),
-#                    "line3": (CellType.interval, 2), "triangle": (CellType.triangle, 1),
-#                    "triangle6": (CellType.triangle, 2), "quad": (CellType.quadrilateral, 1),
-#                    "quad9": (CellType.quadrilateral, 2), "tetra": (CellType.tetrahedron, 1),
-#                    "tetra10": (CellType.tetrahedron, 2), "hexahedron": (CellType.hexahedron, 1),
-#                    "hexahedron27": (CellType.hexahedron, 2)}
+        gmsh_dolfin = {"vertex": (CellType.point, 0), "line": (CellType.interval, 1),
+                       "line3": (CellType.interval, 2), "triangle": (CellType.triangle, 1),
+                       "triangle6": (CellType.triangle, 2), "quad": (CellType.quadrilateral, 1),
+                       "quad9": (CellType.quadrilateral, 2), "tetra": (CellType.tetrahedron, 1),
+                       "tetra10": (CellType.tetrahedron, 2), "hexahedron": (CellType.hexahedron, 1),
+                       "hexahedron27": (CellType.hexahedron, 2)}
 
-#     # Number of nodes for gmsh cell type
-#     nodes = {'line': 2, 'triangle': 3, 'tetra': 4, 'line3': 3,
-#              'triangle6': 6, 'tetra10': 10, 'vertex': 1, "quad": 4, "quad9": 9}
+        # Number of nodes for gmsh cell type
+        nodes = {'line': 2, 'triangle': 3, 'tetra': 4, 'line3': 3,
+                 'triangle6': 6, 'tetra10': 10, 'vertex': 1, "quad": 4, "quad9": 9}
 
-#     node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
+        node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
 
-#     # Fetch elements for the mesh
-#     cell_types, cell_tags, cell_node_tags = gmsh_model.mesh.getElements(dim=tdim)
+        # Fetch elements for the mesh
+        cell_types, cell_tags, cell_node_tags = gmsh_model.mesh.getElements(dim=tdim)
 
-#     unused_nodes = numpy.setdiff1d(node_tags, cell_node_tags)
-#     unused_nodes_indices = numpy.where(node_tags == unused_nodes)[0]
+        unused_nodes = numpy.setdiff1d(node_tags, cell_node_tags)
+        unused_nodes_indices = numpy.where(node_tags == unused_nodes)[0]
 
-#     # Every node has 3 components in gmsh
-#     dim = 3
-#     points = numpy.reshape(coord, (-1, dim))
+        # Every node has 3 components in gmsh
+        dim = 3
+        points = numpy.reshape(coord, (-1, dim))
 
-#     # Delete unreferenced nodes
-#     points = numpy.delete(points, unused_nodes_indices, axis=0)
-#     node_tags = numpy.delete(node_tags, unused_nodes_indices)
+        # Delete unreferenced nodes
+        points = numpy.delete(points, unused_nodes_indices, axis=0)
+        node_tags = numpy.delete(node_tags, unused_nodes_indices)
 
-#     # Prepare a map from node tag to index in coords array
-#     nmap = numpy.argsort(node_tags - 1)
-#     cells = {}
+        # Prepare a map from node tag to index in coords array
+        nmap = numpy.argsort(node_tags - 1)
+        cells = {}
 
-#     if len(cell_types) > 1:
-#         raise RuntimeError("Mixed topology meshes not supported.")
+        if len(cell_types) > 1:
+            raise RuntimeError("Mixed topology meshes not supported.")
 
-#     name = gmsh_name[cell_types[0]]
-#     num_nodes = nodes[name]
+        cellname = gmsh_cellname[cell_types[0]]
+        num_nodes = nodes[cellname]
 
-#     logger.info("Processing mesh of gmsh cell name \"{}\"".format(name))
+        logger.info("Processing mesh of gmsh cell name \"{}\"".format(cellname))
 
-#     # Shift 1-based numbering and apply node map
-#     cells[name] = nmap[cell_node_tags[0] - 1]
-#     cells[name] = numpy.reshape(cells[name], (-1, num_nodes))
+        # Shift 1-based numbering and apply node map
+        cells[cellname] = nmap[cell_node_tags[0] - 1]
+        cells[cellname] = numpy.reshape(cells[cellname], (-1, num_nodes))
 
-#     if prune_z:
-#         if not numpy.allclose(points[:, 2], 0.0):
-#             raise RuntimeError("Non-zero z-component would be pruned.")
+        if prune_z:
+            if not numpy.allclose(points[:, 2], 0.0):
+                raise RuntimeError("Non-zero z-component would be pruned.")
 
-#         points = points[:, :-1]
+            points = points[:, :-1]
 
-#     if prune_y:
-#         if not numpy.allclose(points[:, 1], 0.0):
-#             raise RuntimeError("Non-zero y-component would be pruned.")
+        if prune_y:
+            if not numpy.allclose(points[:, 1], 0.0):
+                raise RuntimeError("Non-zero y-component would be pruned.")
 
-#         if prune_z:
-#             # In the case we already pruned z-component
-#             points = points[:, 0]
-#         else:
-#             points = points[:, [0, 2]]
+            if prune_z:
+                # In the case we already pruned z-component
+                points = points[:, 0]
+            else:
+                points = points[:, [0, 2]]
 
-#     dolfin_cell_type, order = gmsh_dolfin[name]
+        dolfin_cell_type, order = gmsh_dolfin[cellname]
 
-#     permutation = cpp.io.permutation_vtk_to_dolfin(dolfin_cell_type, num_nodes)
-#     logger.info("Mesh will be permuted with {}".format(permutation))
-#     cells[name][:, :] = cells[name][:, permutation]
+        perm = cpp.io.perm_gmsh(dolfin_cell_type, num_nodes)
+        logger.info("Mesh will be permuted with {}".format(perm))
+        cells = cells[cellname][:, perm]
 
-#     logger.info("Constructing mesh for tdim: {}, gdim: {}".format(tdim, points.shape[1]))
-#     logger.info("Number of elements: {}".format(cells[name].shape[0]))
+        logger.info("Constructing mesh for tdim: {}, gdim: {}".format(tdim, points.shape[1]))
+        logger.info("Number of elements: {}".format(cells.shape[0]))
 
-#     mesh = cpp.mesh.Mesh(comm, dolfin_cell_type, points,
-#                          cells[name], [], ghost_mode)
+        cells_shape, pts_shape, cellname = comm.bcast([cells.shape, points.shape, cellname], root=0)
+    else:
+        cells_shape, pts_shape, cellname = comm.bcast([None, None, None], root=0)
+        cells = numpy.empty((0, cells_shape[1]))
+        points = numpy.empty((0, pts_shape[1]))
 
-#     mesh.geometry.coord_mapping = fem.create_coordinate_map(mesh)
+    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(cellname, pts_shape[1]))
+    mts = {}
 
-#     mvcs = {}
+    # Get physical groups (dimension, tag)
+    pgdim_pgtags = gmsh_model.getPhysicalGroups()
+    for pgdim, pgtag in pgdim_pgtags:
+        # For the current physical tag there could be multiple entities
+        # e.g. user tagged bottom and up boundary part with one physical tag
+        entity_tags = gmsh_model.getEntitiesForPhysicalGroup(pgdim, pgtag)
+        pg_tag_name = gmsh_model.getPhysicalName(pgdim, pgtag)
 
-#     # Get physical groups (dimension, tag)
-#     pgdim_pgtags = gmsh_model.getPhysicalGroups()
-#     for pgdim, pgtag in pgdim_pgtags:
+        if pg_tag_name == "":
+            pg_tag_name = "tag_{}".format(pgtag)
 
-#         if order > 1 and pgdim != tdim:
-#             raise RuntimeError("Submanifolds for higher order mesh not supported.")
+        if rank == 0:
 
-#         # For the current physical tag there could be multiple entities
-#         # e.g. user tagged bottom and up boundary part with one physical tag
-#         entity_tags = gmsh_model.getEntitiesForPhysicalGroup(pgdim, pgtag)
+            _mt_cells = []
+            _mt_values = []
 
-#         _mvc_cells = []
-#         _mvc_data = []
+            for i, entity_tag in enumerate(entity_tags):
+                pgcell_types, pgcell_tags, pgnode_tags = gmsh_model.mesh.getElements(pgdim, entity_tag)
 
-#         for i, entity_tag in enumerate(entity_tags):
-#             pgcell_types, pgcell_tags, pgnode_tags = gmsh_model.mesh.getElements(pgdim, entity_tag)
+                assert(len(pgcell_types) == 1)
+                pgcellname = gmsh_cellname[pgcell_types[0]]
+                pgnum_nodes = nodes[pgcellname]
 
-#             assert(len(pgcell_types) == 1)
-#             pgname = gmsh_name[pgcell_types[0]]
-#             pgnum_nodes = nodes[pgname]
+                # Shift 1-based numbering and apply node map
+                pgnode_tags[0] = nmap[pgnode_tags[0] - 1]
+                _mt_cells.append(pgnode_tags[0].reshape(-1, pgnum_nodes))
+                _mt_values.append(numpy.full(_mt_cells[-1].shape[0], pgtag))
 
-#             # Shift 1-based numbering and apply node map
-#             pgnode_tags[0] = nmap[pgnode_tags[0] - 1]
-#             _mvc_cells.append(pgnode_tags[0].reshape(-1, pgnum_nodes))
-#             _mvc_data.append(numpy.full(_mvc_cells[-1].shape[0], pgtag))
+            # Stack all topology and value data. This prepares data
+            # for one MVC per (dim, physical tag) instead of multiple MVCs
+            _mt_values = numpy.hstack(_mt_values)
+            _mt_cells = numpy.vstack(_mt_cells)
 
-#         # Stack all topology and value data. This prepares data
-#         # for one MVC per (dim, physical tag) instead of multiple MVCs
-#         _mvc_data = numpy.hstack(_mvc_data)
-#         _mvc_cells = numpy.vstack(_mvc_cells)
+            # Fetch the permutation needed for physical group
+            pgdolfin_cell_type, pgorder = gmsh_dolfin[pgcellname]
+            pgpermutation = cpp.io.perm_gmsh(pgdolfin_cell_type, pgnum_nodes)
 
-#         # Fetch the permutation needed for physical group
-#         pgdolfin_cell_type, pgorder = gmsh_dolfin[pgname]
-#         pgpermutation = cpp.io.permutation_vtk_to_dolfin(pgdolfin_cell_type, _mvc_cells.shape[1])
+            _mt_cells[:, :] = _mt_cells[:, pgpermutation]
 
-#         _mvc_cells[:, :] = _mvc_cells[:, pgpermutation]
+            logger.info("Constructing MVC for tdim: {}".format(pgdim))
+            logger.info("Number of data values: {}".format(_mt_values.shape[0]))
 
-#         logger.info("Constructing MVC for tdim: {}".format(pgdim))
-#         logger.info("Number of data values: {}".format(_mvc_data.shape[0]))
+            mt_cells_shape, pgdim = comm.bcast([_mt_cells.shape, pgdim], root=0)
+        else:
+            mt_cells_shape, pgdim = comm.bcast([None, None], root=0)
+            _mt_cells = numpy.empty((0, mt_cells_shape[1]))
+            _mt_values = numpy.empty((0, ))
 
-#         mvc = MeshValueCollection("size_t", mesh, pgdim, _mvc_cells, _mvc_data)
-#         mvcs[(pgdim, pgtag)] = mvc
+        local_entities, local_values = extract_local_entities(mesh, pgdim, _mt_cells, _mt_values)
 
-#     return mesh, mvcs
+        mesh.topology.create_connectivity(pgdim, 0)
+
+        mt = create_meshtags(mesh, pgdim, cpp.graph.AdjacencyList_int32(local_entities), numpy.int32(local_values))
+        mt.name = pg_tag_name
+
+        mts[pg_tag_name] = mt
+
+    return mesh, mts
 
 
 def gmsh_to_msh_to_xdmfh5(gmsh, tdim, gdim, comm=MPI.COMM_WORLD):
@@ -378,3 +399,45 @@ def locate_dofs_topological(V, meshtags, value):
 
     return fem.locate_dofs_topological(
         V, meshtags.dim, meshtags.indices[where(meshtags.values == value)[0]])
+
+
+def merge_meshtags(mts, dim):
+    """ Merge multiple MeshTags into one.
+
+    Parameters
+    ----------
+    mts:
+        List of meshtags
+    dim:
+        Dimension of MeshTags which should be merged. Note it is
+        not possible to merge MeshTags with different dimensions into one
+        MeshTags object.
+
+    """
+    mts = [(mt, name) for name, mt in mts.items() if mt.dim == dim]
+    if len(mts) == 0:
+        raise RuntimeError(f"Cannot find MeshTags of dimension {dim}")
+
+    indices = numpy.hstack([mt.indices for mt, name in mts])
+    values = numpy.hstack([mt.values for mt, name in mts])
+
+    keys = {}
+    for mt, name in mts:
+        comm = mt.mesh.mpi_comm()
+        # In some cases this process could receive a MeshTags which are empty
+        # We need to return correct "keys" mapping on each process, so this
+        # communicates the value from processes which don't have empty meshtags
+        if len(mt.values) == 0:
+            value = -1
+        else:
+            if numpy.max(mt.values) < 0:
+                raise RuntimeError("Not expecting negative values for MeshTags")
+            value = int(mt.values[0])
+        value = comm.allreduce(value, op=MPI.MAX)
+
+        keys[name] = value
+
+    indices, pos = numpy.unique(indices, return_index=True)
+    mt = MeshTags(mts[0][0].mesh, dim, indices, values[pos])
+
+    return mt, keys

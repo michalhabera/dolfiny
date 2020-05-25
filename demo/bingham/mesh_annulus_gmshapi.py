@@ -16,9 +16,9 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
 
     # === MPI: gmsh only on rank = 0
 
-    import gmsh
-
     if comm.rank == 0:
+
+        import gmsh
 
         # --- generate geometry and mesh with gmsh
 
@@ -89,10 +89,7 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         # Generate the mesh
         gmsh.model.mesh.generate()
 
-    # Broadcast gmsh model
-    gmsh.model = comm.bcast(gmsh.model, root=0)
-
-    return gmsh, tdim, gdim
+    return gmsh.model if comm.rank == 0 else None, tdim, gdim
 
 
 if __name__ == "__main__":
