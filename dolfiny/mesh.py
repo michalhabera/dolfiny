@@ -9,7 +9,6 @@ from dolfinx.mesh import create_mesh, create_meshtags, MeshTags
 from dolfinx.io import ufl_mesh_from_gmsh
 from dolfinx.cpp.io import extract_local_entities
 
-from mpi4py import MPI
 
 def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, prune_z=False):
     """Converts a gmsh model object into `dolfinx.Mesh` and `dolfinx.MeshTags`
@@ -188,14 +187,14 @@ def gmsh_to_msh_to_xdmfh5(gmsh, tdim, gdim, comm=MPI.COMM_WORLD):
     with tempfile.TemporaryDirectory() as tmp:
 
         name = gmsh.model.getCurrent()
-        
+
         msh_file = f"{tmp:s}/{name:s}.msh"
-        
+
         if comm.rank == 0:
             gmsh.write(msh_file)
-        
+
         xdmf_file_name = f"{name:s}.xdmf"
-        
+
         msh_to_xdmf(msh_file, tdim, gdim, xdmf_file=xdmf_file_name)
 
     return xdmf_file_name
@@ -231,8 +230,6 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
     base = os.path.splitext(os.path.basename(msh_file))[0]
 
     xdmf_codimension = {}
-
-    label_meshtag_map = None
 
     # Conversion with meshio is serial
     if comm.rank == 0:
@@ -277,7 +274,7 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
                 celldata_entity_dolfin_supported = \
                     {celldata_name: [numpy.uint64(abs(mesh.get_cell_data("gmsh:physical", entity)))]}
 
-                names_to_tags_entity = { k:v[0] for k,v in names_to_tags.items() if v[1] == (tdim - codim) }
+                names_to_tags_entity = {k: v[0] for k, v in names_to_tags.items() if v[1] == (tdim - codim)}
 
                 logger.info(f"Writing codimension {codim:1d} data for dolfin MeshTags")
 
@@ -306,7 +303,8 @@ def msh_to_xdmf(msh_file, tdim, gdim=3, prune=False, xdmf_file=None, comm=MPI.CO
     xdmf_codimension = comm.bcast(xdmf_codimension, root=0)
 
     # Optional: Produce single xdmf/h5 file
-    if xdmf_file is not None: xdmfs_to_xdmf(xdmf_codimension, xdmf_file)
+    if xdmf_file is not None:
+        xdmfs_to_xdmf(xdmf_codimension, xdmf_file)
 
 
 def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
@@ -356,7 +354,7 @@ def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
             mt_xml_node = tree.getroot().find(f"./Domain/Grid/Attribute[@Name='{meshtags[codim].name}']")
             information = mt_xml_node.get('Information')
             labelmap[codim] = ast.literal_eval(information)
-        except:
+        except RuntimeError:
             pass
     # -- >8 -------------------------------------------------------------------
 
@@ -378,8 +376,9 @@ def xdmfs_to_xdmf(xdmf_codimension, xdmf_file, comm=MPI.COMM_WORLD):
             mt_xml_node.set('Information', str(labelmap[codim]))
             tree.write(xdmf_file)
         except RuntimeError:
-            print(f"Attribute node with Name='{celldata_name}' not found in {xdmf_codimension[codim]}.")
+            print(f"Attribute node with Name='{mt.name}' not found in {xdmf_codimension[codim]}.")
     # -- >8 -------------------------------------------------------------------
+
 
 def locate_dofs_topological(V, meshtags, value):
     """Identifes the degrees of freedom of a given function space associated with a given meshtags value.
