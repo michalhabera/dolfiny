@@ -14,17 +14,17 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     tdim = 2  # target topological dimension
     gdim = 2  # target geometrical dimension
 
-    # === MPI: gmsh only on rank = 0
+    # Perform Gmsh work only on rank = 0
 
     if comm.rank == 0:
 
         import gmsh
 
-        # --- generate geometry and mesh with gmsh
-
+        # Initialise gmsh and set options
         gmsh.initialize()
         gmsh.option.setNumber("General.Terminal", 1)
 
+        # Add model under given name
         gmsh.model.add(name)
 
         # Create points and line
@@ -60,18 +60,6 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         ring_outer = 2
         gmsh.model.addPhysicalGroup(tdim - 1, [bs0[5][1], bs1[5][1], bs2[5][1], bs3[5][1]], ring_outer)
         gmsh.model.setPhysicalName(tdim - 1, ring_outer, 'ring_outer')
-
-        # # Check and store labels
-        # from dolfiny.utils import pprint
-        # labels = {}
-        # for tdim in range(tdim + 1):
-        #     pprint(f"gmsh physical groups (topological dimension = {tdim:1d}):")
-        #     for info in gmsh.model.getPhysicalGroups(tdim):
-        #         dim = info[0]
-        #         tag = info[1]
-        #         gid = gmsh.model.getPhysicalName(tdim, info[1])
-        #         pprint(f"dim = {dim:1d} | tag = {tag:3d} | physical name = {gid:s}")
-        #         labels[gid] = tag
 
         # Sync
         gmsh.model.geo.synchronize()
