@@ -4,9 +4,6 @@ import numpy as np
 from petsc4py import PETSc
 from mpi4py import MPI
 
-# from dolfinx import Constant, FunctionSpace, Function, fem
-# from dolfinx.io import XDMFFile
-
 import dolfinx
 import dolfinx.io
 import ufl
@@ -32,7 +29,7 @@ x0 = 0.0
 y0 = 0.0
 
 # Create the regular mesh of an annulus with given dimensions
-gmsh_model, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1)
+gmsh_model, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1, order=1)
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
