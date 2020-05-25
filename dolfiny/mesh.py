@@ -35,22 +35,64 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
     rank = comm.rank
 
     logger = logging.getLogger("dolfiny")
+
     if rank == 0:
         # Map from internal gmsh cell type number to gmsh cell name
-        gmsh_cellname = {1: 'line', 2: 'triangle', 3: "quad", 5: "hexahedron",
-                         4: 'tetra', 8: 'line3', 9: 'triangle6', 10: "quad9", 11: 'tetra10',
-                         15: 'vertex'}
+        # see https://gitlab.onelab.info/gmsh/gmsh/blob/master/Common/GmshDefines.h#L75
+        gmsh_cellname = {1: 'line',
+                         2: 'triangle',
+                         3: "quad",
+                         4: 'tetra',
+                         5: "hexahedron",
+                         8: 'line3',
+                         9: 'triangle6',
+                         10: "quad9",
+                         11: 'tetra10',
+                         12: 'hexahedron27',
+                         15: 'vertex',
+                         #  21: 'triangle10',
+                         26: 'line4',
+                         29: 'tetra20',
+                         36: 'quad16',
+                         #  92: 'hexahedron64',
+                         }
 
-        gmsh_dolfin = {"vertex": (CellType.point, 0), "line": (CellType.interval, 1),
-                       "line3": (CellType.interval, 2), "triangle": (CellType.triangle, 1),
-                       "triangle6": (CellType.triangle, 2), "quad": (CellType.quadrilateral, 1),
-                       "quad9": (CellType.quadrilateral, 2), "tetra": (CellType.tetrahedron, 1),
-                       "tetra10": (CellType.tetrahedron, 2), "hexahedron": (CellType.hexahedron, 1),
-                       "hexahedron27": (CellType.hexahedron, 2)}
+        gmsh_dolfin = {"vertex": (CellType.point, 0),
+                       "line": (CellType.interval, 1),
+                       "line3": (CellType.interval, 2),
+                       "line4": (CellType.interval, 3),
+                       "triangle": (CellType.triangle, 1),
+                       "triangle6": (CellType.triangle, 2),
+                       #  "triangle10": (CellType.triangle, 3),
+                       "quad": (CellType.quadrilateral, 1),
+                       "quad9": (CellType.quadrilateral, 2),
+                       "quad16": (CellType.quadrilateral, 3),
+                       "tetra": (CellType.tetrahedron, 1),
+                       "tetra10": (CellType.tetrahedron, 2),
+                       "tetra20": (CellType.tetrahedron, 3),
+                       "hexahedron": (CellType.hexahedron, 1),
+                       "hexahedron27": (CellType.hexahedron, 2),
+                       #  "hexahedron64": (CellType.hexahedron, 3),
+                       }
 
         # Number of nodes for gmsh cell type
-        nodes = {'line': 2, 'triangle': 3, 'tetra': 4, 'line3': 3,
-                 'triangle6': 6, 'tetra10': 10, 'vertex': 1, "quad": 4, "quad9": 9}
+        nodes = {'vertex': 1,
+                 'line': 2,
+                 'line3': 3,
+                 'line4': 4,
+                 'triangle': 3,
+                 'triangle6': 6,
+                 #  'triangle10': 10,
+                 'tetra': 4,
+                 'tetra10': 10,
+                 'tetra20': 20,
+                 'quad': 4,
+                 'quad9': 9,
+                 'quad16': 16,
+                 'hexahedron': 8,
+                 'hexahedron27': 27,
+                 #  'hexahedron64': 64,
+                 }
 
         node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
 
@@ -75,10 +117,17 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         if len(cell_types) > 1:
             raise RuntimeError("Mixed topology meshes not supported.")
 
-        cellname = gmsh_cellname[cell_types[0]]
-        num_nodes = nodes[cellname]
+        try:
+            cellname = gmsh_cellname[cell_types[0]]
+        except KeyError:
+            raise RuntimeError(f"Gmsh cell code {cell_types[0]:d} not supported.")
 
-        logger.info("Processing mesh of gmsh cell name \"{}\"".format(cellname))
+        try:
+            num_nodes = nodes[cellname]
+        except KeyError:
+            raise RuntimeError(f"Cannot determine number of nodes for Gmsh cell type \"{cellname:s}\".")
+
+        logger.info(f"Processing mesh of gmsh cell name \"{cellname:s}\"")
 
         # Shift 1-based numbering and apply node map
         cells[cellname] = nmap[cell_node_tags[0] - 1]
@@ -100,14 +149,17 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             else:
                 points = points[:, [0, 2]]
 
-        dolfin_cell_type, order = gmsh_dolfin[cellname]
+        try:
+            dolfin_cell_type, order = gmsh_dolfin[cellname]
+        except KeyError:
+            raise RuntimeError(f"Cannot determine dolfin cell type for Gmsh cell type \"{cellname:s}\".")
 
         perm = cpp.io.perm_gmsh(dolfin_cell_type, num_nodes)
         logger.info("Mesh will be permuted with {}".format(perm))
         cells = cells[cellname][:, perm]
 
-        logger.info("Constructing mesh for tdim: {}, gdim: {}".format(tdim, points.shape[1]))
-        logger.info("Number of elements: {}".format(cells.shape[0]))
+        logger.info(f"Constructing mesh for tdim: {tdim:d}, gdim: {points.shape[1]:d}")
+        logger.info(f"Number of elements: {cells.shape[0]:d}")
 
         cells_shape, pts_shape, cellname = comm.bcast([cells.shape, points.shape, cellname], root=0)
     else:
@@ -129,7 +181,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         pg_tag_name = comm.bcast(gmsh_model.getPhysicalName(pgdim, pgtag) if rank == 0 else None, root=0)
 
         if pg_tag_name == "":
-            pg_tag_name = "tag_{}".format(pgtag)
+            pg_tag_name = f"tag_{pgtag:d}"
 
         if rank == 0:
 
@@ -159,8 +211,8 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
 
             _mt_cells[:, :] = _mt_cells[:, pgpermutation]
 
-            logger.info("Constructing MVC for tdim: {}".format(pgdim))
-            logger.info("Number of data values: {}".format(_mt_values.shape[0]))
+            logger.info(f"Constructing MVC for tdim: {pgdim:d}")
+            logger.info(f"Number of data values: {_mt_values.shape[0]:d}")
 
             mt_cells_shape, pgdim = comm.bcast([_mt_cells.shape, pgdim], root=0)
         else:
