@@ -120,12 +120,14 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
     mts = {}
 
     # Get physical groups (dimension, tag)
-    pgdim_pgtags = gmsh_model.getPhysicalGroups()
+    pgdim_pgtags = comm.bcast(gmsh_model.getPhysicalGroups() if rank == 0 else None, root=0)
+
     for pgdim, pgtag in pgdim_pgtags:
+
         # For the current physical tag there could be multiple entities
         # e.g. user tagged bottom and up boundary part with one physical tag
-        entity_tags = gmsh_model.getEntitiesForPhysicalGroup(pgdim, pgtag)
-        pg_tag_name = gmsh_model.getPhysicalName(pgdim, pgtag)
+        entity_tags = comm.bcast(gmsh_model.getEntitiesForPhysicalGroup(pgdim, pgtag) if rank == 0 else None, root=0)
+        pg_tag_name = comm.bcast(gmsh_model.getPhysicalName(pgdim, pgtag) if rank == 0 else None, root=0)
 
         if pg_tag_name == "":
             pg_tag_name = "tag_{}".format(pgtag)
