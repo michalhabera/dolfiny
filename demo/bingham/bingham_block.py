@@ -4,11 +4,14 @@ import numpy as np
 from petsc4py import PETSc
 from mpi4py import MPI
 
-from dolfinx import Constant, fem, FunctionSpace, Function
-from dolfinx.io import XDMFFile
+# from dolfinx import Constant, FunctionSpace, Function, fem
+# from dolfinx.io import XDMFFile
+
+import dolfinx
+import dolfinx.io
 import ufl
 
-from dolfiny.utils import pprint
+import dolfiny.utils
 import dolfiny.mesh
 import dolfiny.odeint
 import dolfiny.function
@@ -43,16 +46,16 @@ ring_inner = interfaces_keys["ring_inner"]
 ring_outer = interfaces_keys["ring_outer"]
 
 # Fluid material parameters
-rho = Constant(mesh, 2.0)  # [kg/m^3]
-mu = Constant(mesh, 1.0)  # [kg/m/s]
-tau_zero = Constant(mesh, 0.2)  # [kg/m/s^2]
-tau_zero_regularisation = Constant(mesh, 1.e-3)  # [-]
+rho = dolfinx.Constant(mesh, 2.0)  # [kg/m^3]
+mu = dolfinx.Constant(mesh, 1.0)  # [kg/m/s]
+tau_zero = dolfinx.Constant(mesh, 0.2)  # [kg/m/s^2]
+tau_zero_regularisation = dolfinx.Constant(mesh, 1.e-3)  # [-]
 
 # Max inner ring velocity
 v_inner_max = 0.1  # [m/s]
 
 # Global time
-time = Constant(mesh, 0.0)  # [s]
+time = dolfinx.Constant(mesh, 0.0)  # [s]
 # Time step size
 dt = 0.1  # [s]
 # Number of time steps
@@ -90,21 +93,19 @@ def v_vector_o_(x):
 Ve = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
 Pe = ufl.FiniteElement("CG", mesh.ufl_cell(), 1)
 
-V = FunctionSpace(mesh, Ve)
-P = FunctionSpace(mesh, Pe)
+V = dolfinx.FunctionSpace(mesh, Ve)
+P = dolfinx.FunctionSpace(mesh, Pe)
 
 # Define functions
-v = Function(V, name="v")
-p = Function(P, name="p")
+v = dolfinx.Function(V, name="v")
+p = dolfinx.Function(P, name="p")
 
 δv = ufl.TestFunction(V)
 δp = ufl.TestFunction(P)
 
 # Create (zero) initial conditions
-v0 = Function(V)
-v0t = Function(V)
-p0 = Function(P)
-p0t = Function(P)
+v0, v0t = [dolfinx.Function(V)] * 2
+p0, p0t = [dolfinx.Function(P)] * 2
 
 # Define state as (ordered) list of functions
 m = [v, p]
@@ -113,9 +114,9 @@ m0t = [v0t, p0t]
 δm = [δv, δp]
 
 # Create other functions
-v_vector_o = Function(V)
-v_vector_i = Function(V)
-p_scalar_i = Function(P)
+v_vector_o = dolfinx.Function(V)
+v_vector_i = dolfinx.Function(V)
+p_scalar_i = dolfinx.Function(P)
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(dt=dt, x=m, x0=m0, x0t=m0t)
@@ -173,7 +174,7 @@ F = odeint.discretise_in_time(g, f)
 F = dolfiny.function.extract_blocks(F, δm)
 
 # Write mesh, meshtags + later computation results -- open in Paraview with Xdmf3ReaderT
-ofile = XDMFFile(comm, name + ".xdmf", "w")
+ofile = dolfinx.io.XDMFFile(comm, name + ".xdmf", "w")
 ofile.write_mesh(mesh)
 ofile.write_information("KeysOfMeshTags", str({ key: mt.dim for key, mt in mts.items() }))
 for mt in mts.values(): 
@@ -211,13 +212,13 @@ for time_step in range(nT + 1):
     v_vector_o.interpolate(v_vector_o_)
     v_vector_i.interpolate(v_vector_i_)
 
-    pprint(f"\n+++ Processing time instant = {time.value:4.3f} in step {time_step:d}")
+    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value:4.3f} in step {time_step:d}")
 
     # Set/update boundary conditions
     problem.bcs = [
-        fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velo ring_outer
-        fem.DirichletBC(v_vector_i, ring_inner_dofs_V),  # velo ring_inner
-        fem.DirichletBC(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
+        dolfinx.fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velo ring_outer
+        dolfinx.fem.DirichletBC(v_vector_i, ring_inner_dofs_V),  # velo ring_inner
+        dolfinx.fem.DirichletBC(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
     ]
 
     # Solve nonlinear problem
