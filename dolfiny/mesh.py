@@ -155,7 +155,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             raise RuntimeError(f"Cannot determine dolfin cell type for Gmsh cell type \"{cellname:s}\".")
 
         perm = cpp.io.perm_gmsh(dolfin_cell_type, num_nodes)
-        logger.info("Mesh will be permuted with {}".format(perm))
+        logger.info(f"Mesh will be permuted with {perm:s}")
         cells = cells[cellname][:, perm]
 
         logger.info(f"Constructing mesh for tdim: {tdim:d}, gdim: {points.shape[1]:d}")
