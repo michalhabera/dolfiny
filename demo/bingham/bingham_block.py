@@ -214,7 +214,7 @@ for time_step in range(nT + 1):
     v_vector_o.interpolate(v_vector_o_)
     v_vector_i.interpolate(v_vector_i_)
 
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value:4.3f} in step {time_step:d}")
+    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value:7.3f} in step {time_step:d}")
 
     # Set/update boundary conditions
     problem.bcs = [
