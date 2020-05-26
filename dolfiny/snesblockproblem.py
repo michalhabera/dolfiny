@@ -228,7 +228,11 @@ class SNESBlockProblem():
 
         offset = 0
         for i, ui in enumerate(self.u):
-            size_local = ui.vector.getLocalSize()
+            if self.restriction is not None:
+                size_local = self.restriction.bglobal_dofs[i].shape[0]
+            else:
+                size_local = ui.vector.getLocalSize()
+
             subvec_r = r[offset:offset + size_local]
             subvec_dx = dx[offset:offset + size_local]
             subvec_x = x[offset:offset + size_local]
