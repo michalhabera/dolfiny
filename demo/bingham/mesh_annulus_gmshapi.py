@@ -12,7 +12,6 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
     ax, ay, az = 0.0, 0.0, 1.0  # rotation axis
 
     tdim = 2  # target topological dimension
-    gdim = 2  # target geometrical dimension
 
     # Perform Gmsh work only on rank = 0
 
@@ -84,7 +83,7 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         if msh_file is not None:
             gmsh.write(msh_file)
 
-    return gmsh.model if comm.rank == 0 else None, tdim, gdim
+    return gmsh.model if comm.rank == 0 else None, tdim
 
 
 if __name__ == "__main__":
