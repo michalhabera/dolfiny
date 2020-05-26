@@ -103,11 +103,13 @@ def test_coupled_poisson():
 
     # Evaluate the solution -0.5*x*(x-1) at x=0.5
     bb_tree = dolfinx.cpp.geometry.BoundingBoxTree(mesh, 2)
-    p = [0.5, 0.5, 0.0]
-    cell = dolfinx.cpp.geometry.compute_first_collision(bb_tree, p)
-    if cell >= 0:
-        value_s0 = s0.eval(p, numpy.asarray(cell))
-        value_s1 = s1.eval(p, numpy.asarray(cell))
+    p = numpy.array([0.5, 0.5, 0.0], dtype=numpy.float64)
+
+    cell_candidates = dolfinx.cpp.geometry.compute_collisions_point(bb_tree, p)
+    cell = dolfinx.cpp.geometry.select_colliding_cells(mesh, cell_candidates, p, 1)
+    if cell > 0:
+        value_s0 = s0.eval(p, cell)
+        value_s1 = s1.eval(p, cell)
 
         assert(numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
         assert(numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
