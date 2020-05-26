@@ -255,14 +255,14 @@ def msh_to_gmsh(msh_file, order=1, comm=MPI.COMM_WORLD):
 
         import gmsh
 
-        gmsh.read(msh_file)
+        gmsh.open(msh_file)
         gmsh.model.geo.synchronize()
         gmsh.model.mesh.generate()
         gmsh.model.mesh.setOrder(order)
 
-        tdim = max([dim for dim, _ in gmsh.model.getEntities()])
+    tdim = comm.bcast(max([dim for dim, _ in gmsh.model.getEntities()]) if comm.rank == 0 else None, root=0)
 
-    return gmsh.model if comm.rank == 0 else None, tdim if comm.rank == 0 else None
+    return gmsh.model if comm.rank == 0 else None, tdim
 
 
 def locate_dofs_topological(V, meshtags, value):
