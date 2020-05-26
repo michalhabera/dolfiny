@@ -72,7 +72,7 @@ nT = 40
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 2})
+ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 4})
 
 
 # Inner ring velocity
@@ -237,8 +237,8 @@ for time_step in range(nT + 1):
     v_, p_ = m
 
     # Write output
-    ofile.write_function(p_, time.value)
     ofile.write_function(v_, time.value)
+    ofile.write_function(p_, time.value)
 
     # Update solution states for time integration
     m0, m0t = odeint.update()
