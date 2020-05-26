@@ -29,7 +29,11 @@ x0 = 0.0
 y0 = 0.0
 
 # Create the regular mesh of an annulus with given dimensions
-gmsh_model, tdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, progression=1.1, order=1)
+gmsh_model, tdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False)
+
+# # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
+# mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, msh_file=f"{name}.msh")
+# gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
