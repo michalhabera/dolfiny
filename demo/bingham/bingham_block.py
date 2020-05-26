@@ -82,7 +82,7 @@ def v_inner_(t=0.0, vt=v_inner_max, g=5, a=1, b=3):
 
 # Define helpers
 def n_vector_(x, r=iR):
-    return np.array([-x[0], - x[1]]) / r
+    return np.array([-x[0], -x[1]]) / r
 
 
 def t_vector_(x, r=iR):
@@ -192,7 +192,7 @@ opts = PETSc.Options()
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_rtol"] = 1.0e-10
+opts["snes_rtol"] = 1.0e-08
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
