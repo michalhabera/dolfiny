@@ -4,7 +4,7 @@ from mpi4py import MPI
 
 
 def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y0=0.0,
-                         do_quads=False, progression=1.0, order=1, comm=MPI.COMM_WORLD):
+                         do_quads=False, progression=1.0, order=1, msh_file=None, comm=MPI.COMM_WORLD):
     """
     Create mesh of 2d annulus using the Python API of Gmsh.
     """
@@ -80,10 +80,12 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         # Set geometric order of mesh cells
         gmsh.model.mesh.setOrder(order)
 
+        # Optional: Write msh file
+        if msh_file is not None:
+            gmsh.write(msh_file)
+
     return gmsh.model if comm.rank == 0 else None, tdim, gdim
 
 
 if __name__ == "__main__":
-    gmsh, tdim, gdim = mesh_annulus_gmshapi()
-    # gmsh.write(f"{name:s}.msh")
-    gmsh.finalize()
+    mesh_annulus_gmshapi(msh_file="annulus.msh")
