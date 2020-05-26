@@ -64,13 +64,16 @@ tau_zero_regularisation = dolfinx.Constant(mesh, 1.e-3)  # [-]
 
 # Max inner ring velocity
 v_inner_max = 0.1  # [m/s]
+# Normal and tangential velocity at inner ring
+v_n = dolfinx.Constant(mesh, 0.0)  # [m/s]
+v_t = dolfinx.Constant(mesh, 0.0)  # [m/s] -- value set/updated in analysis
 
 # Global time
 time = dolfinx.Constant(mesh, 0.0)  # [s]
 # Time step size
 dt = 0.1  # [s]
 # Number of time steps
-nT = 1
+nT = 40
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
@@ -86,12 +89,11 @@ def v_inner_(t=0.0, vt=v_inner_max, g=5, a=1, b=3):
 Ve = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
 Pe = ufl.FiniteElement("CG", mesh.ufl_cell(), 1)
 Le = ufl.FiniteElement("CG", mesh.ufl_cell(), 2)
-Me = ufl.FiniteElement("CG", mesh.ufl_cell(), 2)
 
 V = dolfinx.FunctionSpace(mesh, Ve)
 P = dolfinx.FunctionSpace(mesh, Pe)
 N = dolfinx.FunctionSpace(mesh, Le)
-T = dolfinx.FunctionSpace(mesh, Me)
+T = dolfinx.FunctionSpace(mesh, Le)
 
 # Define functions
 v = dolfinx.Function(V, name="v")
@@ -118,15 +120,14 @@ m0t = [v0t, p0t, n0t, t0t]
 
 # Create other functions
 v_vector_o = dolfinx.Function(V)
-# v_vector_i = dolfinx.Function(V)
 p_scalar_i = dolfinx.Function(P)
 
-# Set up restriction for Lagrange multipliers n and t
+# Set up restriction
 rdofsV = dolfiny.mesh.locate_dofs_topological(V, subdomains, domain)
 rdofsP = dolfiny.mesh.locate_dofs_topological(P, subdomains, domain)
 rdofsN = dolfiny.mesh.locate_dofs_topological(N, interfaces, ring_inner)
 rdofsT = dolfiny.mesh.locate_dofs_topological(T, interfaces, ring_inner)
-r = dolfiny.restriction.Restriction([V, P, N, T], [rdofsV, rdofsP, rdofsN, rdofsT])
+restrc = dolfiny.restriction.Restriction([V, P, N, T], [rdofsV, rdofsP, rdofsN, rdofsT])
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(dt=dt, x=m, x0=m0, x0t=m0t)
@@ -173,20 +174,16 @@ def g(dmdt):
 def f(m):
     v, p, n, t = m
 
-    # n_vec = ufl.FacetNormal(mesh)
-    # t_vec = ufl.as_vector([n_vec[1], -n_vec[0]])
-
-    # v_n = 0.0
-    # v_t = 0.1 #  v_inner_(t=time.value)
-
-    # - ufl.inner(δv, n_vec) * n * ds(ring_inner) \
-    # - δn * (v_n - ufl.inner(v, n_vec)) * ds(ring_inner) \
+    n_vec = ufl.FacetNormal(mesh)  # outward unit normal vector
+    t_vec = ufl.as_vector([n_vec[1], -n_vec[0]])  # tangent 2D
 
     f = ufl.inner(δv, rho * ufl.grad(v) * v) * dx \
         + ufl.inner(ufl.grad(δv), T(v, p)) * dx \
         + ufl.inner(δp, ufl.div(v)) * dx \
-        + δn * (n - 1) * ds(ring_inner) \
-        + δt * (t - 1) * ds(ring_inner)
+        - ufl.inner(δv, n_vec) * n * ds(ring_inner) \
+        - ufl.inner(δv, t_vec) * t * ds(ring_inner) \
+        - δn * (v_n - ufl.inner(v, n_vec)) * ds(ring_inner) \
+        - δt * (v_t - ufl.inner(v, t_vec)) * ds(ring_inner)
     return f
 
 
@@ -205,7 +202,7 @@ opts = PETSc.Options()
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_rtol"] = 1.0e-10
+opts["snes_rtol"] = 1.0e-08
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
@@ -214,11 +211,10 @@ opts["mat_mumps_icntl_14"] = 500
 opts["mat_mumps_icntl_24"] = 1
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts, restriction=r)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts, restriction=restrc)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 ring_outer_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_outer)
-# ring_inner_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_inner)
 ring_inner_dofs_P = dolfiny.mesh.locate_dofs_topological(P, interfaces, ring_outer)
 
 # Process time steps
@@ -227,16 +223,14 @@ for time_step in range(nT + 1):
     # Set current time
     time.value = time_step * odeint.dt
 
-    # # Update functions (taking up time.value)
-    # v_vector_o.interpolate(v_vector_o_)
-    # v_vector_i.interpolate(v_vector_i_)
+    # Update functions (taking up time.value)
+    v_t.value = v_inner_(t=time.value)
 
     dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value:7.3f} in step {time_step:d}")
 
     # Set/update boundary conditions
     problem.bcs = [
         dolfinx.fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velocity ring_outer
-        # dolfinx.fem.DirichletBC(v_vector_i, ring_inner_dofs_V),  # velocity ring_inner
         dolfinx.fem.DirichletBC(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
     ]
 
@@ -244,7 +238,7 @@ for time_step in range(nT + 1):
     m = problem.solve()
 
     # Assert convergence of nonlinear solver
-    # assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
     # Extract solution
     v_, p_, n_, t_ = m
