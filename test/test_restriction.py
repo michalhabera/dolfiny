@@ -107,7 +107,7 @@ def test_coupled_poisson():
 
     cell_candidates = dolfinx.cpp.geometry.compute_collisions_point(bb_tree, p)
     cell = dolfinx.cpp.geometry.select_colliding_cells(mesh, cell_candidates, p, 1)
-    if cell > 0:
+    if len(cell) > 0:
         value_s0 = s0.eval(p, cell)
         value_s1 = s1.eval(p, cell)
 
