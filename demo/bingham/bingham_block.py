@@ -222,8 +222,8 @@ for time_step in range(nT + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velo ring_outer
-        dolfinx.fem.DirichletBC(v_vector_i, ring_inner_dofs_V),  # velo ring_inner
+        dolfinx.fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velocity ring_outer
+        dolfinx.fem.DirichletBC(v_vector_i, ring_inner_dofs_V),  # velocity ring_inner
         dolfinx.fem.DirichletBC(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
     ]
 
