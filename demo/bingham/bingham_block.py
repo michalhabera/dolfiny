@@ -5,7 +5,6 @@ from petsc4py import PETSc
 from mpi4py import MPI
 
 import dolfinx
-import dolfinx.io
 import ufl
 
 import dolfiny.io
@@ -35,12 +34,13 @@ gmsh_model, tdim, gdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, d
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
 
-# ofile = dolfinx.io.XDMFFile(comm, f"{name}.xdmf", "w")
-# dolfiny.io.write(ofile, mesh, mts)
-# ofile.close()
-# ifile = dolfinx.io.XDMFFile(comm, f"{name}.xdmf", "r")
-# mesh, mts = dolfiny.io.read(ifile)
-# ifile.close()
+# # Write mesh and meshtags to file
+# with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w") as ofile:
+#     ofile.write_mesh_meshtags(mesh, mts)
+
+# # Read mesh and meshtags from file
+# with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "r") as ifile:
+#     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
 subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
@@ -179,9 +179,9 @@ F = odeint.discretise_in_time(g, f)
 F = dolfiny.function.extract_blocks(F, δm)
 
 # Create output xdmf file -- open in Paraview with Xdmf3ReaderT
-ofile = dolfinx.io.XDMFFile(comm, f"{name}.xdmf", "w")
-# Write mesh, meshtags + later computation results
-dolfiny.io.write(ofile, mesh, mts)
+ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
+# Write mesh, meshtags
+ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
 opts = PETSc.Options()
