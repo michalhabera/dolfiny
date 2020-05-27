@@ -2,5 +2,8 @@
 *.egg-info
 __pycache__
 
-# skip demo output data
-demo/*/output
+# skip generated files
+*.msh
+*.xdmf
+*.h5
+*.pdf

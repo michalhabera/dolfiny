@@ -23,9 +23,12 @@ class ODEInt():
         ----------
         dt: Time step size.
         rho: Spectral radius rho_infinity for generalised alpha.
-        alpha_f:
-        alpha_m:
-        gamma:
+        alpha_f: Specific value for alpha_f.
+        alpha_m: Specific value for alpha_m.
+        gamma: Specific value for gamma.
+        x: Pointer to function describing the state at the end of time step -> x(t_end).
+        x0: Pointer to function describing the state at the begin of time step -> x(t_begin).
+        x0t: Pointer to function describing the rate at the begin of time step -> dx(t_begin)/dt.
         """
         # Eval settings
 
@@ -53,7 +56,7 @@ class ODEInt():
             self.alpha_m = kwargs["alpha_m"]
             self.gamma = kwargs["gamma"]
 
-        # Pointers to solution states (not documented)
+        # Pointers to solution states
         if "x" in kwargs:
             self.x = kwargs["x"]
         if "x0" in kwargs:
@@ -92,7 +95,7 @@ class ODEInt():
             # Check dimensions
             assert(len(g_x) == len(g_x0))
             assert(len(g_x) == len(g_x0t))
-            # Eeturn list of forms version
+            # Return list of forms version
             return [_compute(_g_x, _g_x0, _g_x0t) for _g_x, _g_x0, _g_x0t in zip(g_x, g_x0, g_x0t)]
         else:
             # return form version
@@ -163,3 +166,44 @@ class ODEInt():
         # optional?: use integrated hermite polynomial
         # return 1./2.  *  self.dt     * ( x0  + x  ) + \
         #        1./12. * (self.dt)**2 * ( x0t - xt )
+
+    def discretise_in_time(self, g, f, x=None, x0=None, x0t=None):
+        if x is None:
+            x = self.x
+        if x0 is None:
+            x0 = self.x_last_time
+        if x0t is None:
+            x0t = self.dxdt_last_time
+
+        # Obtain discretised-in-time version of forms
+        discretised_g = self.g_(g, x, x0, x0t)
+        discretised_f = self.f_(f, x, x0)
+
+        # Combine into overall form (list of forms or one-form)
+        if isinstance(g, list) and isinstance(f, list):
+            return [g + f for g, f in zip(discretised_g, discretised_f)]
+        elif not isinstance(g, list) and not isinstance(f, list):
+            return discretised_g + discretised_f
+        else:
+            raise RuntimeError("Incompatible forms (list-of-forms and one-form) provided.")
+
+    @staticmethod
+    def form_hook(fn):
+        """Decorator for hook functions to be used with ODEInt.
+
+           Clears the "time_instant" function parameter in `ODEInt.g_` and `ODEInt.f_`
+           if not needed in the implementation of the hook function.
+        """
+        import functools
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            # Get names of parameters in decorated function fn
+            fn_pnames = fn.__code__.co_varnames[:fn.__code__.co_argcount]
+            # Remove "time_instant" parameter from call kwargs if not supported by fn
+            if "time_instant" in kwargs and "time_instant" not in fn_pnames:
+                kwargs.pop("time_instant")
+            # Call fn with cured kwargs
+            return fn(*args, **kwargs)
+
+        return wrapper

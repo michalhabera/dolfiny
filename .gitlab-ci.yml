@@ -47,12 +47,14 @@ demos:
    script:
       # Install dolfin-y package
       - pip3 install .
-      # Run bingham demo
-      - cd demo/bingham && python3 bingham_block.py
+      # Run bingham demos (parallel)
+      - cd demo/bingham 
+      - mpirun -n 2 python3 bingham_block.py
+      - mpirun -n 1 python3 bingham_lm_block.py
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
-         - demo/*/output/*
+         - demo/*/*
       expire_in: 1 week
 
 docker_latest:
