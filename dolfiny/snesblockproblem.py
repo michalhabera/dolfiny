@@ -37,9 +37,14 @@ class SNESBlockProblem():
         self.F_form = F_form
         self.u = u
 
-        assert len(self.F_form) > 0, "List of residual forms is empty!"
-        assert len(self.u) > 0, "List of current solution functions is empty!"
-        assert isinstance(self.u[0], dolfinx.Function), "Provided solution function not of type dolfinx.Function!"
+        if not len(self.F_form) > 0:
+            raise RuntimeError("List of provided residual forms is empty!")
+
+        if not len(self.u) > 0:
+            raise RuntimeError("List of provided solution functions is empty!")
+
+        if not isinstance(self.u[0], dolfinx.Function):
+            raise RuntimeError("Provided solution function not of type dolfinx.Function!")
 
         if comm is None:
             self.comm = self.u[0].function_space.mesh.mpi_comm()
