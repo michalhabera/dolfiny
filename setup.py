@@ -5,6 +5,5 @@ setup(name='dolfiny',
       description='Dolfin-y high level wrappers for dolfin-x',
       author='Michal Habera',
       author_email='michal.habera@gmail.com',
-      license='MIT',
       packages=['dolfiny'],
       zip_safe=False)

@@ -1,5 +1,5 @@
-import ufl
 import dolfiny.function
+import ufl
 
 
 def test_ufl_block_extraction(V1, V2, squaremesh_5):
@@ -13,3 +13,9 @@ def test_ufl_block_extraction(V1, V2, squaremesh_5):
 
     assert ablocks[1][1].empty()
     assert ablocks[0][1].empty()
+
+    L = ufl.grad(v2)[0] * ufl.dx(mesh)
+    Lblocks = dolfiny.function.extract_blocks(L, [v1, v2])
+
+    assert Lblocks[0].empty()
+    assert Lblocks[1] == L
