@@ -23,10 +23,10 @@ comm = MPI.COMM_WORLD
 L = 1.0  # beam length
 N = 6  # number of nodes
 p = 2  # physics: polynomial order
-g = 3  # geometry: polynomial order
+q = 3  # geometry: polynomial order
 
 # Create the regular mesh of an annulus with given dimensions
-gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=g)
+gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="quarc", L=L, nL=N, order=q)
 
 # # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
 # mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=g, msh_file=f"{name}.msh")
@@ -63,13 +63,13 @@ GA = dolfinx.Constant(mesh, G * A)  # shear stiffness
 p_1 = dolfinx.Constant(mesh, 1.0 * 0)
 p_3 = dolfinx.Constant(mesh, 1.0 * 0)
 m_2 = dolfinx.Constant(mesh, 1.0 * 0)
-F_1 = dolfinx.Constant(mesh, 1.e4 * 0)
-F_3 = dolfinx.Constant(mesh, 1.e2 * 1)
+F_1 = dolfinx.Constant(mesh, 1.e4 * 0.01)
+F_3 = dolfinx.Constant(mesh, 1.e2 * 0)
 M_2 = dolfinx.Constant(mesh, np.pi / 2 * EI.value / L * 0)
 
 # Define integration measures
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 4})
+dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)  # , metadata={"quadrature_degree": 4})
+ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)  # , metadata={"quadrature_degree": 4})
 
 # Function spaces
 Ue = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
@@ -153,8 +153,9 @@ k = (1 + ε) * (0 + κ)
 # Weak form: components (as one-form) ALTERNATIVE
 F = + δe * EA * e * dx + δg * GA * g * dx + δk * EI * k * dx \
     + δu * p_1 * dx + δw * p_3 * dx + δr * m_2 * dx \
-    + δu * F_1 * ds(right) + δw * F_3 * ds(right) + δr * M_2 * ds(right)
+    - δu * F_1 * ds(right) - δw * F_3 * ds(right) - δr * M_2 * ds(right)
 
+# LINEARISATION
 # # Generate 1st order Taylor series of form at given state (u0, w0, r0)
 # u0 = dolfinx.Function(U, name='u0')
 # w0 = dolfinx.Function(W, name='w0')
@@ -237,9 +238,9 @@ x0 = mesh.geometry.x[x0_idx]
 
 # Interpolate solution at mesh geometry nodes
 import dolfiny.interpolation
-G = dolfinx.FunctionSpace(mesh, ("P", 3))
-u__ = dolfinx.Function(G)
-w__ = dolfinx.Function(G)
+Q = dolfinx.FunctionSpace(mesh, ("P", q))
+u__ = dolfinx.Function(Q)
+w__ = dolfinx.Function(Q)
 dolfiny.interpolation.interpolate(u_, u__)
 dolfiny.interpolation.interpolate(w_, w__)
 u = u__.vector[x0_idx]
