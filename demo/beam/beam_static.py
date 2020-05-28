@@ -63,8 +63,8 @@ GA = dolfinx.Constant(mesh, G * A)  # shear stiffness
 p_1 = dolfinx.Constant(mesh, 1.0 * 0)
 p_3 = dolfinx.Constant(mesh, 1.0 * 0)
 m_2 = dolfinx.Constant(mesh, 1.0 * 0)
-F_1 = dolfinx.Constant(mesh, 1.e4 * 0.01)
-F_3 = dolfinx.Constant(mesh, 1.e2 * 0)
+F_1 = dolfinx.Constant(mesh, 1.e1 * 0)
+F_3 = dolfinx.Constant(mesh, 1.e1 * 1)
 M_2 = dolfinx.Constant(mesh, np.pi / 2 * EI.value / L * 0)
 
 # Define integration measures
@@ -131,7 +131,7 @@ GRAD = lambda u: ufl.grad(u)  # noqa: E731
 γ = (1.0 + ufl.dot(GRAD(x0[0]), GRAD(u)) + ufl.dot(GRAD(x0[2]), GRAD(w))) * ufl.sin(r) - \
     (      ufl.dot(GRAD(x0[2]), GRAD(u)) - ufl.dot(GRAD(x0[0]), GRAD(w))) * ufl.cos(r)        # noqa: E201
 # Bending strain
-κ = GRAD(r)[0]
+κ = GRAD(r)[0] + GRAD(r)[1] + GRAD(r)[2]  # TODO: ?
 
 # Green-Lagrange strains
 e = 1 / 2 * ((1 + ε)**2 + γ**2 - 1)
@@ -152,7 +152,7 @@ k = (1 + ε) * (0 + κ)
 
 # Weak form: components (as one-form) ALTERNATIVE
 F = + δe * EA * e * dx + δg * GA * g * dx + δk * EI * k * dx \
-    + δu * p_1 * dx + δw * p_3 * dx + δr * m_2 * dx \
+    - δu * p_1 * dx - δw * p_3 * dx - δr * m_2 * dx \
     - δu * F_1 * ds(right) - δw * F_3 * ds(right) - δr * M_2 * ds(right)
 
 # LINEARISATION
