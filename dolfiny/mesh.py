@@ -273,6 +273,28 @@ def msh_to_xdmf(mshfile, tdim, gdim=3, prune=False):
     return mesh
 
 
+def locate_dofs_topological(V, meshtags, value):
+    """Identifes the degrees of freedom of a given function space associated with a given meshtags value.
+
+    Parameters
+    ----------
+    V: FunctionSpace
+    meshtags: MeshTags object
+    value: mesh tag value
+
+    Returns
+    -------
+    The system dof indices.
+
+    """
+
+    from dolfinx import fem
+    from numpy import where
+
+    return fem.locate_dofs_topological(
+        V, meshtags.dim, meshtags.indices[where(meshtags.values == value)[0]])
+
+
 def merge_meshtags(mts, dim):
     """ Merge multiple MeshTags into one.
 
