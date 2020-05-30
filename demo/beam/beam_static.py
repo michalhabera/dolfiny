@@ -22,11 +22,11 @@ comm = MPI.COMM_WORLD
 # Geometry and mesh parameters
 L = 1.0  # beam length
 N = 6  # number of nodes
-p = 2  # physics: polynomial order
+p = 3  # physics: polynomial order
 q = 3  # geometry: polynomial order
 
 # Create the regular mesh of an annulus with given dimensions
-gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="quarc", L=L, nL=N, order=q)
+gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=q)
 
 # # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
 # mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=g, msh_file=f"{name}.msh")
@@ -60,12 +60,14 @@ EA = dolfinx.Constant(mesh, E * A)  # axial stiffness
 EI = dolfinx.Constant(mesh, E * I)  # bending stiffness
 GA = dolfinx.Constant(mesh, G * A)  # shear stiffness
 
+λ = dolfinx.Constant(mesh, 1.0)  # load factor
+
 p_1 = dolfinx.Constant(mesh, 1.0 * 0)
 p_3 = dolfinx.Constant(mesh, 1.0 * 0)
 m_2 = dolfinx.Constant(mesh, 1.0 * 0)
 F_1 = dolfinx.Constant(mesh, 1.e1 * 0)
-F_3 = dolfinx.Constant(mesh, 1.e1 * 1)
-M_2 = dolfinx.Constant(mesh, np.pi / 2 * EI.value / L * 0)
+F_3 = dolfinx.Constant(mesh, 1.e1 * 0)
+M_2 = dolfinx.Constant(mesh, 2 * np.pi * EI.value / L * 1)
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)  # , metadata={"quadrature_degree": 4})
@@ -131,12 +133,12 @@ GRAD = lambda u: ufl.grad(u)  # noqa: E731
 γ = (1.0 + ufl.dot(GRAD(x0[0]), GRAD(u)) + ufl.dot(GRAD(x0[2]), GRAD(w))) * ufl.sin(r) - \
     (      ufl.dot(GRAD(x0[2]), GRAD(u)) - ufl.dot(GRAD(x0[0]), GRAD(w))) * ufl.cos(r)        # noqa: E201
 # Bending strain
-κ = GRAD(r)[0] + GRAD(r)[1] + GRAD(r)[2]  # TODO: ?
+κ = GRAD(r)[0] + GRAD(r)[1] + GRAD(r)[2]  # TODO: check, but seems to be ok
 
 # Green-Lagrange strains
 e = 1 / 2 * ((1 + ε)**2 + γ**2 - 1)
 g = γ
-k = (1 + ε) * (0 + κ)
+k = (1 + 0 * ε) * (0 + κ)  # TODO: disabled coupling with ε
 
 δe = ufl.derivative(e, u, δu) + ufl.derivative(e, w, δw) + ufl.derivative(e, r, δr)
 δg = ufl.derivative(g, u, δu) + ufl.derivative(g, w, δw) + ufl.derivative(g, r, δr)
@@ -152,8 +154,8 @@ k = (1 + ε) * (0 + κ)
 
 # Weak form: components (as one-form) ALTERNATIVE
 F = + δe * EA * e * dx + δg * GA * g * dx + δk * EI * k * dx \
-    - δu * p_1 * dx - δw * p_3 * dx - δr * m_2 * dx \
-    - δu * F_1 * ds(right) - δw * F_3 * ds(right) - δr * M_2 * ds(right)
+    - λ * (δu * p_1 * dx - δw * p_3 * dx - δr * m_2 * dx) \
+    - λ * (δu * F_1 * ds(right) - δw * F_3 * ds(right) - δr * M_2 * ds(right))
 
 # LINEARISATION
 # # Generate 1st order Taylor series of form at given state (u0, w0, r0)
@@ -203,18 +205,26 @@ u_left = dolfinx.Function(U)
 w_left = dolfinx.Function(W)
 r_left = dolfinx.Function(R)
 
-# Set/update boundary conditions
-problem.bcs = [
-    dolfinx.fem.DirichletBC(u_left, left_dofs_U),  # disp1 left
-    dolfinx.fem.DirichletBC(w_left, left_dofs_W),  # disp3 left
-    dolfinx.fem.DirichletBC(r_left, left_dofs_R),  # rota2 left
-]
+# Process load steps
+for factor in np.linspace(0, 1, num=5 + 1):
 
-# Solve nonlinear problem
-m = problem.solve()
+    # Set current time
+    λ.value = factor
 
-# Assert convergence of nonlinear solver
-assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    # Set/update boundary conditions
+    problem.bcs = [
+        dolfinx.fem.DirichletBC(u_left, left_dofs_U),  # disp1 left
+        dolfinx.fem.DirichletBC(w_left, left_dofs_W),  # disp3 left
+        dolfinx.fem.DirichletBC(r_left, left_dofs_R),  # rota2 left
+    ]
+
+    dolfiny.utils.pprint(f"\n+++ Processing load factor = {λ.value:7.3f}")
+
+    # Solve nonlinear problem
+    m = problem.solve()
+
+    # Assert convergence of nonlinear solver
+    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
 # Extract solution
 u_, w_, r_ = m
@@ -232,7 +242,8 @@ ofile.close()
 
 # Extract mesh geometry nodal coordinates
 dm = mesh.geometry.dofmap
-x0_idx = [dm.links(i).tolist() for i in range(dm.num_nodes)]
+oq = [0] + [*range(2, q + 1)] + [1]  # reorder lineX nodes: all ducks in a row...
+x0_idx = [[dm.links(i).tolist()[k] for k in oq] for i in range(dm.num_nodes)]
 x0_idx = [item for sublist in x0_idx for item in sublist]
 x0 = mesh.geometry.x[x0_idx]
 
@@ -241,24 +252,35 @@ import dolfiny.interpolation
 Q = dolfinx.FunctionSpace(mesh, ("P", q))
 u__ = dolfinx.Function(Q)
 w__ = dolfinx.Function(Q)
+r__ = dolfinx.Function(Q)
 dolfiny.interpolation.interpolate(u_, u__)
 dolfiny.interpolation.interpolate(w_, w__)
+dolfiny.interpolation.interpolate(r_, r__)
 u = u__.vector[x0_idx]
 w = w__.vector[x0_idx]
+r = r__.vector[x0_idx]
 
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 fig, ax1 = plt.subplots()
-ax1.plot(x0[:, 0], x0[:, 2], '.', color='tab:blue', label='undeformed')
-ax1.plot(x0[:, 0] + u, x0[:, 2] + w, '.', color='tab:red', label='deformed')
-ax1.set_xlabel(r'coordinate $x$ $[m]$', fontsize=12)
-ax1.set_ylabel(r'coordinate $z$ $[m]$', fontsize=12)
+ax1.plot(x0[:, 0], x0[:, 2], '.-', color='tab:gray', label='undeformed')
+ax1.plot(x0[:, 0] + u, x0[:, 2] + w, '.-', color='tab:red', label='deformed')
+ax1.set_xlabel(r'coordinate $x$, displacement $[m]$', fontsize=12)
+ax1.set_ylabel(r'coordinate $z$, displacement $[m]$', fontsize=12)
+ax1.plot(x0[:, 0], u, '-', color='tab:green', label='$u(x)$')
+ax1.plot(x0[:, 0], w, '-', color='tab:blue', label='$w(x)$')
 ax1.grid(linewidth=0.5)
 ax1.set_title(r'geometrically exact beam (displacement-based)', fontsize=12)
 ax1.legend(loc='upper left')
 ax1.invert_yaxis()
 ax1.axis('equal')
+# ax2 = ax1.twinx()
+# ax2.plot(x0[:, 0], r/(2*np.pi), '.', color='tab:brown', label='$r(x)$')
+# ax2.yaxis.tick_right()
+# ax2.yaxis.set_label_position("right")
+# ax2.set_ylabel(r"normalised rotation $\psi/2\pi$ $[-]$", fontsize=12)
+# ax2.invert_yaxis()
 fig.tight_layout()
 fig.savefig(name + '_result.pdf')
 
