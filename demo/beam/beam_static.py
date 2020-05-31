@@ -21,12 +21,12 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 L = 1.0  # beam length
-N = 6  # number of nodes
+N = 3 * 4  # number of nodes
 p = 3  # physics: polynomial order
 q = 3  # geometry: polynomial order
 
 # Create the regular mesh of an annulus with given dimensions
-gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=q)
+gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="f_arc", L=L, nL=N, order=q)
 
 # # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
 # mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=g, msh_file=f"{name}.msh")
@@ -48,8 +48,8 @@ subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
 interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
 
 # Define shorthands for labelled tags
-left = interfaces_keys["left"]
-right = interfaces_keys["right"]
+beg = interfaces_keys["beg"]
+end = interfaces_keys["end"]
 
 # Structure material and load parameters
 E = 1.0e+8  # [N/m^2]
@@ -65,9 +65,9 @@ GA = dolfinx.Constant(mesh, G * A)  # shear stiffness
 p_1 = dolfinx.Constant(mesh, 1.0 * 0)
 p_3 = dolfinx.Constant(mesh, 1.0 * 0)
 m_2 = dolfinx.Constant(mesh, 1.0 * 0)
-F_1 = dolfinx.Constant(mesh, 1.e1 * 0)
+F_1 = dolfinx.Constant(mesh, (2 * np.pi / L)**2 * EI.value * 0)
 F_3 = dolfinx.Constant(mesh, 1.e1 * 0)
-M_2 = dolfinx.Constant(mesh, 2 * np.pi * EI.value / L * 1)
+M_2 = dolfinx.Constant(mesh, 2 * np.pi / L * EI.value * 1)
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)  # , metadata={"quadrature_degree": 4})
@@ -101,6 +101,8 @@ x0 = ufl.SpatialCoordinate(mesh)
 # CURVATURE TENSOR
 # Jacobi matrix of map reference -> undeformed
 J0 = ufl.geometry.Jacobian(mesh)
+iJ0 = ufl.geometry.JacobianInverse(mesh)
+detJ0 = ufl.geometry.JacobianDeterminant(mesh)
 # Metric tensor
 G0 = ufl.dot(J0.T, J0)
 # Contravariant basis
@@ -119,26 +121,28 @@ B0 = ufl.dot(g2, ReferenceGrad(K0))  # == -ufl.dot(ReferenceGrad(g2).T, K0)
 # Curvature in the undeformed configuration
 κ0 = -B0[0, 0]  # TODO: check use of sign in derivation
 
-print(f"κ0(l) = {dolfinx.fem.assemble_scalar(κ0 * ds(left) ):7.5f}")
-print(f"κ0(r) = {dolfinx.fem.assemble_scalar(κ0 * ds(right)):7.5f}")
+print(f"κ0(beg) = {dolfinx.fem.assemble_scalar(κ0 * ds(beg)):7.5f}")
+print(f"κ0(end) = {dolfinx.fem.assemble_scalar(κ0 * ds(end)):7.5f}")
 
-# DERIVATIVE
-# GRAD = lambda u: ufl.inv( ufl.dot(ufl.grad(x0).T, ufl.grad(x0)) ) * ufl.grad(u)
-GRAD = lambda u: ufl.grad(u)  # noqa: E731
+# DERIVATIVE with respect to straight reference configuration parameterised by arc-length
+GRAD = lambda u: detJ0 * ufl.dot(iJ0[0, :], ufl.grad(u))  # noqa: E731
+
+print(f"arclength(beg) = {dolfinx.fem.assemble_scalar(ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0))) * ds(beg)):7.5f}")
+print(f"arclength(end) = {dolfinx.fem.assemble_scalar(ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0))) * ds(end)):7.5f}")
 
 # Axial strain
-ε = (1.0 + ufl.dot(GRAD(x0[0]), GRAD(u)) + ufl.dot(GRAD(x0[2]), GRAD(w))) * ufl.cos(r) + \
-    (      ufl.dot(GRAD(x0[2]), GRAD(u)) - ufl.dot(GRAD(x0[0]), GRAD(w))) * ufl.sin(r) - 1.0  # noqa: E201
+ε = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.cos(r) + \
+    (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.sin(r) - 1.0  # noqa: E201
 # Shear strain
-γ = (1.0 + ufl.dot(GRAD(x0[0]), GRAD(u)) + ufl.dot(GRAD(x0[2]), GRAD(w))) * ufl.sin(r) - \
-    (      ufl.dot(GRAD(x0[2]), GRAD(u)) - ufl.dot(GRAD(x0[0]), GRAD(w))) * ufl.cos(r)        # noqa: E201
+γ = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.sin(r) - \
+    (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.cos(r)        # noqa: E201
 # Bending strain
-κ = GRAD(r)[0] + GRAD(r)[1] + GRAD(r)[2]  # TODO: check, but seems to be ok
+κ = -GRAD(r)
 
 # Green-Lagrange strains
 e = 1 / 2 * ((1 + ε)**2 + γ**2 - 1)
 g = γ
-k = (1 + 0 * ε) * (0 + κ)  # TODO: disabled coupling with ε
+k = κ  # + ε * (κ + κ0)
 
 δe = ufl.derivative(e, u, δu) + ufl.derivative(e, w, δw) + ufl.derivative(e, r, δr)
 δg = ufl.derivative(g, u, δu) + ufl.derivative(g, w, δw) + ufl.derivative(g, r, δr)
@@ -152,10 +156,10 @@ k = (1 + 0 * ε) * (0 + κ)  # TODO: disabled coupling with ε
 δg = ufl.algorithms.apply_derivatives.apply_derivatives(δg)
 δk = ufl.algorithms.apply_derivatives.apply_derivatives(δk)
 
-# Weak form: components (as one-form) ALTERNATIVE
-F = + δe * EA * e * dx + δg * GA * g * dx + δk * EI * k * dx \
-    - λ * (δu * p_1 * dx - δw * p_3 * dx - δr * m_2 * dx) \
-    - λ * (δu * F_1 * ds(right) - δw * F_3 * ds(right) - δr * M_2 * ds(right))
+# Weak form: components (as one-form)
+F = - δe * EA * e * dx - δg * GA * g * dx - δk * EI * k * dx \
+    + λ * (δu * p_1 * dx + δw * p_3 * dx + δr * m_2 * dx) \
+    + λ * (δu * F_1 * ds(end) + δw * F_3 * ds(end) + δr * M_2 * ds(end))
 
 # LINEARISATION
 # # Generate 1st order Taylor series of form at given state (u0, w0, r0)
@@ -197,9 +201,9 @@ opts["mat_mumps_icntl_24"] = 1
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
-left_dofs_U = dolfiny.mesh.locate_dofs_topological(U, interfaces, left)
-left_dofs_W = dolfiny.mesh.locate_dofs_topological(W, interfaces, left)
-left_dofs_R = dolfiny.mesh.locate_dofs_topological(R, interfaces, left)
+left_dofs_U = dolfiny.mesh.locate_dofs_topological(U, interfaces, beg)
+left_dofs_W = dolfiny.mesh.locate_dofs_topological(W, interfaces, beg)
+left_dofs_R = dolfiny.mesh.locate_dofs_topological(R, interfaces, beg)
 
 u_left = dolfinx.Function(U)
 w_left = dolfinx.Function(W)
@@ -256,50 +260,31 @@ r__ = dolfinx.Function(Q)
 dolfiny.interpolation.interpolate(u_, u__)
 dolfiny.interpolation.interpolate(w_, w__)
 dolfiny.interpolation.interpolate(r_, r__)
-u = u__.vector[x0_idx]
-w = w__.vector[x0_idx]
-r = r__.vector[x0_idx]
+u__ = u__.vector[x0_idx]
+w__ = w__.vector[x0_idx]
+r__ = r__.vector[x0_idx]
 
+# Plot
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 fig, ax1 = plt.subplots()
 ax1.plot(x0[:, 0], x0[:, 2], '.-', color='tab:gray', label='undeformed')
-ax1.plot(x0[:, 0] + u, x0[:, 2] + w, '.-', color='tab:red', label='deformed')
+ax1.plot(x0[:, 0] + u__, x0[:, 2] + w__, '.-', color='tab:red', label='deformed')
 ax1.set_xlabel(r'coordinate $x$, displacement $[m]$', fontsize=12)
 ax1.set_ylabel(r'coordinate $z$, displacement $[m]$', fontsize=12)
-ax1.plot(x0[:, 0], u, '-', color='tab:green', label='$u(x)$')
-ax1.plot(x0[:, 0], w, '-', color='tab:blue', label='$w(x)$')
+# ax1.plot(x0[:, 0], u__, '-', color='tab:green', label='$u(x)$')
+# ax1.plot(x0[:, 0], w__, '-', color='tab:blue', label='$w(x)$')
 ax1.grid(linewidth=0.5)
 ax1.set_title(r'geometrically exact beam (displacement-based)', fontsize=12)
 ax1.legend(loc='upper left')
 ax1.invert_yaxis()
 ax1.axis('equal')
 # ax2 = ax1.twinx()
-# ax2.plot(x0[:, 0], r/(2*np.pi), '.', color='tab:brown', label='$r(x)$')
+# ax2.plot(x0[:, 0], r__/(2*np.pi), '.', color='tab:brown', label='$r(x)$')
 # ax2.yaxis.tick_right()
 # ax2.yaxis.set_label_position("right")
 # ax2.set_ylabel(r"normalised rotation $\psi/2\pi$ $[-]$", fontsize=12)
 # ax2.invert_yaxis()
 fig.tight_layout()
 fig.savefig(name + '_result.pdf')
-
-# # Plot extracted point-wise solution
-# import matplotlib
-# matplotlib.use('Agg')
-# import matplotlib.pyplot as plt
-# fig, ax1 = plt.subplots()
-# ax1.plot(x0[:,0], x0[:,2], '.', color='tab:brown', label='undeformed')
-# ax1.plot(x + u, 0 + w, '-', color='tab:grey', label='deformed')
-# ax1.plot(x, u, '.-', color='tab:green', label='$u(x)$')
-# ax1.plot(x, w, '.-', color='tab:red', label='$w(x)$')
-# ax1.plot(x, r, '.-', color='tab:blue', label='$r(x)$')
-# ax1.set_xlabel(r'coordinate $x$ $[m]$', fontsize=12)
-# ax1.set_ylabel(r'coordinate $z$ $[m]$', fontsize=12)
-# ax1.grid(linewidth=0.5)
-# ax1.set_title(r'geometrically exact beam (displacement-based)', fontsize=12)
-# ax1.legend(loc='upper left')
-# ax1.invert_yaxis()
-# ax1.axis('equal')
-# fig.tight_layout()
-# fig.savefig(name + '_result.pdf')
