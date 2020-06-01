@@ -156,8 +156,13 @@ k = κ  # + ε * (κ + κ0)
 δg = ufl.algorithms.apply_derivatives.apply_derivatives(δg)
 δk = ufl.algorithms.apply_derivatives.apply_derivatives(δk)
 
+# Constitutive relations (Saint-Venant Kirchhoff)
+N = EA * e
+T = GA * g
+M = EI * k
+
 # Weak form: components (as one-form)
-F = - δe * EA * e * dx - δg * GA * g * dx - δk * EI * k * dx \
+F = - δe * N * dx - δg * T * dx - δk * M * dx \
     + λ * (δu * p_1 * dx + δw * p_3 * dx + δr * m_2 * dx) \
     + λ * (δu * F_1 * ds(end) + δw * F_3 * ds(end) + δr * M_2 * ds(end))
 
