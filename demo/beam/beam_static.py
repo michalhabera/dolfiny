@@ -141,13 +141,19 @@ GRAD = lambda u: detJ0 * ufl.dot(iJ0[0, :], ufl.grad(u))  # noqa: E731
 κ0 = dolfinx.Constant(mesh, -2 * np.pi)
 
 # Green-Lagrange strains (prescribed)
-λp = dolfinx.Constant(mesh, 2 / 5)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2, 4
-ep = μ * 1 / 2 * (λp**2 - λ0**2) * 0
+λsp = dolfinx.Constant(mesh, 2 / 5)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2, 4
+ep = μ * 1 / 2 * (λsp**2 - λ0**2) * 0  # prescribed axial strain
+
+λξp = dolfinx.Constant(mesh, 1 / 2)  # prescribed shear stretch: 1/4, 1/2
+gp = μ * λξp * 1  # prescribed shear strain
+
+κp = dolfinx.Constant(mesh, -2 * np.pi)  # prescribed curvature: κ0, ...
+kp = μ * κp * 0  # prescribed bending strain
 
 # Green-Lagrange strains
 e = 1 / 2 * (λs**2 + λξ**2 - λ0**2) - ep
-g = λξ
-k = λs * κ + (λs - λ0) * κ0
+g = λξ - gp
+k = λs * κ + (λs - λ0) * κ0 - kp
 
 δe = ufl.derivative(e, u, δu) + ufl.derivative(e, w, δw) + ufl.derivative(e, r, δr)
 δg = ufl.derivative(g, u, δu) + ufl.derivative(g, w, δw) + ufl.derivative(g, r, δr)
