@@ -60,14 +60,14 @@ EA = dolfinx.Constant(mesh, E * A)  # axial stiffness
 EI = dolfinx.Constant(mesh, E * I)  # bending stiffness
 GA = dolfinx.Constant(mesh, G * A)  # shear stiffness
 
-λ = dolfinx.Constant(mesh, 1.0)  # load factor
+μ = dolfinx.Constant(mesh, 1.0)  # load factor
 
 p_1 = dolfinx.Constant(mesh, 1.0 * 0)
 p_3 = dolfinx.Constant(mesh, 1.0 * 0)
 m_2 = dolfinx.Constant(mesh, 1.0 * 0)
-F_1 = dolfinx.Constant(mesh, (2 * np.pi / L)**2 * EI.value * 0)
-F_3 = dolfinx.Constant(mesh, 1.e1 * 0)
-M_2 = dolfinx.Constant(mesh, 2 * np.pi / L * EI.value * 1)
+F_1 = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)
+F_3 = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)
+M_2 = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 0)
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)  # , metadata={"quadrature_degree": 4})
@@ -127,22 +127,27 @@ print(f"κ0(end) = {dolfinx.fem.assemble_scalar(κ0 * ds(end)):7.5f}")
 # DERIVATIVE with respect to straight reference configuration parameterised by arc-length
 GRAD = lambda u: detJ0 * ufl.dot(iJ0[0, :], ufl.grad(u))  # noqa: E731
 
-print(f"arclength(beg) = {dolfinx.fem.assemble_scalar(ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0))) * ds(beg)):7.5f}")
-print(f"arclength(end) = {dolfinx.fem.assemble_scalar(ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0))) * ds(end)):7.5f}")
+# Stretches at the principal axis
+λs = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.cos(r) + \
+     (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.sin(r)  # noqa: E201
+λξ = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.sin(r) - \
+     (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.cos(r)  # noqa: E201
 
-# Axial strain
-ε = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.cos(r) + \
-    (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.sin(r) - 1.0  # noqa: E201
-# Shear strain
-γ = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.sin(r) - \
-    (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.cos(r)        # noqa: E201
-# Bending strain
+λ0 = ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0)))  # undeformed stretch (= 1)
+# λ  = ufl.sqrt(λs**2 + λξ**2)  # deformed stretch
+
+# Curvature
 κ = -GRAD(r)
+κ0 = dolfinx.Constant(mesh, -2 * np.pi)
+
+# Green-Lagrange strains (prescribed)
+λp = dolfinx.Constant(mesh, 2 / 5)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2, 4
+ep = μ * 1 / 2 * (λp**2 - λ0**2) * 0
 
 # Green-Lagrange strains
-e = 1 / 2 * ((1 + ε)**2 + γ**2 - 1)
-g = γ
-k = κ  # + ε * (κ + κ0)
+e = 1 / 2 * (λs**2 + λξ**2 - λ0**2) - ep
+g = λξ
+k = λs * κ + (λs - λ0) * κ0
 
 δe = ufl.derivative(e, u, δu) + ufl.derivative(e, w, δw) + ufl.derivative(e, r, δr)
 δg = ufl.derivative(g, u, δu) + ufl.derivative(g, w, δw) + ufl.derivative(g, r, δr)
@@ -163,8 +168,8 @@ M = EI * k
 
 # Weak form: components (as one-form)
 F = - δe * N * dx - δg * T * dx - δk * M * dx \
-    + λ * (δu * p_1 * dx + δw * p_3 * dx + δr * m_2 * dx) \
-    + λ * (δu * F_1 * ds(end) + δw * F_3 * ds(end) + δr * M_2 * ds(end))
+    + μ * (δu * p_1 * dx + δw * p_3 * dx + δr * m_2 * dx) \
+    + μ * (δu * F_1 * ds(end) + δw * F_3 * ds(end) + δr * M_2 * ds(end))
 
 # LINEARISATION
 # # Generate 1st order Taylor series of form at given state (u0, w0, r0)
@@ -194,7 +199,8 @@ opts = PETSc.Options()
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_rtol"] = 1.0e-08
+opts["snes_rtol"] = 1.0e-05
+opts["snes_stol"] = 1.0e-06
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
@@ -215,10 +221,10 @@ w_left = dolfinx.Function(W)
 r_left = dolfinx.Function(R)
 
 # Process load steps
-for factor in np.linspace(0, 1, num=5 + 1):
+for factor in np.linspace(0, 1, num=200 + 1):
 
     # Set current time
-    λ.value = factor
+    μ.value = factor
 
     # Set/update boundary conditions
     problem.bcs = [
@@ -227,13 +233,23 @@ for factor in np.linspace(0, 1, num=5 + 1):
         dolfinx.fem.DirichletBC(r_left, left_dofs_R),  # rota2 left
     ]
 
-    dolfiny.utils.pprint(f"\n+++ Processing load factor = {λ.value:7.3f}")
+    dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")
 
     # Solve nonlinear problem
     m = problem.solve()
 
     # Assert convergence of nonlinear solver
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+
+    print(f"L0 = {dolfinx.fem.assemble_scalar(ufl.sqrt(λ0**2) * dx):+7.5f}")
+    print(f"L  = {dolfinx.fem.assemble_scalar(ufl.sqrt(λs**2 + λξ**2) * dx):+7.5f}")
+
+    print(f"ep = {dolfinx.fem.assemble_scalar(ep * dx):+7.5f}")
+    print(f"e  = {dolfinx.fem.assemble_scalar(e * dx):+7.5f}")
+    print(f"g  = {dolfinx.fem.assemble_scalar(g * dx):+7.5f}")
+    print(f"k  = {dolfinx.fem.assemble_scalar(k * dx):+7.5f}")
+    print(f"κ  = {dolfinx.fem.assemble_scalar(κ * dx):+7.5f}")
+    print(f"κ0 = {dolfinx.fem.assemble_scalar(κ0 * dx):+7.5f}")
 
 # Extract solution
 u_, w_, r_ = m
@@ -275,7 +291,9 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 fig, ax1 = plt.subplots()
 ax1.plot(x0[:, 0], x0[:, 2], '.-', color='tab:gray', label='undeformed')
+ax1.plot(x0[-1, 0], x0[-1, 2], 'o', color='tab:gray')  # undeformed: mark end
 ax1.plot(x0[:, 0] + u__, x0[:, 2] + w__, '.-', color='tab:red', label='deformed')
+ax1.plot(x0[-1, 0] + u__[-1], x0[-1, 2] + w__[-1], 'o', color='tab:blue')  # deformed: mark end
 ax1.set_xlabel(r'coordinate $x$, displacement $[m]$', fontsize=12)
 ax1.set_ylabel(r'coordinate $z$, displacement $[m]$', fontsize=12)
 # ax1.plot(x0[:, 0], u__, '-', color='tab:green', label='$u(x)$')
