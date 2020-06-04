@@ -21,7 +21,6 @@ skip_in_parallel = pytest.mark.skipif(
     reason="This test should only be run in serial.")
 
 
-@skip_in_parallel
 def test_coupled_poisson():
     # dS integrals in parallel require shared_facet ghost mode
     if MPI.COMM_WORLD.size == 1:
@@ -78,9 +77,9 @@ def test_coupled_poisson():
     bcdofsU1 = dolfinx.fem.locate_dofs_geometrical(U1, lambda x: numpy.isclose(x[0], 1.0))
     bcs = [dolfinx.fem.DirichletBC(u0_bc, bcdofsU0), dolfinx.fem.DirichletBC(u1_bc, bcdofsU1)]
 
-    rdofsU0 = dolfinx.fem.locate_dofs_topological(U0, mesh.topology.dim, left_half)
-    rdofsU1 = dolfinx.fem.locate_dofs_topological(U1, mesh.topology.dim, right_half)
-    rdofsL = dolfinx.fem.locate_dofs_topological(L, mesh.topology.dim - 1, interface_facets)
+    rdofsU0 = dolfinx.fem.locate_dofs_topological(U0, mesh.topology.dim, left_half, remote=False)[:, 0]
+    rdofsU1 = dolfinx.fem.locate_dofs_topological(U1, mesh.topology.dim, right_half, remote=False)[:, 0]
+    rdofsL = dolfinx.fem.locate_dofs_topological(L, mesh.topology.dim - 1, interface_facets, remote=False)[:, 0]
 
     r = dolfiny.restriction.Restriction([U0, U1, L], [rdofsU0, rdofsU1, rdofsL])
 
@@ -93,6 +92,9 @@ def test_coupled_poisson():
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
+
+    opts_glob = PETSc.Options()
+    opts_glob['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
         [F0, F1, F2], [w0, w1, lam], bcs=bcs, opts=opts, restriction=r, prefix="poisson")
@@ -115,7 +117,6 @@ def test_coupled_poisson():
         assert(numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
 
 
-@skip_in_parallel
 def test_sloped_stokes():
 
     path = os.path.dirname(os.path.realpath(__file__))
@@ -176,7 +177,7 @@ def test_sloped_stokes():
     bcs.append(dolfinx.fem.DirichletBC(u_bc_top, bcdofstopV))
 
     r_facets = numpy.where(boundaries.values == 1)[0]
-    rdofsL = dolfinx.fem.locate_dofs_topological(L, 1, boundaries.indices[r_facets])
+    rdofsL = dolfinx.fem.locate_dofs_topological(L, 1, boundaries.indices[r_facets])[:, 0]
 
     Vsize = V.dofmap.index_map.block_size * (V.dofmap.index_map.size_local)
     Psize = P.dofmap.index_map.block_size * (P.dofmap.index_map.size_local)
@@ -195,7 +196,9 @@ def test_sloped_stokes():
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
-    opts['mat_mumps_icntl_24'] = 1
+
+    opts_glob = PETSc.Options()
+    opts_glob['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
         [F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r, prefix="stokes")
@@ -306,7 +309,7 @@ def test_pipes_stokes():
     bcs.append(dolfinx.fem.DirichletBC(u_up, updofsV))
     bcs.append(dolfinx.fem.DirichletBC(p_bc, bcdofsP))
 
-    lagrangedofsL = dolfiny.mesh.locate_dofs_topological(L, mt1, keys1["bottom"])
+    lagrangedofsL = dolfiny.mesh.locate_dofs_topological(L, mt1, keys1["bottom"])[:, 0]
 
     Vsize = V.dofmap.index_map.block_size * V.dofmap.index_map.size_local
     Psize = P.dofmap.index_map.block_size * P.dofmap.index_map.size_local

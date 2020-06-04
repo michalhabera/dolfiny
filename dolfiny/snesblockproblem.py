@@ -229,7 +229,9 @@ class SNESBlockProblem():
         offset = 0
         for i, ui in enumerate(self.u):
             if self.restriction is not None:
-                size_local = self.restriction.bglobal_dofs[i].shape[0]
+                # In the restriction case local size if number of
+                # owned restricted dofs
+                size_local = self.restriction.bglobal_dofs_vec[i].shape[0]
             else:
                 size_local = ui.vector.getLocalSize()
 
