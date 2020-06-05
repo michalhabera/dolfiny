@@ -99,7 +99,13 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         cell_types, cell_tags, cell_node_tags = gmsh_model.mesh.getElements(dim=tdim)
 
         unused_nodes = numpy.setdiff1d(node_tags, cell_node_tags)
-        unused_nodes_indices = numpy.where(node_tags == unused_nodes)[0]
+        unused_nodes_indices = []
+
+        # FIXME: This would be expensive for many unused nodes case
+        for unused_node in unused_nodes:
+            unused_nodes_indices.append(numpy.where(node_tags == unused_node)[0])
+
+        unused_nodes_indices = numpy.asarray(unused_nodes_indices)
 
         # Every node has 3 components in gmsh
         dim = 3
@@ -197,7 +203,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
                 # Shift 1-based numbering and apply node map
                 pgnode_tags[0] = nmap[pgnode_tags[0] - 1]
                 _mt_cells.append(pgnode_tags[0].reshape(-1, pgnum_nodes))
-                _mt_values.append(numpy.full(_mt_cells[-1].shape[0], pgtag))
+                _mt_values.append(numpy.full(_mt_cells[-1].shape[0], pgtag, dtype=numpy.int32))
 
             # Stack all topology and value data. This prepares data
             # for one MVC per (dim, physical tag) instead of multiple MVCs
