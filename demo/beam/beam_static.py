@@ -23,7 +23,7 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 L = 1.0  # beam length
-N = 3 * 4  # number of nodes
+N = 5 * 4  # number of nodes
 p = 3  # physics: polynomial order
 q = 3  # geometry: polynomial order
 
@@ -55,7 +55,7 @@ end = interfaces_keys["end"]
 
 # Structure: section geometry
 b = 1.0  # [m]
-h = L / 200  # [m]
+h = L / 500  # [m]
 A = b * h  # [m^2]
 I = b * h**3 / 12  # [m^4]  # noqa: E741
 
@@ -78,12 +78,12 @@ GA = dolfinx.Constant(mesh, G * A * scf)  # shear stiffness
 p_x = dolfinx.Constant(mesh, 1.0 * 0)
 p_z = dolfinx.Constant(mesh, 1.0 * 0)
 m_y = dolfinx.Constant(mesh, 1.0 * 0)
-F_x = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)
-F_z = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)
-M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 2)
-λsp = dolfinx.Constant(mesh, 1.0)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2, 4
+F_x = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4, 8
+F_z = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 2, 4, 8
+M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 2)  # prescribed M_y: 1, 2
+λsp = dolfinx.Constant(mesh, 1)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
 λξp = dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
-κηp = dolfinx.Constant(mesh, -2 * np.pi * 0.0)  # prescribed curvature: κ0, ...
+κηp = dolfinx.Constant(mesh, -2 * np.pi * 0)  # prescribed curvature: κ0, ...
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)  # , metadata={"quadrature_degree": 4})
@@ -201,9 +201,10 @@ opts = PETSc.Options("beam")
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_rtol"] = 1.0e-08
+opts["snes_atol"] = 1.0e-08
+opts["snes_rtol"] = 1.0e-07
 opts["snes_stol"] = 1.0e-06
-opts["snes_max_it"] = 12
+opts["snes_max_it"] = 60
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
@@ -228,7 +229,7 @@ r_beg = dolfinx.Function(R)
 plotter = pp.Plotter(name)
 
 # Process load steps
-for factor in np.linspace(0, 1, num=20 + 1):
+for factor in np.linspace(0, 1, num=40 + 1):
 
     # Set current time
     μ.value = factor
