@@ -97,7 +97,7 @@ def test_coupled_poisson():
     opts_glob['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        [F0, F1, F2], [w0, w1, lam], bcs=bcs, opts=opts, restriction=r, prefix="poisson")
+        [F0, F1, F2], [w0, w1, lam], bcs=bcs, restriction=r, prefix="poisson")
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -201,7 +201,7 @@ def test_sloped_stokes():
     opts_glob['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        [F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r, prefix="stokes")
+        [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="stokes")
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -333,7 +333,7 @@ def test_pipes_stokes():
     opts_global['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        [F0, F1, F2], [u, p, lam], bcs=bcs, opts=opts, restriction=r, prefix="pipes")
+        [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="pipes")
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
