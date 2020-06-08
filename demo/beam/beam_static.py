@@ -226,7 +226,7 @@ w_beg = dolfinx.Function(W)
 r_beg = dolfinx.Function(R)
 
 # Create custom plotter (via matplotlib)
-plotter = pp.Plotter(name)
+plotter = pp.Plotter(name + ".pdf")
 
 # Process load steps
 for factor in np.linspace(0, 1, num=40 + 1):
