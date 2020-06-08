@@ -10,7 +10,7 @@ class Plotter():
         import matplotlib.pyplot
 
         fig, ax1 = matplotlib.pyplot.subplots()
-        ax1.set_title(r'finite deformation beam (displacement-based)', fontsize=12)
+        ax1.set_title(r'finite strain beam (displacement-based)', fontsize=12)
         ax1.set_xlabel(r'coordinate $x$, displacement $[m]$', fontsize=12)
         ax1.set_ylabel(r'coordinate $z$, displacement $[m]$', fontsize=12)
         ax1.invert_yaxis()
