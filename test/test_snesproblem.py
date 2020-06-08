@@ -66,8 +66,7 @@ def test_block(V1, V2, squaremesh_5, nest):
 
     opts = PETSc.Options("block")
 
-    opts.setValue('snes_type', 'newtonls')
-    opts.setValue('snes_linesearch_type', 'basic')
+    opts.setValue('snes_type', 'newtontr')
     opts.setValue('snes_rtol', 1.0e-08)
     opts.setValue('snes_max_it', 12)
 
