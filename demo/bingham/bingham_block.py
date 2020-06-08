@@ -188,7 +188,7 @@ ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
-opts = PETSc.Options()
+opts = PETSc.Options("bingham")
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -197,11 +197,13 @@ opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
-opts["mat_mumps_icntl_14"] = 500
-opts["mat_mumps_icntl_24"] = 1
+
+opts_global = PETSc.Options()
+opts_global["mat_mumps_icntl_14"] = 500
+opts_global["mat_mumps_icntl_24"] = 1
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="bingham")
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 ring_outer_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_outer)

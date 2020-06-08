@@ -7,7 +7,7 @@ from petsc4py import PETSc
 
 class Restriction():
     def __init__(self, function_spaces: typing.List[dolfinx.FunctionSpace],
-                 blocal_dofs: typing.List[numpy.ndarray], comm=None):
+                 blocal_dofs: typing.List[numpy.ndarray]):
         """Restriction of a problem to subset of degree-of-freedom indices.
 
         Parameters
@@ -23,21 +23,17 @@ class Restriction():
         different parallel layout every time restriction is called.
 
         """
-        self.function_space = function_spaces
+        self.function_spaces = function_spaces
         self.blocal_dofs = blocal_dofs
+        self.comm = self.function_spaces[0].mesh.mpi_comm()
 
-        if comm is None:
-            self.comm = self.function_space[0].mesh.mpi_comm
-        else:
-            self.comm = comm
+        self.bglobal_dofs_vec = []
+        self.bglobal_dofs_mat = []
 
-        self.bglobal_dofs = []
-        self.bglobal_dofs_ng = []
-
-        self.boffsets = [0]
-        self.boffsets_ng = [0]
-        offset = 0
-        offset_ng = 0
+        self.boffsets_mat = [0]
+        self.boffsets_vec = [0]
+        offset_mat = 0
+        offset_vec = 0
 
         for i, space in enumerate(function_spaces):
 
@@ -46,32 +42,31 @@ class Restriction():
             size_local = space.dofmap.index_map.size_local
             num_ghosts = space.dofmap.index_map.num_ghosts
 
-            # Compute block-offsets in the non-restricted function space
-            # _ng version for offsets with ghosts excluded
-            self.boffsets.append(self.boffsets[-1] + bs * (size_local + num_ghosts))
-            self.boffsets_ng.append(self.boffsets_ng[-1] + bs * size_local)
-            offset += self.boffsets[-1]
-            offset_ng += self.boffsets_ng[-1]
+            self.boffsets_mat.append(self.boffsets_mat[-1] + bs * (size_local + num_ghosts))
+            offset_mat += self.boffsets_mat[-1]
 
-            # Compute block-global dof indices in non-restricted function space
-            # _ng version for offsets with ghosts excluded
+            self.boffsets_vec.append(self.boffsets_vec[-1] + bs * size_local)
+            offset_vec += self.boffsets_vec[-1]
+
             dofs = self.blocal_dofs[i].copy()
             # Remove any ghost dofs
             dofs = dofs[dofs < bs * size_local]
-            dofs += self.boffsets[i]
-            self.bglobal_dofs.append(dofs)
+            dofs += self.boffsets_mat[i]
+            self.bglobal_dofs_mat.append(dofs)
 
-            dofs_ng = self.blocal_dofs[i].copy()
-            # Remove any ghost dofs
-            dofs_ng = dofs_ng[dofs_ng < bs * size_local]
-            dofs_ng += self.boffsets_ng[i]
-            self.bglobal_dofs_ng.append(dofs_ng)
+            dofs = self.blocal_dofs[i].copy()
+            dofs = dofs[dofs < bs * size_local]
+            dofs += self.boffsets_vec[i]
+            self.bglobal_dofs_vec.append(dofs)
 
-        self.bglobal_dof = numpy.hstack(self.bglobal_dofs)
-        self.bglobal_dof_ng = numpy.hstack(self.bglobal_dofs_ng)
+        self.bglobal_dofs_vec_stacked = numpy.hstack(self.bglobal_dofs_vec)
+        self.bglobal_dofs_mat_stacked = numpy.hstack(self.bglobal_dofs_mat)
 
     def restrict_matrix(self, A: PETSc.Mat):
-        local_isrow = PETSc.IS(self.comm).createBlock(1, self.bglobal_dof)
+        # Fetching IS only for owned dofs
+        # Ghost dofs would get the same global index which would result in
+        # duplicate global indices in global IS
+        local_isrow = PETSc.IS(self.comm).createGeneral(self.bglobal_dofs_mat_stacked)
         global_isrow = A.getLGMap()[0].applyIS(local_isrow)
 
         subA = A.createSubMatrix(isrow=global_isrow, iscol=global_isrow)
@@ -80,21 +75,19 @@ class Restriction():
         return subA
 
     def restrict_vector(self, x: PETSc.Vec):
-        local_isrow = PETSc.IS(self.comm).createBlock(1, self.bglobal_dof_ng)
-        global_isrow = x.getLGMap().applyIS(local_isrow)
+        arr = x.array[self.bglobal_dofs_vec_stacked]
+        subx = PETSc.Vec().createWithArray(arr)
 
-        subx = x.getSubVector(global_isrow)
         return subx
 
     def update_functions(self, f: typing.List, rx: PETSc.Vec):
         """Update Functions using restricted DOF indices."""
         rdof_offset = 0
         for i, fi in enumerate(f):
-            num_rdofs = self.bglobal_dofs_ng[i].shape[0]
+            num_rdofs = self.bglobal_dofs_vec[i].shape[0]
 
-            with fi.vector.localForm() as loc:
-                loc.array[self.bglobal_dofs_ng[i] - self.boffsets_ng[i]] = \
-                    rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
+            fi.vector.array[self.bglobal_dofs_vec[i] - self.boffsets_vec[i]] = \
+                rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
 
             fi.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
             rdof_offset += num_rdofs

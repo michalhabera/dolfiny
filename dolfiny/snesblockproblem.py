@@ -12,7 +12,7 @@ from petsc4py import PETSc
 
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
-                 opts=None, nest=False, restriction=None, prefix=None, comm=None):
+                 nest=False, restriction=None, prefix=None):
         """SNES problem and solver wrapper
 
         Parameters
@@ -23,15 +23,11 @@ class SNESBlockProblem():
             Current solution functions
         bcs
         J_form
-        opts
-            PETSc options context
         nest: False
             True for 'matnest' data layout, False for 'aij'
         restriction: optional
             ``Restriction`` class used to provide information about degree-of-freedom
             indices for which this solver should solve.
-        comm: optional
-            MPI communicator
 
         """
         self.F_form = F_form
@@ -46,10 +42,7 @@ class SNESBlockProblem():
         if not isinstance(self.u[0], dolfinx.Function):
             raise RuntimeError("Provided solution function not of type dolfinx.Function!")
 
-        if comm is None:
-            self.comm = self.u[0].function_space.mesh.mpi_comm()
-        else:
-            self.comm = comm
+        self.comm = self.u[0].function_space.mesh.mpi_comm()
 
         if J_form is None:
             self.J_form = [[None for i in range(len(self.u))] for j in range(len(self.u))]
@@ -66,7 +59,6 @@ class SNESBlockProblem():
             self.J_form = J_form
 
         self.bcs = bcs
-        self.opts = opts
         self.restriction = restriction
 
         self.solution = []
@@ -123,11 +115,7 @@ class SNESBlockProblem():
         self.snes.setOptionsPrefix(prefix)
         self.snes.setFromOptions()
 
-    def _F_block(self, snes, x, F):
-        with self.F.localForm() as f_local:
-            f_local.set(0.0)
-
-        # Update solution
+    def update_functions(self, x):
         if self.restriction is not None:
             self.restriction.update_functions(self.u, x)
             functions_to_vec(self.u, self.x)
@@ -136,10 +124,19 @@ class SNESBlockProblem():
             x.copy(self.x)
             self.x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
+    def _F_block(self, snes, x, F):
+        with self.F.localForm() as f_local:
+            f_local.set(0.0)
+
+        self.update_functions(x)
+
         dolfinx.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
 
         if self.restriction is not None:
             self.restriction.restrict_vector(self.F).copy(self.rF)
+            self.rF.copy(F)
+        else:
+            self.F.copy(F)
 
     def _F_nest(self, snes, x, F):
         vec_to_functions(x, self.u)
@@ -161,8 +158,9 @@ class SNESBlockProblem():
         # Must assemble F here in the case of nest matrices
         F.assemble()
 
-    def _J_block(self, snes, u, J, P):
+    def _J_block(self, snes, x, J, P):
         self.J.zeroEntries()
+        self.update_functions(x)
 
         dolfinx.fem.assemble_matrix_block(self.J, self.J_form, self.bcs, diagonal=1.0)
         self.J.assemble()
@@ -242,7 +240,9 @@ class SNESBlockProblem():
         offset = 0
         for i, ui in enumerate(self.u):
             if self.restriction is not None:
-                size_local = self.restriction.bglobal_dofs[i].shape[0]
+                # In the restriction case local size if number of
+                # owned restricted dofs
+                size_local = self.restriction.bglobal_dofs_vec[i].shape[0]
             else:
                 size_local = ui.vector.getLocalSize()
 

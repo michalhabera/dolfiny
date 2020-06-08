@@ -16,7 +16,7 @@ RUN git clone --branch master https://github.com/FEniCS/dolfinx.git \
     && \
 	 mkdir -p build && cd build && cmake -DCMAKE_BUILD_TYPE=$DOLFINY_BUILD_TYPE ../cpp/ \
     && \
-	 make -j3 install \
+	 make -j`nproc` install \
 	 && \
 	 cd /
 

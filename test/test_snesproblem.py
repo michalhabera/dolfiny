@@ -35,7 +35,7 @@ def test_monolithic(V1, V2, squaremesh_5):
     opts.setValue('pc_type', 'lu')
     opts.setValue('pc_factor_mat_solver_type', 'mumps')
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F], [u], opts=opts, prefix="monolithic")
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F], [u], prefix="monolithic")
     sol, = problem.solve()
 
     u0, u1 = sol.split()
@@ -66,8 +66,7 @@ def test_block(V1, V2, squaremesh_5, nest):
 
     opts = PETSc.Options("block")
 
-    opts.setValue('snes_type', 'newtonls')
-    opts.setValue('snes_linesearch_type', 'basic')
+    opts.setValue('snes_type', 'newtontr')
     opts.setValue('snes_rtol', 1.0e-08)
     opts.setValue('snes_max_it', 12)
 
@@ -81,7 +80,7 @@ def test_block(V1, V2, squaremesh_5, nest):
         opts.setValue('pc_type', 'lu')
         opts.setValue('pc_factor_mat_solver_type', 'mumps')
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem(F, u, opts=opts, nest=nest, prefix="block")
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(F, u, nest=nest, prefix="block")
     sol = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
