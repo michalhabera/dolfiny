@@ -7,7 +7,7 @@ from petsc4py import PETSc
 
 class Restriction():
     def __init__(self, function_spaces: typing.List[dolfinx.FunctionSpace],
-                 blocal_dofs: typing.List[numpy.ndarray], comm=None):
+                 blocal_dofs: typing.List[numpy.ndarray]):
         """Restriction of a problem to subset of degree-of-freedom indices.
 
         Parameters
@@ -25,11 +25,7 @@ class Restriction():
         """
         self.function_spaces = function_spaces
         self.blocal_dofs = blocal_dofs
-
-        if comm is None:
-            self.comm = self.function_spaces[0].mesh.mpi_comm()
-        else:
-            self.comm = comm
+        self.comm = self.function_spaces[0].mesh.mpi_comm()
 
         self.bglobal_dofs_vec = []
         self.bglobal_dofs_mat = []
