@@ -288,17 +288,19 @@ for factor in np.linspace(0, 1, num=20 + 1):
     # print(f"en(g) = {dolfinx.fem.assemble_scalar(0.5 * g * T * dx):+7.5f}")
     # print(f"en(k) = {dolfinx.fem.assemble_scalar(0.5 * k * M * dx):+7.5f}")
 
-    x0, (ui, wi, ri) = interpolate_on_mesh(mesh, q, m)
+    x0, (ui, wi, ri) = interpolate_on_mesh(mesh, q, m)  # FIXME: need data from all processors on rank 0
 
-    color = (0.5 + μ.value * 0.5, 0.5 - μ.value * 0.5, 0.5 - μ.value * 0.5)
-    endco = (0.5 - μ.value * 0.5, 0.5 - μ.value * 0.5, 0.5 + μ.value * 0.5)
-    label = 'undeformed' if μ.value == 0.0 else 'deformed' if μ.value == 1.0 else None
+    if comm.rank == 0:
 
-    ax1.plot(x0[:, 0] + ui, x0[:, 2] + wi, '.-', linewidth=0.75, markersize=2.0, color=color, label=label)
-    ax1.plot(x0[-1, 0] + ui[-1], x0[-1, 2] + wi[-1], 'o', markersize=3.0, color=endco)  # mark end
+        color = (0.5 + μ.value * 0.5, 0.5 - μ.value * 0.5, 0.5 - μ.value * 0.5)
+        endco = (0.5 - μ.value * 0.5, 0.5 - μ.value * 0.5, 0.5 + μ.value * 0.5)
+        label = 'undeformed' if μ.value == 0.0 else 'deformed' if μ.value == 1.0 else None
 
-    ax1.legend(loc='upper left')
-    fig.savefig(name + '_result.pdf')
+        ax1.plot(x0[:, 0] + ui, x0[:, 2] + wi, '.-', linewidth=0.75, markersize=2.0, color=color, label=label)
+        ax1.plot(x0[-1, 0] + ui[-1], x0[-1, 2] + wi[-1], 'o', markersize=3.0, color=endco)  # mark end
+        ax1.legend(loc='upper left')
+
+        fig.savefig(name + '_result.pdf')
 
 # Extract solution
 u_, w_, r_ = m
