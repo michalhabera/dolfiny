@@ -15,34 +15,7 @@ import dolfiny.expression
 import dolfiny.snesblockproblem
 
 import mesh_curve3d_gmshapi as mg
-
-
-# POSTPROCESSING
-def interpolate_on_mesh(mesh, q, u):
-
-    # Extract mesh geometry nodal coordinates
-    dm = mesh.geometry.dofmap
-    oq = [0] + [*range(2, q + 1)] + [1]  # reorder lineX nodes: all ducks in a row...
-    x0_idx = [[dm.links(i).tolist()[k] for k in oq] for i in range(dm.num_nodes)]
-    x0_idx = [item for sublist in x0_idx for item in sublist]
-    x0 = mesh.geometry.x[x0_idx]
-
-    # Interpolate solution at mesh geometry nodes
-    import dolfiny.interpolation
-    Q = dolfinx.FunctionSpace(mesh, ("P", q))
-    uf = dolfinx.Function(Q)
-
-    if isinstance(u, list):
-        ui = []
-        for u_ in u:
-            dolfiny.interpolation.interpolate(u_, uf)
-            ui.append(uf.vector[x0_idx])
-    else:
-        dolfiny.interpolation.interpolate(u, uf)
-        ui = uf.vector[x0_idx]
-
-    return x0, ui
-
+import postprocess_matplotlib as pp
 
 # Basic settings
 name = "beam_static"
@@ -224,7 +197,7 @@ ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 # ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
-opts = PETSc.Options()
+opts = PETSc.Options("beam")
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -234,11 +207,13 @@ opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
-opts["mat_mumps_icntl_14"] = 500
-opts["mat_mumps_icntl_24"] = 1
+
+opts_global = PETSc.Options()
+opts_global["mat_mumps_icntl_14"] = 500
+opts_global["mat_mumps_icntl_24"] = 1
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, opts=opts)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="beam")
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 beg_dofs_U = dolfiny.mesh.locate_dofs_topological(U, interfaces, beg)
@@ -249,16 +224,8 @@ u_beg = dolfinx.Function(U)
 w_beg = dolfinx.Function(W)
 r_beg = dolfinx.Function(R)
 
-import matplotlib.pyplot
-fig, ax1 = matplotlib.pyplot.subplots()
-ax1.set_title(r'finite deformation beam (displacement-based)', fontsize=12)
-ax1.set_xlabel(r'coordinate $x$, displacement $[m]$', fontsize=12)
-ax1.set_ylabel(r'coordinate $z$, displacement $[m]$', fontsize=12)
-ax1.invert_yaxis()
-ax1.axis('equal')
-ax1.grid(linewidth=0.25)
-
-fig.tight_layout()
+# Create custom plotter (via matplotlib)
+plotter = pp.Plotter(name)
 
 # Process load steps
 for factor in np.linspace(0, 1, num=20 + 1):
@@ -281,33 +248,11 @@ for factor in np.linspace(0, 1, num=20 + 1):
     # Assert convergence of nonlinear solver
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
-    # print(f"L0 = {dolfinx.fem.assemble_scalar(ufl.sqrt(λ0**2) * dx):+7.5f}")
-    # print(f"L  = {dolfinx.fem.assemble_scalar(ufl.sqrt(λs**2 + λξ**2) * dx):+7.5f}")
-
-    # print(f"en(e) = {dolfinx.fem.assemble_scalar(0.5 * e * N * dx):+7.5f}")
-    # print(f"en(g) = {dolfinx.fem.assemble_scalar(0.5 * g * T * dx):+7.5f}")
-    # print(f"en(k) = {dolfinx.fem.assemble_scalar(0.5 * k * M * dx):+7.5f}")
-
-    x0, (ui, wi, ri) = interpolate_on_mesh(mesh, q, m)  # FIXME: need data from all processors on rank 0
-
-    if comm.rank == 0:
-
-        color = (0.5 + μ.value * 0.5, 0.5 - μ.value * 0.5, 0.5 - μ.value * 0.5)
-        endco = (0.5 - μ.value * 0.5, 0.5 - μ.value * 0.5, 0.5 + μ.value * 0.5)
-        label = 'undeformed' if μ.value == 0.0 else 'deformed' if μ.value == 1.0 else None
-
-        ax1.plot(x0[:, 0] + ui, x0[:, 2] + wi, '.-', linewidth=0.75, markersize=2.0, color=color, label=label)
-        ax1.plot(x0[-1, 0] + ui[-1], x0[-1, 2] + wi[-1], 'o', markersize=3.0, color=endco)  # mark end
-        ax1.legend(loc='upper left')
-
-        fig.savefig(name + '_result.pdf')
+    if comm.size == 1:
+        plotter.add(mesh, q, m, μ)
 
 # Extract solution
 u_, w_, r_ = m
-
-# u_.vector.view()
-# w_.vector.view()
-# r_.vector.view()
 
 # Write output
 # ofile.write_function(u_)
