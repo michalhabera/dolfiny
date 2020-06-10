@@ -12,6 +12,7 @@ import dolfiny.mesh
 import dolfiny.utils
 import dolfiny.function
 import dolfiny.expression
+import dolfiny.interpolation
 import dolfiny.snesblockproblem
 
 import mesh_curve3d_gmshapi as mg
@@ -111,41 +112,46 @@ r = dolfinx.Function(R, name='r')
 m = [u, w, r]
 δm = [δu, δw, δr]
 
+# GEOMETRY -------------------------------------------------------------------
 # Coordinates of undeformed configuration
 x0 = ufl.SpatialCoordinate(mesh)
 
-# CURVATURE TENSOR
+# Function spaces for geometric quantities extracted from mesh
+N = dolfinx.VectorFunctionSpace(mesh, ("DG", q), mesh.geometry.dim)
+B = dolfinx.TensorFunctionSpace(mesh, ("DG", q), (mesh.topology.dim, mesh.topology.dim))
+
+# Normal vector (R^n x 1) and curvature tensor (R^m x R^m)
+n0i = dolfinx.Function(N)
+B0i = dolfinx.Function(B)
+
 # Jacobi matrix of map reference -> undeformed
 J0 = ufl.geometry.Jacobian(mesh)
-# Metric tensor
-G0 = ufl.dot(J0.T, J0)
-# Contravariant basis
-K0 = J0 * ufl.inv(G0)
 # Tangent basis
-g0 = J0[:, 0]
-g1 = dolfinx.Constant(mesh, (0, 1, 0))  # unit vector e_y (assume curve in x-z plane)
-g2 = ufl.cross(g0, g1)
+gs = J0[:, 0]
+gη = ufl.as_vector([0, 1, 0])  # unit vector e_y (assume curve in x-z plane)
+gξ = ufl.cross(gs, gη)
 # Unit tangent basis
-g0 /= ufl.sqrt(ufl.dot(g0, g0))
-g1 /= ufl.sqrt(ufl.dot(g1, g1))
-g2 /= ufl.sqrt(ufl.dot(g2, g2))
+gs /= ufl.sqrt(ufl.dot(gs, gs))
+gη /= ufl.sqrt(ufl.dot(gη, gη))
+gξ /= ufl.sqrt(ufl.dot(gξ, gξ))
+# Interpolate normal vector
+dolfiny.interpolation.interpolate(gξ, n0i)
+
+# Contravariant basis
+K0 = ufl.geometry.JacobianInverse(mesh).T
 # Curvature tensor
-from ufl.differentiation import ReferenceGrad
-B0 = ufl.dot(g2, ReferenceGrad(K0))  # == -ufl.dot(ReferenceGrad(g2).T, K0)
+B0 = ufl.dot(n0i, ufl.dot(ufl.grad(K0), J0))  # = -ufl.dot(ufl.dot(ufl.grad(n0i), J0).T, K0)
+# Interpolate curvature tensor
+dolfiny.interpolation.interpolate(B0, B0i)
+# ----------------------------------------------------------------------------
 
-# DERIVATIVE with respect to straight reference configuration parameterised by arc-length
-iJ0 = ufl.geometry.JacobianInverse(mesh)
-detJ0 = ufl.geometry.JacobianDeterminant(mesh)
-GRAD = lambda u: detJ0 * ufl.dot(iJ0[0, :], ufl.grad(u))  # noqa: E731
-
-# FIX ufl definition of reference_grad (for using B0 later in the form)
-from ufl.algorithms.apply_derivatives import GateauxDerivativeRuleset, GenericDerivativeRuleset
-GateauxDerivativeRuleset.reference_grad = GenericDerivativeRuleset.independent_terminal
+# DERIVATIVE with respect to arc-length coordinate s of straight reference configuration: du/ds = du/dx * dx/dr * dr/ds
+GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeterminant(mesh)  # noqa: E731
 
 # Undeformed configuration: stretch (at the principal axis)
 λ0 = ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0)))  # from geometry (!= 1)
 # Undeformed configuration: curvature
-κ0 = -B0[0, 0]  # from curvature tensor B0
+κ0 = -B0i[0, 0]  # from curvature tensor B0i
 
 # Deformed configuration: stretch components (at the principal axis)
 λs = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.cos(r) + \
