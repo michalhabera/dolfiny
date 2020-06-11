@@ -69,6 +69,7 @@ def interpolate(expr, target_func):
     geom_dofmap = mesh.geometry.dofmap.array()
     geom_pos = mesh.geometry.dofmap.offsets()
     geom = mesh.geometry.x
+    gdim = mesh.geometry.dim
 
     dofmap = target_func.function_space.dofmap.list.array()
 
@@ -107,22 +108,24 @@ def interpolate(expr, target_func):
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
                             coeffs_vectors, coeffs_dofmaps, constants_vector, reference_geometry,
-                            local_coeffs_sizes, local_coeffs_size, local_b_size)
+                            local_coeffs_sizes, local_coeffs_size, local_b_size, gdim)
 
 
 @numba.njit
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
-                        const_vector, reference_geometry, local_coeffs_sizes, local_coeffs_size, local_b_size):
+                        const_vector, reference_geometry, local_coeffs_sizes, local_coeffs_size, local_b_size, gdim):
     geom_dofmap, geom_pos, geom = mesh
-    coordinate_dofs = np.zeros(reference_geometry.shape)
+
+    # Coord dofs have shape (num_geometry_dofs, gdim)
+    coordinate_dofs = np.zeros((geom_pos[1], gdim))
     coeffs = np.zeros(local_coeffs_size, dtype=PETSc.ScalarType)
     b_local = np.zeros(local_b_size, dtype=PETSc.ScalarType)
 
     for i, cell in enumerate(geom_pos[:-1]):
         num_vertices = geom_pos[i + 1] - geom_pos[i]
         c = geom_dofmap[cell:cell + num_vertices]
-        for j in range(reference_geometry.shape[0]):
-            for k in range(reference_geometry.shape[1]):
+        for j in range(coordinate_dofs.shape[0]):
+            for k in range(coordinate_dofs.shape[1]):
                 coordinate_dofs[j, k] = geom[c[j], k]
         b_local.fill(0.0)
 
