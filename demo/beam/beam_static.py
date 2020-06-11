@@ -81,8 +81,8 @@ p_z = dolfinx.Constant(mesh, 1.0 * 0)
 m_y = dolfinx.Constant(mesh, 1.0 * 0)
 F_x = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4, 8
 F_z = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 2, 4, 8
-M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 2)  # prescribed M_y: 1, 2
-λsp = dolfinx.Constant(mesh, 1)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
+M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 0)  # prescribed M_y: 1, 2
+λsp = dolfinx.Constant(mesh, 1/2)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
 λξp = dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
 κηp = dolfinx.Constant(mesh, -2 * np.pi * 0)  # prescribed curvature: κ0, ...
 
@@ -151,7 +151,22 @@ GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeter
 # Undeformed configuration: stretch (at the principal axis)
 λ0 = ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0)))  # from geometry (!= 1)
 # Undeformed configuration: curvature
-κ0 = -B0i[0, 0]  # from curvature tensor B0i
+# κ0 = -B0i[0, 0]  # from curvature tensor B0i
+
+print(f"B0i(beg) = {dolfinx.fem.assemble_scalar(B0i[0, 0] * ds(beg)):7.5f}")
+print(f"B0i(end) = {dolfinx.fem.assemble_scalar(B0i[0, 0] * ds(end)):7.5f}")
+print(f"B0 (beg) = {dolfinx.fem.assemble_scalar(B0[0, 0] * ds(beg)):7.5f}")
+print(f"B0 (end) = {dolfinx.fem.assemble_scalar(B0[0, 0] * ds(end)):7.5f}")
+
+gsi = dolfinx.Function(N)
+dolfiny.interpolation.interpolate(gs, gsi)
+print(f"gs [0](beg) = {dolfinx.fem.assemble_scalar(gs[0] * ds(beg)):7.5f}")
+print(f"gs [1](beg) = {dolfinx.fem.assemble_scalar(gs[1] * ds(beg)):7.5f}")
+print(f"gs [2](beg) = {dolfinx.fem.assemble_scalar(gs[2] * ds(beg)):7.5f}")
+print(f"gsi[0](beg) = {dolfinx.fem.assemble_scalar(gsi[0] * ds(beg)):7.5f}")
+print(f"gsi[1](beg) = {dolfinx.fem.assemble_scalar(gsi[1] * ds(beg)):7.5f}")
+print(f"gsi[2](beg) = {dolfinx.fem.assemble_scalar(gsi[2] * ds(beg)):7.5f}")
+exit()
 
 # Deformed configuration: stretch components (at the principal axis)
 λs = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.cos(r) + \
