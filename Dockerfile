@@ -1,4 +1,4 @@
-FROM dolfinx/dev-env-real
+FROM dolfinx/dev-env
 
 ARG DOLFINY_BUILD_TYPE=Release
 
