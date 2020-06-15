@@ -120,7 +120,7 @@ x0 = ufl.SpatialCoordinate(mesh)
 N = dolfinx.VectorFunctionSpace(mesh, ("DG", q), mesh.geometry.dim)
 B = dolfinx.TensorFunctionSpace(mesh, ("DG", q), (mesh.topology.dim, mesh.topology.dim))
 
-# Normal vector (R^n x 1) and curvature tensor (R^m x R^m)
+# Normal vector (gdim x 1) and curvature tensor (tdim x tdim)
 n0i = dolfinx.Function(N)
 B0i = dolfinx.Function(B)
 
@@ -151,22 +151,7 @@ GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeter
 # Undeformed configuration: stretch (at the principal axis)
 λ0 = ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0)))  # from geometry (!= 1)
 # Undeformed configuration: curvature
-# κ0 = -B0i[0, 0]  # from curvature tensor B0i
-
-print(f"B0i(beg) = {dolfinx.fem.assemble_scalar(B0i[0, 0] * ds(beg)):7.5f}")
-print(f"B0i(end) = {dolfinx.fem.assemble_scalar(B0i[0, 0] * ds(end)):7.5f}")
-print(f"B0 (beg) = {dolfinx.fem.assemble_scalar(B0[0, 0] * ds(beg)):7.5f}")
-print(f"B0 (end) = {dolfinx.fem.assemble_scalar(B0[0, 0] * ds(end)):7.5f}")
-
-gsi = dolfinx.Function(N)
-dolfiny.interpolation.interpolate(gs, gsi)
-print(f"gs [0](beg) = {dolfinx.fem.assemble_scalar(gs[0] * ds(beg)):7.5f}")
-print(f"gs [1](beg) = {dolfinx.fem.assemble_scalar(gs[1] * ds(beg)):7.5f}")
-print(f"gs [2](beg) = {dolfinx.fem.assemble_scalar(gs[2] * ds(beg)):7.5f}")
-print(f"gsi[0](beg) = {dolfinx.fem.assemble_scalar(gsi[0] * ds(beg)):7.5f}")
-print(f"gsi[1](beg) = {dolfinx.fem.assemble_scalar(gsi[1] * ds(beg)):7.5f}")
-print(f"gsi[2](beg) = {dolfinx.fem.assemble_scalar(gsi[2] * ds(beg)):7.5f}")
-exit()
+κ0 = -B0i[0, 0]  # from curvature tensor B0i
 
 # Deformed configuration: stretch components (at the principal axis)
 λs = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.cos(r) + \
