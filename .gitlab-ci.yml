@@ -57,6 +57,8 @@ demos:
       - cd beam 
       - mpirun -n 2 python3 beam_static.py
       - mpirun -n 1 python3 beam_static.py
+      - mpirun -n 2 python3 beam_static_nonref.py
+      - mpirun -n 1 python3 beam_static_nonref.py
       - cd ..
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
