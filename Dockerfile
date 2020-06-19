@@ -1,6 +1,8 @@
-FROM dolfinx/dev-env-real
+FROM dolfinx/dev-env
 
 ARG DOLFINY_BUILD_TYPE=Release
+
+ENV PETSC_ARCH=linux-gnu-real-32 
 
 RUN pip3 install git+https://github.com/FEniCS/fiat.git --upgrade \
     && \

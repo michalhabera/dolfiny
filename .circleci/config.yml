@@ -25,7 +25,9 @@ build-dolfinx-python: &build-dolfinx-python
 jobs:
   build:
     docker:
-      - image: dolfinx/dev-env-real
+      - image: dolfinx/dev-env
+    environment:
+      PETSC_ARCH: "linux-gnu-real-32"
     steps:
       - checkout
       - run:
