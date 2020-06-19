@@ -100,9 +100,13 @@ def linearise(e, u, u0=None):
     """
 
     if u0 is None:
-        u0 = []
-        for v in u:
-            u0.append(dolfinx.Function(v.function_space, name=v.name + '_0'))
+        # TODO: do not assume u as Function
+        if isinstance(u, list):
+            u0 = []
+            for v in u:
+                u0.append(dolfinx.Function(v.function_space, name=v.name + '_0'))
+        else:
+            u0 = dolfinx.Function(u.function_space, name=u.name + '_0')
 
     e0 = evaluate(e, u, u0)
     deu = derivative(e, u, u, u0)
