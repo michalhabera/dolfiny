@@ -81,14 +81,14 @@ p_z = dolfinx.Constant(mesh, 1.0 * 0)
 m_y = dolfinx.Constant(mesh, 1.0 * 0)
 F_x = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4, 8
 F_z = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 2, 4, 8
-M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 0)  # prescribed M_y: 1, 2
-λsp = dolfinx.Constant(mesh, 1/2)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
+M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
+λsp = dolfinx.Constant(mesh, 1)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
 λξp = dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
 κηp = dolfinx.Constant(mesh, -2 * np.pi * 0)  # prescribed curvature: κ0, ...
 
 # Define integration measures
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)  # , metadata={"quadrature_degree": 4})
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)  # , metadata={"quadrature_degree": 4})
+dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
+ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Function spaces
 Ue = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
