@@ -267,19 +267,3 @@ u_, w_, r_ = m
 # ofile.write_function(r_)
 
 ofile.close()
-
-# SANDBOX
-# Push reference loads to global
-# matT0= ufl.as_matrix([[ GRAD(x0[0]),-GRAD(x0[2]), 0],
-#                       [ GRAD(x0[2]), GRAD(x0[0]), 0],
-#                       [          0,            0, 1]])
-# matT = ufl.as_matrix([[ ufl.cos(r), ufl.sin(r), 0],
-#                       [-ufl.sin(r), ufl.cos(r), 0],
-#                       [          0,          0, 1]])
-# matZ = ufl.as_matrix([[λs, 0, κ + κ0],
-#                       [λξ, 1,      0],
-#                       [ 0, 0,     λs]])
-# Fg = ufl.dot( ufl.dot(ufl.dot(matT0, matT), matZ), ufl.as_vector([F_x, F_z, M_y]) )
-# F_x = Fg[0]
-# F_z = Fg[1]
-# M_y = Fg[2]
