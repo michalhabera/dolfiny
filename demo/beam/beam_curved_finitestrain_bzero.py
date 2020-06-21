@@ -195,6 +195,17 @@ F = - ufl.inner(δEm, N) * dx \
     + μ * (δu * p_x * dx + δw * p_z * dx + δr * m_y * dx) \
     + μ * (δu * F_x * ds(end) + δw * F_z * ds(end) + δr * M_y * ds(end))
 
+# Weak form: components (as one-form), selective reduced integration of membrane and shear virtual work (Arnold/Brezzi)
+# dx_red = dx(metadata={"quadrature_degree": p * (p - 1)})  # check TODO: determine correct quadrature degree
+# d = L / (len(mesh.geometry.x) - 1)  # ufl.CellDiameter(mesh) TODO: diameter on higher order cells
+# τ = (h / d)**2
+
+# F = - ufl.inner(δEm, N) * τ * dx - ufl.inner(δEm, N) * (1 - τ) * dx_red \
+#     - ufl.inner(δEs, T) * τ * dx - ufl.inner(δEs, T) * (1 - τ) * dx_red \
+#     - ufl.inner(δEb, M) * dx \
+#     + μ * (δu * p_x * dx + δw * p_z * dx + δr * m_y * dx) \
+#     + μ * (δu * F_x * ds(end) + δw * F_z * ds(end) + δr * M_y * ds(end))
+
 # Optional: linearise weak form
 # F = dolfiny.expression.linearise(F, m)  # linearise around zero state
 
