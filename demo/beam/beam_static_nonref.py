@@ -24,12 +24,12 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 L = 1.0  # beam length
-N = 1 * 5 + 1  # 5 * 4  # number of nodes
+N = 5 * 4  # number of nodes
 p = 3  # physics: polynomial order
 q = 3  # geometry: polynomial order
 
 # Create the regular mesh of an annulus with given dimensions
-gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=q)
+gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="f_arc", L=L, nL=N, order=q)
 
 # # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
 # mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=q, msh_file=f"{name}.msh")
@@ -79,9 +79,9 @@ GA = dolfinx.Constant(mesh, G * A * scf)  # shear stiffness
 p_x = dolfinx.Constant(mesh, 1.0 * 0)
 p_z = dolfinx.Constant(mesh, 1.0 * 0)
 m_y = dolfinx.Constant(mesh, 1.0 * 0)
-F_x = dolfinx.Constant(mesh, 1 * EA.value / L**1 * 0)  # (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4, 8
-F_z = dolfinx.Constant(mesh, 3 * EI.value / L**3 * 0)  # (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 2, 4, 8
-M_y = dolfinx.Constant(mesh, 2 * EI.value / L**2 * 1)  # (2.0 * np.pi / L)**1 * EI.value * 0)  # prescribed M_y: 1, 2
+F_x = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4, 8
+F_z = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 2, 4, 8
+M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
 λsp = dolfinx.Constant(mesh, 1)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
 λξp = dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
 κηp = dolfinx.Constant(mesh, -2 * np.pi * 0)  # prescribed curvature: κ0, ...
@@ -147,29 +147,24 @@ X = dolfinx.FunctionSpace(mesh, ("DG", q))
 d0 = n0i  # normal of manifold mesh, interpolated
 b0 = x0 + ξ * d0
 
-# Deformed configuration: director d and placement b, assumed kinematics, director uses (linearised) rotation matrix
-# d = ufl.as_matrix([[ufl.cos(r), 0, ufl.sin(r)], [0, 1, 0], [-ufl.sin(r), 0, ufl.cos(r)]]) * d0
-# d = ufl.as_matrix([[1, 0, ufl.sin(r)], [0, 1, 0], [-ufl.sin(r), 0, 1]]) * d0
-d = ufl.as_matrix([[1, 0, r], [0, 1, 0], [-r, 0, 1]]) * d0
+# Deformed configuration: director d and placement b, assumed kinematics, director uses rotation matrix
+d = ufl.as_matrix([[ufl.cos(r), 0, ufl.sin(r)], [0, 1, 0], [-ufl.sin(r), 0, ufl.cos(r)]]) * d0
 b = x0 + ufl.as_vector([u, 0, w]) + ξ * d
 
 # Configuration gradient, undeformed configuration
 J0 = ufl.grad(b0)
 J0 = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(J0)
 J0 = ufl.algorithms.apply_derivatives.apply_derivatives(J0)
-J0 = ufl.replace(J0, {ufl.grad(ξ): d0})
+J0 = ufl.replace(J0, {ufl.grad(ξ): d0}) - ufl.outer(d0, d0)
 
 # Configuration gradient, deformed configuration
 J = ufl.grad(b)
 J = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(J)
 J = ufl.algorithms.apply_derivatives.apply_derivatives(J)
-J = ufl.replace(J, {ufl.grad(ξ): d0})
+J = ufl.replace(J, {ufl.grad(ξ): d0}) - ufl.outer(d0, d0)
 
 # Strain Green-Lagrange
 E = 0.5 * (J.T * J - J0.T * J0)
-# Optional: linearised GL strain
-# E = dolfiny.expression.linearise(E, m)  # FIXME
-E = 0.5 * (J.T + J - J0.T - J0)
 
 # Membrane strain
 Em = P * ufl.replace(E, {ξ: 0.0}) * P
@@ -193,7 +188,7 @@ M = EI * Eb  # bending moment tensor
 δEs = dolfiny.expression.derivative(Es, m, δm)
 δEb = dolfiny.expression.derivative(Eb, m, δm)
 
-# Weak form: components (as one-form), reduced integration of shear
+# Weak form: components (as one-form), reduced integration of shear -- (metadata={"quadrature_degree": p * (p - 1)})
 F = - ufl.inner(δEm, N) * dx \
     - ufl.inner(δEs, T) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
     - ufl.inner(δEb, M) * dx \
@@ -205,6 +200,11 @@ F = - ufl.inner(δEm, N) * dx \
 
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
+
+# Create output xdmf file -- open in Paraview with Xdmf3ReaderT
+ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
+# Write mesh, meshtags
+# ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
 opts = PETSc.Options("beam")
@@ -235,15 +235,11 @@ u_beg = dolfinx.Function(U)
 w_beg = dolfinx.Function(W)
 r_beg = dolfinx.Function(R)
 
-end_dofs_U = dolfiny.mesh.locate_dofs_topological(U, interfaces, end)
-end_dofs_W = dolfiny.mesh.locate_dofs_topological(W, interfaces, end)
-end_dofs_R = dolfiny.mesh.locate_dofs_topological(R, interfaces, end)
-
 # Create custom plotter (via matplotlib)
 plotter = pp.Plotter(name + ".pdf")
 
 # Process load steps
-for factor in np.linspace(0, 1, num=10 + 1):
+for factor in np.linspace(0, 1, num=40 + 1):
 
     # Set current time
     μ.value = factor
@@ -269,6 +265,9 @@ for factor in np.linspace(0, 1, num=10 + 1):
 # Extract solution
 u_, w_, r_ = m
 
-# print(u_.vector[:])
-# print(w_.vector[:])
-# print(r_.vector[:])
+# Write output
+# ofile.write_function(u_)
+# ofile.write_function(w_)
+# ofile.write_function(r_)
+
+ofile.close()
