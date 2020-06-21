@@ -3,14 +3,14 @@
 
 class Plotter():
 
-    def __init__(self, outfile):
+    def __init__(self, outfile, title=r'beam'):
 
         self.outfile = outfile
 
         import matplotlib.pyplot
 
         fig, ax1 = matplotlib.pyplot.subplots()
-        ax1.set_title(r'finite strain beam (displacement-based)', fontsize=12)
+        ax1.set_title(title, fontsize=12)
         ax1.set_xlabel(r'coordinate $x$, displacement $[m]$', fontsize=12)
         ax1.set_ylabel(r'coordinate $z$, displacement $[m]$', fontsize=12)
         ax1.invert_yaxis()
@@ -30,11 +30,11 @@ class Plotter():
         endco = (0.5 - μ.value * 0.5, 0.5 - μ.value * 0.5, 0.5 + μ.value * 0.5)
         label = 'undeformed' if μ.value == 0.0 else 'deformed' if μ.value == 1.0 else None
 
-        # plot line
+        # Plot line
         self.ax1.plot(x0[:, 0] + ui, x0[:, 2] + wi, '-', linewidth=0.75, color=color, label=label)
-        # plot outer element nodes
+        # Plot outer element nodes
         self.ax1.plot(x0[::q + 1, 0] + ui[::q + 1], x0[::q + 1, 2] + wi[::q + 1], '.', markersize=2.5, color=color)
-        # plot marker at end
+        # Plot marker at end
         self.ax1.plot(x0[-1, 0] + ui[-1], x0[-1, 2] + wi[-1], 'o', markersize=3.0, color=endco)
 
         self.ax1.legend(loc='upper left')
