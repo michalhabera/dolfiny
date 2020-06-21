@@ -19,7 +19,7 @@ import mesh_curve3d_gmshapi as mg
 import postprocess_matplotlib as pp
 
 # Basic settings
-name = "beam_static"
+name = "beam_curved_finitestrain_bstar"
 comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
