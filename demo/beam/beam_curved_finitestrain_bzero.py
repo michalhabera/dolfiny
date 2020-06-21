@@ -152,16 +152,16 @@ d = ufl.as_matrix([[ufl.cos(r), 0, ufl.sin(r)], [0, 1, 0], [-ufl.sin(r), 0, ufl.
 b = x0 + ufl.as_vector([u, 0, w]) + ξ * d
 
 # Configuration gradient, undeformed configuration
-J0 = ufl.grad(b0)
+J0 = ufl.grad(b0) - ufl.outer(d0, d0)  # = P * ufl.grad(x0) + ufl.grad(ξ * d0)
 J0 = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(J0)
 J0 = ufl.algorithms.apply_derivatives.apply_derivatives(J0)
-J0 = ufl.replace(J0, {ufl.grad(ξ): d0}) - ufl.outer(d0, d0)
+J0 = ufl.replace(J0, {ufl.grad(ξ): d0})
 
 # Configuration gradient, deformed configuration
-J = ufl.grad(b)
+J = ufl.grad(b) - ufl.outer(d0, d0)  # = P * ufl.grad(x0) + ufl.grad(ufl.as_vector([u, 0, w]) + ξ * d)
 J = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(J)
 J = ufl.algorithms.apply_derivatives.apply_derivatives(J)
-J = ufl.replace(J, {ufl.grad(ξ): d0}) - ufl.outer(d0, d0)
+J = ufl.replace(J, {ufl.grad(ξ): d0})
 
 # Strain Green-Lagrange
 E = 0.5 * (J.T * J - J0.T * J0)
