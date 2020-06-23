@@ -76,15 +76,17 @@ GA = dolfinx.Constant(mesh, G * A * scf)  # shear stiffness
 # Structure: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
 
-p_x = dolfinx.Constant(mesh, 1.0 * 0)
-p_z = dolfinx.Constant(mesh, 1.0 * 0)
-m_y = dolfinx.Constant(mesh, 1.0 * 0)
-F_x = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4, 8
-F_z = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 2, 4, 8
-M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
-λsp = dolfinx.Constant(mesh, 1)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
-λξp = dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
-κηp = dolfinx.Constant(mesh, -2 * np.pi * 0)  # prescribed curvature: κ0, ...
+p_x = μ * dolfinx.Constant(mesh, 1.0 * 0)
+p_z = μ * dolfinx.Constant(mesh, 1.0 * 0)
+m_y = μ * dolfinx.Constant(mesh, 1.0 * 0)
+
+F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4
+F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 4, 8
+M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
+
+λsp = μ * dolfinx.Constant(mesh, 1 * 0) + 1  # prescribed axial stretch: 1 - 1/2, 1 + 1
+λξp = μ * dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
+κηp = μ * dolfinx.Constant(mesh, 2 * np.pi * 0)  # prescribed curvature: κ0, ...
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -163,8 +165,18 @@ J = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(J)
 J = ufl.algorithms.apply_derivatives.apply_derivatives(J)
 J = ufl.replace(J, {ufl.grad(ξ): d0})
 
-# Strain Green-Lagrange
-E = 0.5 * (J.T * J - J0.T * J0)
+# Green-Lagrange strains (total): determined by deformation kinematics
+E_total = 0.5 * (J.T * J - J0.T * J0)
+
+# Green-Lagrange strains (prescribed)
+Jp = λsp * P * ufl.grad(x0) + (1 + κηp) * ufl.grad(ξ * d0)  # FIXME
+Jp = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(Jp)
+Jp = ufl.algorithms.apply_derivatives.apply_derivatives(Jp)
+Jp = ufl.replace(Jp, {ufl.grad(ξ): d0})
+E_presc = 0.5 * (Jp.T * Jp - J0.T * J0)
+
+# Green-Lagrange strains (elastic): E_total = E_elast + E_presc
+E = E_elast = E_total - E_presc
 
 # Membrane strain
 Em = P * ufl.replace(E, {ξ: 0.0}) * P
@@ -188,23 +200,21 @@ M = EI * Eb  # bending moment tensor
 δEs = dolfiny.expression.derivative(Es, m, δm)
 δEb = dolfiny.expression.derivative(Eb, m, δm)
 
-# Weak form: components (as one-form), reduced integration of shear -- (metadata={"quadrature_degree": p * (p - 1)})
-F = - ufl.inner(δEm, N) * dx \
-    - ufl.inner(δEs, T) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+# Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
+A = dolfinx.FunctionSpace(mesh, ("DG", 0))
+α = dolfinx.Function(A)
+dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
+
+# Weak form: components (as one-form)
+F = - ufl.inner(δEm, N) * α * dx - ufl.inner(δEm, N) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+    - ufl.inner(δEs, T) * α * dx - ufl.inner(δEs, T) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
     - ufl.inner(δEb, M) * dx \
-    + μ * (δu * p_x * dx + δw * p_z * dx + δr * m_y * dx) \
-    + μ * (δu * F_x * ds(end) + δw * F_z * ds(end) + δr * M_y * ds(end))
-
-# Weak form: components (as one-form), selective reduced integration of membrane and shear virtual work (Arnold/Brezzi)
-# dx_red = dx(metadata={"quadrature_degree": p * (p - 1)})  # check TODO: determine correct quadrature degree
-# d = L / (len(mesh.geometry.x) - 1)  # ufl.CellDiameter(mesh) TODO: diameter on higher order cells
-# τ = (h / d)**2
-
-# F = - ufl.inner(δEm, N) * τ * dx - ufl.inner(δEm, N) * (1 - τ) * dx_red \
-#     - ufl.inner(δEs, T) * τ * dx - ufl.inner(δEs, T) * (1 - τ) * dx_red \
-#     - ufl.inner(δEb, M) * dx \
-#     + μ * (δu * p_x * dx + δw * p_z * dx + δr * m_y * dx) \
-#     + μ * (δu * F_x * ds(end) + δw * F_z * ds(end) + δr * M_y * ds(end))
+    + δu * p_x * dx \
+    + δw * p_z * dx \
+    + δr * m_y * dx \
+    + δu * F_x * ds(end) \
+    + δw * F_z * ds(end) \
+    + δr * M_y * ds(end)
 
 # Optional: linearise weak form
 # F = dolfiny.expression.linearise(F, m)  # linearise around zero state
@@ -250,7 +260,7 @@ r_beg = dolfinx.Function(R)
 plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{0}$)')
 
 # Process load steps
-for factor in np.linspace(0, 1, num=40 + 1):
+for factor in np.linspace(0, 1, num=20 + 1):
 
     # Set current time
     μ.value = factor

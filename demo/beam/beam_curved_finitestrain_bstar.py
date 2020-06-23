@@ -76,15 +76,17 @@ GA = dolfinx.Constant(mesh, G * A * scf)  # shear stiffness
 # Structure: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
 
-p_x = dolfinx.Constant(mesh, 1.0 * 0)
-p_z = dolfinx.Constant(mesh, 1.0 * 0)
-m_y = dolfinx.Constant(mesh, 1.0 * 0)
-F_x = dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4, 8
-F_z = dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 2, 4, 8
-M_y = dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
-λsp = dolfinx.Constant(mesh, 1)  # prescribed axial stretch: 4/5, 2/3, 1/2, 2/5, 1/3 and 4/3, 2
-λξp = dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
-κηp = dolfinx.Constant(mesh, -2 * np.pi * 0)  # prescribed curvature: κ0, ...
+p_x = μ * dolfinx.Constant(mesh, 1.0 * 0)
+p_z = μ * dolfinx.Constant(mesh, 1.0 * 0)
+m_y = μ * dolfinx.Constant(mesh, 1.0 * 0)
+
+F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4
+F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 4, 8
+M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
+
+λsp = μ * dolfinx.Constant(mesh, 1 * 0) + 1  # prescribed axial stretch: 1 - 1/2, 1 + 1
+λξp = μ * dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
+κηp = μ * dolfinx.Constant(mesh, 2 * np.pi * 0)  # prescribed curvature: κ0, ...
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -159,12 +161,12 @@ GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeter
 λξ = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.sin(r) - \
      (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.cos(r)  # noqa: E201
 # Deformed configuration: curvature
-κ = -GRAD(r)
+κ = GRAD(r)
 
 # Green-Lagrange strains (prescribed)
-e_presc = μ * 1 / 2 * (λsp**2 - λ0**2)  # prescribed axial strain, λsp denotes λ_effective = sqrt(λs^2 + λξ^2)
-g_presc = μ * λξp  # prescribed shear strain
-k_presc = μ * κηp  # prescribed bending strain
+e_presc = 1 / 2 * (λsp**2 + λξp**2 - λ0**2)  # prescribed axial strain
+g_presc = λξp  # prescribed shear strain
+k_presc = κηp  # prescribed bending strain
 
 # Green-Lagrange strains (total): determined by deformation kinematics
 e_total = 1 / 2 * (λs**2 + λξ**2 - λ0**2)
@@ -186,10 +188,21 @@ N = EA * e
 T = GA * g
 M = EI * k
 
+# Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
+A = dolfinx.FunctionSpace(mesh, ("DG", 0))
+α = dolfinx.Function(A)
+dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
+
 # Weak form: components (as one-form)
-F = - δe * N * dx - δg * T * dx - δk * M * dx \
-    + μ * (δu * p_x * dx + δw * p_z * dx + δr * m_y * dx) \
-    + μ * (δu * F_x * ds(end) + δw * F_z * ds(end) + δr * M_y * ds(end))
+F = - δe * N * α * dx - δe * N * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+    - δg * T * α * dx - δg * T * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+    - δk * M * dx \
+    + δu * p_x * dx \
+    + δw * p_z * dx \
+    + δr * m_y * dx \
+    + δu * F_x * ds(end) \
+    + δw * F_z * ds(end) \
+    + δr * M_y * ds(end)
 
 # Optional: linearise weak form
 # F = dolfiny.expression.linearise(F, m)  # linearise around zero state
@@ -235,7 +248,7 @@ r_beg = dolfinx.Function(R)
 plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{*}$)')
 
 # Process load steps
-for factor in np.linspace(0, 1, num=40 + 1):
+for factor in np.linspace(0, 1, num=20 + 1):
 
     # Set current time
     μ.value = factor
