@@ -8,6 +8,9 @@ default:
    tags:
       - docker
 
+before_script:
+      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+
 variables:
    CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:dev-$CI_COMMIT_REF_SLUG
    CONTAINER_RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
@@ -31,8 +34,6 @@ docker_image:
 pytest:
    image: $CONTAINER_TEST_IMAGE
    stage: test
-   before_script:
-      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
    script:
       # Install dolfin-y package
       - pip3 install .
@@ -46,8 +47,6 @@ pytest:
 demos:
    image: $CONTAINER_TEST_IMAGE
    stage: test
-   before_script:
-      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
    script:
       # Install dolfin-y package
       - pip3 install .
