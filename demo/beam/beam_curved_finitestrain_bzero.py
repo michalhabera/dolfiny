@@ -84,10 +84,6 @@ F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescr
 F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 4, 8
 M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
 
-λsp = μ * dolfinx.Constant(mesh, 1 * 0) + 1  # prescribed axial stretch: 1 - 1/2, 1 + 1
-λξp = μ * dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
-κηp = μ * dolfinx.Constant(mesh, 2 * np.pi * 0)  # prescribed curvature: κ0, ...
-
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
@@ -168,15 +164,8 @@ J = ufl.replace(J, {ufl.grad(ξ): d0})
 # Green-Lagrange strains (total): determined by deformation kinematics
 E_total = 0.5 * (J.T * J - J0.T * J0)
 
-# Green-Lagrange strains (prescribed)
-Jp = λsp * P * ufl.grad(x0) + (1 + κηp) * ufl.grad(ξ * d0)  # FIXME
-Jp = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(Jp)
-Jp = ufl.algorithms.apply_derivatives.apply_derivatives(Jp)
-Jp = ufl.replace(Jp, {ufl.grad(ξ): d0})
-E_presc = 0.5 * (Jp.T * Jp - J0.T * J0)
-
 # Green-Lagrange strains (elastic): E_total = E_elast + E_presc
-E = E_elast = E_total - E_presc
+E = E_elast = E_total
 
 # Membrane strain
 Em = P * ufl.replace(E, {ξ: 0.0}) * P
