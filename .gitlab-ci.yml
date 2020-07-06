@@ -31,6 +31,8 @@ docker_image:
 pytest:
    image: $CONTAINER_TEST_IMAGE
    stage: test
+   before_script:
+      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
    script:
       # Install dolfin-y package
       - pip3 install .
@@ -44,6 +46,8 @@ pytest:
 demos:
    image: $CONTAINER_TEST_IMAGE
    stage: test
+   before_script:
+      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
    script:
       # Install dolfin-y package
       - pip3 install .
