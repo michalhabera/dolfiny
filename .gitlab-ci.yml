@@ -7,7 +7,6 @@ stages:
 default:
    tags:
       - docker
-      - kutta
 
 variables:
    CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:dev-$CI_COMMIT_REF_SLUG
