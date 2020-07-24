@@ -14,6 +14,42 @@ from petsc4py import PETSc
 ffi = cffi.FFI()
 
 
+class CompiledExpression:
+    def __init__(self, expr, target_el):
+        self.expr = expr
+        self.target_el = target_el
+
+        if target_el.value_size() > 1:
+            # For mixed elements fetch only one element
+            # Saves computation for vector/tensor elements,
+            # no need to evaluate at same points for each vector
+            # component
+            #
+            # TODO: We can get unique subelements or unique
+            #       points for evaluation
+            sub_elements = target_el.sub_elements()
+
+            # We can handle only all sub elements equal case
+            assert all([sub_elements[0] == x for x in sub_elements])
+            target_el = sub_elements[0]
+
+        # Identify points at which to evaluate the expression
+        self.fiat_element = ffcx.fiatinterface.create_element(target_el)
+
+        if not all(x == "affine" for x in self.fiat_element.mapping()):
+            raise NotImplementedError("Only affine mapped function spaces supported")
+
+        nodes = []
+        for dual in self.fiat_element.dual_basis():
+            pts, = dual.pt_dict.keys()
+            nodes.append(pts)
+
+        nodes = np.asarray(nodes)
+
+        module = dolfinx.jit.ffcx_jit((expr, nodes))
+        self.module = module
+
+
 def interpolate(expr, target_func):
     """Compile-interpolate UFL expression.
 
@@ -23,38 +59,12 @@ def interpolate(expr, target_func):
     lagrange/discontinuous lagrange of arbitrary order.
 
     """
+    compiled_expression = CompiledExpression(expr, target_func.function_space.ufl_element())
+    interpolate_cached(compiled_expression, target_func)
 
-    target_el = target_func.function_space.ufl_element()
 
-    if target_el.value_size() > 1:
-        # For mixed elements fetch only one element
-        # Saves computation for vector/tensor elements,
-        # no need to evaluate at same points for each vector
-        # component
-        #
-        # TODO: We can get unique subelements or unique
-        #       points for evaluation
-        sub_elements = target_el.sub_elements()
-
-        # We can handle only all sub elements equal case
-        assert all([sub_elements[0] == x for x in sub_elements])
-        target_el = sub_elements[0]
-
-    # Identify points at which to evaluate the expression
-    fiat_element = ffcx.fiatinterface.create_element(target_el)
-
-    if not all(x == "affine" for x in fiat_element.mapping()):
-        raise NotImplementedError("Only affine mapped function spaces supported")
-
-    nodes = []
-    for dual in fiat_element.dual_basis():
-        pts, = dual.pt_dict.keys()
-        nodes.append(pts)
-
-    nodes = np.asarray(nodes)
-
-    module = dolfinx.jit.ffcx_jit((expr, nodes))
-    kernel = module.tabulate_expression
+def interpolate_cached(compiled_expression, target_func):
+    kernel = compiled_expression.module.tabulate_expression
 
     # Register complex types
     cffi_support.register_type(ffi.typeof('double _Complex'),
@@ -62,7 +72,7 @@ def interpolate(expr, target_func):
     cffi_support.register_type(ffi.typeof('float _Complex'),
                                numba.types.complex64)
 
-    reference_geometry = np.asarray(fiat_element.ref_el.get_vertices())
+    reference_geometry = np.asarray(compiled_expression.fiat_element.ref_el.get_vertices())
 
     # Unpack mesh and dofmap data
     mesh = target_func.function_space.mesh
@@ -78,11 +88,11 @@ def interpolate(expr, target_func):
     # fetched inside hot cell-loop
 
     # Number of coefficients in ffcx-processed ufl form
-    num_coeffs = module.num_coefficients
+    num_coeffs = compiled_expression.module.num_coefficients
     # Positions of ffcx-preprocessed coefficients in original form
-    cpos = module.original_coefficient_positions
+    cpos = compiled_expression.module.original_coefficient_positions
 
-    coeffs = ufl.algorithms.analysis.extract_coefficients(expr)
+    coeffs = ufl.algorithms.analysis.extract_coefficients(compiled_expression.expr)
     coeffs_dofmaps = List.empty_list(numba.types.Array(numba.typeof(dofmap[0]), 1, "C", readonly=True))
     coeffs_vectors = List.empty_list(numba.types.Array(numba.typeof(PETSc.ScalarType()), 1, "C", readonly=True))
 
@@ -95,7 +105,7 @@ def interpolate(expr, target_func):
     local_coeffs_size = np.sum(local_coeffs_sizes, dtype=np.int)
 
     # Prepare and pack constants
-    constants = ufl.algorithms.analysis.extract_constants(expr)
+    constants = ufl.algorithms.analysis.extract_constants(compiled_expression.expr)
     constants_vector = np.array([], dtype=PETSc.ScalarType())
     if len(constants) > 0:
         constants_vector = np.hstack([c.value.flatten() for c in constants])
