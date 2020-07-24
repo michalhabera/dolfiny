@@ -76,12 +76,12 @@ def interpolate_cached(compiled_expression, target_func):
 
     # Unpack mesh and dofmap data
     mesh = target_func.function_space.mesh
-    geom_dofmap = mesh.geometry.dofmap.array()
-    geom_pos = mesh.geometry.dofmap.offsets()
+    geom_dofmap = mesh.geometry.dofmap.array
+    geom_pos = mesh.geometry.dofmap.offsets
     geom = mesh.geometry.x
     gdim = mesh.geometry.dim
 
-    dofmap = target_func.function_space.dofmap.list.array()
+    dofmap = target_func.function_space.dofmap.list.array
 
     # Prepare coefficients and their dofmaps
     # Global vectors and dofmaps are prepared here, local are
@@ -97,7 +97,7 @@ def interpolate_cached(compiled_expression, target_func):
     coeffs_vectors = List.empty_list(numba.types.Array(numba.typeof(PETSc.ScalarType()), 1, "C", readonly=True))
 
     for i in range(num_coeffs):
-        coeffs_dofmaps.append(coeffs[cpos[i]].function_space.dofmap.list.array())
+        coeffs_dofmaps.append(coeffs[cpos[i]].function_space.dofmap.list.array)
         coeffs_vectors.append(np.asarray(coeffs[cpos[i]].vector))
 
     local_coeffs_sizes = np.asarray([coeff.function_space.element.space_dimension()
