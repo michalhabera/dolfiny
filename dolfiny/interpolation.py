@@ -112,24 +112,27 @@ def interpolate_cached(compiled_expression, target_func):
 
     # Num DOFs of the target element
     local_b_size = target_func.function_space.element.space_dimension()
+    value_size = int(np.product(compiled_expression.expr.ufl_shape))
     num_coeffs = len(coeffs_vectors)
 
     with target_func.vector.localForm() as b:
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
                             coeffs_vectors, coeffs_dofmaps, constants_vector, reference_geometry,
-                            local_coeffs_sizes, local_coeffs_size, local_b_size, gdim)
+                            local_coeffs_sizes, local_coeffs_size, local_b_size, gdim, value_size)
 
 
 @numba.njit
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
-                        const_vector, reference_geometry, local_coeffs_sizes, local_coeffs_size, local_b_size, gdim):
+                        const_vector, reference_geometry, local_coeffs_sizes, local_coeffs_size,
+                        local_b_size, gdim, value_size):
     geom_dofmap, geom_pos, geom = mesh
 
     # Coord dofs have shape (num_geometry_dofs, gdim)
     coordinate_dofs = np.zeros((geom_pos[1], gdim))
     coeffs = np.zeros(local_coeffs_size, dtype=PETSc.ScalarType)
     b_local = np.zeros(local_b_size, dtype=PETSc.ScalarType)
+    dofs_per_block = int(local_b_size / value_size)
 
     for i, cell in enumerate(geom_pos[:-1]):
         num_vertices = geom_pos[i + 1] - geom_pos[i]
@@ -149,5 +152,6 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
         kernel(ffi.from_buffer(b_local), ffi.from_buffer(coeffs),
                ffi.from_buffer(const_vector), ffi.from_buffer(coordinate_dofs))
 
-        for j in range(local_b_size):
-            b[dofmap[i * local_b_size + j]] = b_local[j]
+        for j in range(dofs_per_block):
+            for k in range(value_size):
+                b[dofmap[i * local_b_size + j * value_size + k]] = b_local[dofs_per_block * k + j]
