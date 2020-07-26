@@ -176,8 +176,8 @@ k = k_elast = k_total
 δk = dolfiny.expression.derivative(k, m, δm)
 
 # Constitutive relations (Saint-Venant Kirchhoff)
-N = EA * e  # normal force 
-T = GA * g  # shear force 
+N = EA * e  # normal force
+T = GA * g  # shear force
 M = EI * k  # bending moment
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
