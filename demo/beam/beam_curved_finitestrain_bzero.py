@@ -24,9 +24,9 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 L = 1.0  # beam length
-N = 5 * 4  # number of nodes
-p = 3  # physics: polynomial order
-q = 3  # geometry: polynomial order
+N = 8 * 4  # number of nodes
+p = 2  # physics: polynomial order
+q = 2  # geometry: polynomial order
 
 # Create the regular mesh of an annulus with given dimensions
 gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="f_arc", L=L, nL=N, order=q)
@@ -60,18 +60,19 @@ h = L / 500  # [m]
 A = b * h  # [m^2]
 I = b * h**3 / 12  # [m^4]  # noqa: E741
 
-# Structure: section geometry and material parameters
+# Structure: material parameters
 n = 0  # [-] Poisson ratio
 E = 1.0e+8  # [N/m^2] elasticity modulus
-G = E / 2. / (1 + n)  # [N/m^2] shear modulus
+lamé_λ = E * n / (1 + n) / (1 - 2 * n)  # Lamé constant λ
+lamé_μ = E / 2 / (1 + n)  # Lamé constant μ
 
 # Structure: shear correction factor, see Cowper (1966)
-scf = 10 * (1 + n) / (12 + 11 * n)
+sc_fac = 10 * (1 + n) / (12 + 11 * n)
 
 # Structure: section stiffness quantities
-EA = dolfinx.Constant(mesh, E * A)  # axial stiffness
-EI = dolfinx.Constant(mesh, E * I)  # bending stiffness
-GA = dolfinx.Constant(mesh, G * A * scf)  # shear stiffness
+EA = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * A)  # axial stiffness
+EI = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * I)  # bending stiffness
+GA = dolfinx.Constant(mesh, (2 * lamé_μ) * A * sc_fac)  # shear stiffness
 
 # Structure: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
@@ -117,7 +118,7 @@ x0 = ufl.SpatialCoordinate(mesh)
 # Function spaces for geometric quantities extracted from mesh
 N = dolfinx.VectorFunctionSpace(mesh, ("DG", q), mesh.geometry.dim)
 
-# Normal vector (R^n x 1)
+# Normal vector (gdim x 1)
 n0i = dolfinx.Function(N)
 
 # Jacobi matrix of map reference -> undeformed
@@ -162,7 +163,7 @@ J = ufl.algorithms.apply_derivatives.apply_derivatives(J)
 J = ufl.replace(J, {ufl.grad(ξ): d0})
 
 # Green-Lagrange strains (total): determined by deformation kinematics
-E_total = 0.5 * (J.T * J - J0.T * J0)
+E_total = 1 / 2 * (J.T * J - J0.T * J0)
 
 # Green-Lagrange strains (elastic): E_total = E_elast + E_presc
 E = E_elast = E_total
@@ -179,15 +180,15 @@ Eb = P * ufl.replace(Eb, {ξ: 0.0}) * P
 # Shear strain
 Es = ufl.replace(E, {ξ: 0.0}) - P * ufl.replace(E, {ξ: 0.0}) * P
 
-# Stress resultant tensors
-N = EA * Em  # normal force tensor
-T = GA * Es  # shear force tensor
-M = EI * Eb  # bending moment tensor
-
 # Variation of elastic Green-Lagrange strains
 δEm = dolfiny.expression.derivative(Em, m, δm)
 δEs = dolfiny.expression.derivative(Es, m, δm)
 δEb = dolfiny.expression.derivative(Eb, m, δm)
+
+# Constitutive relations (Saint-Venant Kirchhoff)
+N = EA * Em  # normal force tensor
+T = GA * Es  # shear force tensor
+M = EI * Eb  # bending moment tensor
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
 A = dolfinx.FunctionSpace(mesh, ("DG", 0))
@@ -221,7 +222,7 @@ opts = PETSc.Options("beam")
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-08
+opts["snes_atol"] = 1.0e-07
 opts["snes_rtol"] = 1.0e-07
 opts["snes_stol"] = 1.0e-06
 opts["snes_max_it"] = 60

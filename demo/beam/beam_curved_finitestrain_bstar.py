@@ -24,9 +24,9 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 L = 1.0  # beam length
-N = 5 * 4  # number of nodes
-p = 3  # physics: polynomial order
-q = 3  # geometry: polynomial order
+N = 8 * 4  # number of nodes
+p = 2  # physics: polynomial order
+q = 2  # geometry: polynomial order
 
 # Create the regular mesh of an annulus with given dimensions
 gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="f_arc", L=L, nL=N, order=q)
@@ -60,18 +60,19 @@ h = L / 500  # [m]
 A = b * h  # [m^2]
 I = b * h**3 / 12  # [m^4]  # noqa: E741
 
-# Structure: section geometry and material parameters
+# Structure: material parameters
 n = 0  # [-] Poisson ratio
 E = 1.0e+8  # [N/m^2] elasticity modulus
-G = E / 2. / (1 + n)  # [N/m^2] shear modulus
+lamé_λ = E * n / (1 + n) / (1 - 2 * n)  # Lamé constant λ
+lamé_μ = E / 2 / (1 + n)  # Lamé constant μ
 
 # Structure: shear correction factor, see Cowper (1966)
-scf = 10 * (1 + n) / (12 + 11 * n)
+sc_fac = 10 * (1 + n) / (12 + 11 * n)
 
 # Structure: section stiffness quantities
-EA = dolfinx.Constant(mesh, E * A)  # axial stiffness
-EI = dolfinx.Constant(mesh, E * I)  # bending stiffness
-GA = dolfinx.Constant(mesh, G * A * scf)  # shear stiffness
+EA = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * A)  # axial stiffness
+EI = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * I)  # bending stiffness
+GA = dolfinx.Constant(mesh, (2 * lamé_μ) * A * sc_fac)  # shear stiffness
 
 # Structure: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
@@ -83,10 +84,6 @@ m_y = μ * dolfinx.Constant(mesh, 1.0 * 0)
 F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4
 F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 4, 8
 M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
-
-λsp = μ * dolfinx.Constant(mesh, 1 * 0) + 1  # prescribed axial stretch: 1 - 1/2, 1 + 1
-λξp = μ * dolfinx.Constant(mesh, 1 / 2 * 0)  # prescribed shear stretch: 1/4, 1/2
-κηp = μ * dolfinx.Constant(mesh, 2 * np.pi * 0)  # prescribed curvature: κ0, ...
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -163,20 +160,15 @@ GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeter
 # Deformed configuration: curvature
 κ = GRAD(r)
 
-# Green-Lagrange strains (prescribed)
-e_presc = 1 / 2 * (λsp**2 + λξp**2 - λ0**2)  # prescribed axial strain
-g_presc = λξp  # prescribed shear strain
-k_presc = κηp  # prescribed bending strain
-
 # Green-Lagrange strains (total): determined by deformation kinematics
 e_total = 1 / 2 * (λs**2 + λξ**2 - λ0**2)
-g_total = λξ
+g_total = 1 / 2 * λξ
 k_total = λs * κ + (λs - λ0) * κ0
 
 # Green-Lagrange strains (elastic): e_total = e_elast + e_presc
-e = e_elast = e_total - e_presc
-g = g_elast = g_total - g_presc
-k = k_elast = k_total - k_presc
+e = e_elast = e_total
+g = g_elast = g_total
+k = k_elast = k_total
 
 # Variation of elastic Green-Lagrange strains
 δe = dolfiny.expression.derivative(e, m, δm)
@@ -184,9 +176,9 @@ k = k_elast = k_total - k_presc
 δk = dolfiny.expression.derivative(k, m, δm)
 
 # Constitutive relations (Saint-Venant Kirchhoff)
-N = EA * e
-T = GA * g
-M = EI * k
+N = EA * e  # normal force 
+T = GA * g  # shear force 
+M = EI * k  # bending moment
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
 A = dolfinx.FunctionSpace(mesh, ("DG", 0))
@@ -194,9 +186,9 @@ A = dolfinx.FunctionSpace(mesh, ("DG", 0))
 dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
 
 # Weak form: components (as one-form)
-F = - δe * N * α * dx - δe * N * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
-    - δg * T * α * dx - δg * T * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
-    - δk * M * dx \
+F = - 1 * ufl.inner(δe, N) * α * dx - 1 * ufl.inner(δe, N) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+    - 2 * ufl.inner(δg, T) * α * dx - 2 * ufl.inner(δg, T) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+    - 1 * ufl.inner(δk, M) * dx \
     + δu * p_x * dx \
     + δw * p_z * dx \
     + δr * m_y * dx \
@@ -220,7 +212,7 @@ opts = PETSc.Options("beam")
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-08
+opts["snes_atol"] = 1.0e-07
 opts["snes_rtol"] = 1.0e-07
 opts["snes_stol"] = 1.0e-06
 opts["snes_max_it"] = 60
