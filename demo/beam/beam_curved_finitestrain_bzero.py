@@ -135,7 +135,7 @@ gξ /= ufl.sqrt(ufl.dot(gξ, gξ))
 dolfiny.interpolation.interpolate(gξ, n0i)
 # ----------------------------------------------------------------------------
 
-# Orthogonal projection operator
+# Orthogonal projection operator (assumes sufficient geometry approximation)
 P = ufl.Identity(mesh.geometry.dim) - ufl.outer(n0i, n0i)
 
 # Thickness variable
