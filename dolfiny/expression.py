@@ -120,3 +120,36 @@ def linearise(e, u, u0=None):
         de = e0 + (deu - deu0)
 
     return de
+
+
+def assemble(e, dx):
+    """Assemble form given by expression e and integration measure dx.
+       The expression can be a tensor quantity of rank 0, 1 or 2.
+
+    Parameters
+    ----------
+    e: UFL Expr
+    dx: UFL Measure
+
+    Returns
+    -------
+    Assembled form f = e * dx
+
+    """
+
+    import numpy as np
+
+    sh = ufl.shape(e)
+
+    if ufl.rank(e) == 0:
+        f_ = dolfinx.fem.assemble_scalar(e * dx)
+    elif ufl.rank(e) == 1:
+        f_ = np.zeros(sh)
+        for row in range(sh[0]):
+            f_[row] = dolfinx.fem.assemble_scalar(e[row] * dx)
+    elif ufl.rank(e) == 2:
+        f_ = np.zeros(sh)
+        for row in range(sh[0]):
+            for col in range(sh[1]):
+                f_[row, col] = dolfinx.fem.assemble_scalar(e[row, col] * dx)
+    return f_
