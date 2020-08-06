@@ -215,7 +215,8 @@ F = dolfiny.function.extract_blocks(F, δm)
 # Create output xdmf file -- open in Paraview with Xdmf3ReaderT
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 # Write mesh, meshtags
-# ofile.write_mesh_meshtags(mesh, mts)
+if q <= 2:
+    ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
 opts = PETSc.Options("beam")
@@ -249,6 +250,10 @@ r_beg = dolfinx.Function(R)
 # Create custom plotter (via matplotlib)
 plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{0}$)')
 
+# Create vector function space and vector function for writing the displacement vector
+Z = dolfinx.VectorFunctionSpace(mesh, ("CG", p), mesh.geometry.dim)
+z = dolfinx.Function(Z)
+
 # Process load steps
 for factor in np.linspace(0, 1, num=20 + 1):
 
@@ -270,15 +275,13 @@ for factor in np.linspace(0, 1, num=20 + 1):
     # Assert convergence of nonlinear solver
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
+    # Add to plot
     if comm.size == 1:
         plotter.add(mesh, q, m, μ)
 
-# Extract solution
-u_, w_, r_ = m
-
-# Write output
-# ofile.write_function(u_)
-# ofile.write_function(w_)
-# ofile.write_function(r_)
+    # Write output
+    if q <= 2:
+        dolfiny.interpolation.interpolate(ufl.as_vector([u, 0, w]), z)
+        ofile.write_function(z, μ.value)
 
 ofile.close()
