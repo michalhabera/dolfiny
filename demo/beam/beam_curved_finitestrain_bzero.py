@@ -66,13 +66,19 @@ E = 1.0e+8  # [N/m^2] elasticity modulus
 lamé_λ = E * n / (1 + n) / (1 - 2 * n)  # Lamé constant λ
 lamé_μ = E / 2 / (1 + n)  # Lamé constant μ
 
+
+def S(E):
+    """
+    Stress as function of strain from strain energy function
+    """
+    E = ufl.variable(E)
+    W = lamé_μ * ufl.inner(E, E) + lamé_λ / 2 * ufl.tr(E)**2  # Saint-Venant Kirchhoff
+    S = ufl.diff(W, E)
+    return S
+
+
 # Structure: shear correction factor, see Cowper (1966)
 sc_fac = 10 * (1 + n) / (12 + 11 * n)
-
-# Structure: section stiffness quantities
-EA = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * A)  # axial stiffness
-EI = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * I)  # bending stiffness
-GA = dolfinx.Constant(mesh, (2 * lamé_μ) * A * sc_fac)  # shear stiffness
 
 # Structure: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
@@ -81,9 +87,9 @@ p_x = μ * dolfinx.Constant(mesh, 1.0 * 0)
 p_z = μ * dolfinx.Constant(mesh, 1.0 * 0)
 m_y = μ * dolfinx.Constant(mesh, 1.0 * 0)
 
-F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4
-F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 4, 8
-M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
+F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * E * I * 0)  # prescribed F_x: 2, 4
+F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * E * I * 0)  # prescribed F_z: 4, 8
+M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * E * I * 1)  # prescribed M_y: 1, 2
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -185,10 +191,10 @@ Es = ufl.replace(E, {ξ: 0.0}) - P * ufl.replace(E, {ξ: 0.0}) * P
 δEs = dolfiny.expression.derivative(Es, m, δm)
 δEb = dolfiny.expression.derivative(Eb, m, δm)
 
-# Constitutive relations (Saint-Venant Kirchhoff)
-N = EA * Em  # normal force tensor
-T = GA * Es  # shear force tensor
-M = EI * Eb  # bending moment tensor
+# Stress resultant tensors
+N = S(Em) * A
+T = S(Es) * A * sc_fac
+M = S(Eb) * I
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
 A = dolfinx.FunctionSpace(mesh, ("DG", 0))

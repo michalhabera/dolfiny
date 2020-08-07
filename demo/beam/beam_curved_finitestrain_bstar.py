@@ -66,13 +66,19 @@ E = 1.0e+8  # [N/m^2] elasticity modulus
 lamé_λ = E * n / (1 + n) / (1 - 2 * n)  # Lamé constant λ
 lamé_μ = E / 2 / (1 + n)  # Lamé constant μ
 
+
+def s(e):
+    """
+    Stress as function of strain from strain energy function
+    """
+    e = ufl.variable(e)
+    W = lamé_μ * e * e + lamé_λ / 2 * e**2  # Saint-Venant Kirchhoff
+    s = ufl.diff(W, e)
+    return s
+
+
 # Structure: shear correction factor, see Cowper (1966)
 sc_fac = 10 * (1 + n) / (12 + 11 * n)
-
-# Structure: section stiffness quantities
-EA = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * A)  # axial stiffness
-EI = dolfinx.Constant(mesh, (2 * lamé_μ + lamé_λ) * I)  # bending stiffness
-GA = dolfinx.Constant(mesh, (2 * lamé_μ) * A * sc_fac)  # shear stiffness
 
 # Structure: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
@@ -81,9 +87,9 @@ p_x = μ * dolfinx.Constant(mesh, 1.0 * 0)
 p_z = μ * dolfinx.Constant(mesh, 1.0 * 0)
 m_y = μ * dolfinx.Constant(mesh, 1.0 * 0)
 
-F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * EI.value * 0)  # prescribed F_x: 2, 4
-F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * EI.value * 0)  # prescribed F_z: 4, 8
-M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * EI.value * 1)  # prescribed M_y: 1, 2
+F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * E * I * 0)  # prescribed F_x: 2, 4
+F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * E * I * 0)  # prescribed F_z: 4, 8
+M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * E * I * 1)  # prescribed M_y: 1, 2
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -162,7 +168,7 @@ GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeter
 
 # Green-Lagrange strains (total): determined by deformation kinematics
 e_total = 1 / 2 * (λs**2 + λξ**2 - λ0**2)
-g_total = 1 / 2 * λξ
+g_total = λξ
 k_total = λs * κ + (λs - λ0) * κ0
 
 # Green-Lagrange strains (elastic): e_total = e_elast + e_presc
@@ -175,10 +181,10 @@ k = k_elast = k_total
 δg = dolfiny.expression.derivative(g, m, δm)
 δk = dolfiny.expression.derivative(k, m, δm)
 
-# Constitutive relations (Saint-Venant Kirchhoff)
-N = EA * e  # normal force
-T = GA * g  # shear force
-M = EI * k  # bending moment
+# Stress resultants
+N = s(e) * A
+T = s(g) * A * sc_fac
+M = s(k) * I
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
 A = dolfinx.FunctionSpace(mesh, ("DG", 0))
@@ -186,9 +192,9 @@ A = dolfinx.FunctionSpace(mesh, ("DG", 0))
 dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
 
 # Weak form: components (as one-form)
-F = - 1 * ufl.inner(δe, N) * α * dx - 1 * ufl.inner(δe, N) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
-    - 2 * ufl.inner(δg, T) * α * dx - 2 * ufl.inner(δg, T) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
-    - 1 * ufl.inner(δk, M) * dx \
+F = - ufl.inner(δe, N) * α * dx - ufl.inner(δe, N) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+    - ufl.inner(δg, T) * α * dx - ufl.inner(δg, T) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
+    - ufl.inner(δk, M) * dx \
     + δu * p_x * dx \
     + δw * p_z * dx \
     + δr * m_y * dx \
