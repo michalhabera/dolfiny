@@ -47,10 +47,19 @@ demos:
    script:
       # Install dolfin-y package
       - pip3 install .
+      - cd demo
       # Run bingham demos (parallel)
-      - cd demo/bingham 
+      - cd bingham 
       - mpirun -n 2 python3 bingham_block.py
       - mpirun -n 2 python3 bingham_lm_block.py
+      - cd ..
+      # Run beam demos (parallel and serial)
+      - cd beam 
+      - mpirun -n 2 python3 beam_curved_finitestrain_bstar.py
+      - mpirun -n 1 python3 beam_curved_finitestrain_bstar.py
+      - mpirun -n 2 python3 beam_curved_finitestrain_bzero.py
+      - mpirun -n 1 python3 beam_curved_finitestrain_bzero.py
+      - cd ..
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:

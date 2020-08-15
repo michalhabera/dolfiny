@@ -137,16 +137,16 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     for i, cell in enumerate(geom_pos[:-1]):
         num_vertices = geom_pos[i + 1] - geom_pos[i]
         c = geom_dofmap[cell:cell + num_vertices]
-        for j in range(coordinate_dofs.shape[0]):
-            for k in range(coordinate_dofs.shape[1]):
+        for j in range(geom_pos[1]):
+            for k in range(gdim):
                 coordinate_dofs[j, k] = geom[c[j], k]
         b_local.fill(0.0)
 
         offset = 0
         for j in range(len(coeffs_vectors)):
             local_dofsize = local_coeffs_sizes[j]
-            for k in range(local_dofsize):
-                coeffs[offset + k] = coeffs_vectors[j][coeffs_dofmaps[j][i * local_dofsize + k]]
+            coeffs[offset:offset + local_dofsize] = coeffs_vectors[j][coeffs_dofmaps[j]
+                                                                      [i * local_dofsize:local_dofsize * (i + 1)]]
             offset += local_dofsize
 
         kernel(ffi.from_buffer(b_local), ffi.from_buffer(coeffs),
