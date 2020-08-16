@@ -66,9 +66,9 @@ v_inner_max = 0.1  # [m/s]
 # Global time
 time = dolfinx.Constant(mesh, 0.0)  # [s]
 # Time step size
-dt = 0.1  # [s]
+dt = dolfinx.Constant(mesh, 0.05)  # [s]
 # Number of time steps
-nT = 40
+nT = 80
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
@@ -109,17 +109,15 @@ P = dolfinx.FunctionSpace(mesh, Pe)
 v = dolfinx.Function(V, name="v")
 p = dolfinx.Function(P, name="p")
 
+vt = dolfinx.Function(V, name="vt")
+pt = dolfinx.Function(P, name="pt")
+
 δv = ufl.TestFunction(V)
 δp = ufl.TestFunction(P)
 
-# Create (zero) initial conditions
-v0, v0t = [dolfinx.Function(V)] * 2
-p0, p0t = [dolfinx.Function(P)] * 2
-
-# Define state as (ordered) list of functions
+# Define state and rate as (ordered) list of functions
 m = [v, p]
-m0 = [v0, p0]
-m0t = [v0t, p0t]
+mt = [vt, pt]
 δm = [δv, δp]
 
 # Create other functions
@@ -128,7 +126,7 @@ v_vector_i = dolfinx.Function(V)
 p_scalar_i = dolfinx.Function(P)
 
 # Time integrator
-odeint = dolfiny.odeint.ODEInt(dt=dt, x=m, x0=m0, x0t=m0t)
+odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=m, xt=mt)
 
 
 def D(v):
@@ -159,26 +157,13 @@ def T(v, p):
     return T
 
 
-# Weak form: time-rate-dependent components (as one-form)
-@odeint.form_hook
-def g(dmdt):
-    dvdt, _ = dmdt
-    g = ufl.inner(δv, rho * dvdt) * dx
-    return g
-
-
-# Weak form: time-rate-independent components (as one-form)
-@odeint.form_hook
-def f(m):
-    v, p = m
-    f = ufl.inner(δv, rho * ufl.grad(v) * v) * dx \
-        + ufl.inner(ufl.grad(δv), T(v, p)) * dx \
-        + ufl.inner(δp, ufl.div(v)) * dx
-    return f
-
+# Weak form (as one-form)
+f = ufl.inner(δv, rho * vt + rho * ufl.grad(v) * v) * dx \
+    + ufl.inner(ufl.grad(δv), T(v, p)) * dx \
+    + ufl.inner(δp, ufl.div(v)) * dx
 
 # Overall form (as one-form)
-F = odeint.discretise_in_time(g, f)
+F = odeint.discretise_in_time(f)
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
 
@@ -186,6 +171,9 @@ F = dolfiny.function.extract_blocks(F, δm)
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 # Write mesh, meshtags
 ofile.write_mesh_meshtags(mesh, mts)
+# Write initial state
+ofile.write_function(v, time.value)
+ofile.write_function(p, time.value)
 
 # Options for PETSc backend
 opts = PETSc.Options("bingham")
@@ -211,16 +199,16 @@ ring_inner_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_inn
 ring_inner_dofs_P = dolfiny.mesh.locate_dofs_topological(P, interfaces, ring_inner)
 
 # Process time steps
-for time_step in range(nT + 1):
+for time_step in range(1, nT + 1):
 
-    # Set current time
-    time.value = time_step * odeint.dt
+    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}")
+
+    # Stage next time step
+    odeint.stage()
 
     # Update functions (taking up time.value)
     v_vector_o.interpolate(v_vector_o_)
     v_vector_i.interpolate(v_vector_i_)
-
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value:7.3f} in step {time_step:d}")
 
     # Set/update boundary conditions
     problem.bcs = [
@@ -235,14 +223,11 @@ for time_step in range(nT + 1):
     # Assert convergence of nonlinear solver
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
-    # Extract solution
-    v_, p_ = m
-
     # Write output
-    ofile.write_function(v_, time.value)
-    ofile.write_function(p_, time.value)
+    ofile.write_function(v, time.value)
+    ofile.write_function(p, time.value)
 
     # Update solution states for time integration
-    m0, m0t = odeint.update()
+    odeint.update()
 
 ofile.close()
