@@ -12,11 +12,12 @@ import dolfiny.function
 import dolfiny.snesblockproblem
 
 
-def ode_1st_order_closed(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
+def ode_1st_linear_closed(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     """
     Solve ODE in closed form (analytically, at discrete time instances).
 
-    First order ODE: dot u + a * u = b with initial condition u(t=0) = u_0
+    First order linear ODE:
+    dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
     t = numpy.linspace(0, nT * dt, num=nT + 1)
@@ -26,11 +27,12 @@ def ode_1st_order_closed(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     return u
 
 
-def ode_1st_order_eulerf(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
+def ode_1st_linear_eulerf(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     """
     Solve ODE with method "Euler forward".
 
-    First order ODE: dot u + a * u = b with initial condition u(t=0) = u_0
+    First order linear ODE:
+    dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
     u = numpy.zeros(nT + 1)
@@ -43,11 +45,12 @@ def ode_1st_order_eulerf(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     return u
 
 
-def ode_1st_order_eulerb(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
+def ode_1st_linear_eulerb(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     """
     Solve ODE with method "Euler backward".
 
-    First order ODE: dot u + a * u = b with initial condition u(t=0) = u_0
+    First order linear ODE:
+    dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
     u = numpy.zeros(nT + 1)
@@ -60,11 +63,12 @@ def ode_1st_order_eulerb(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     return u
 
 
-def ode_1st_order_crankn(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
+def ode_1st_linear_crankn(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     """
-    Solve ODE with method "Crank Nicolson".
+    Solve ODE with method "Crank-Nicolson".
 
-    First order ODE: dot u + a * u = b with initial condition u(t=0) = u_0
+    First order linear ODE:
+    dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
     u = numpy.zeros(nT + 1)
@@ -77,11 +81,12 @@ def ode_1st_order_crankn(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1):
     return u
 
 
-def ode_1st_order_galpha(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, **kwargs):
+def ode_1st_linear_galpha(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, **kwargs):
     """
     Solve ODE with method "Generalised Alpha".
 
-    First order ODE: dot u + a * u = b with initial condition u(t=0) = u_0
+    First order linear ODE:
+    dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
     # Default parameters (Backward-Euler)
@@ -123,11 +128,12 @@ def ode_1st_order_galpha(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, **kwargs):
     return u
 
 
-def ode_1st_order_odeint(a=1.0, b=0.0, u_0=1.0, nT=10, dt=0.1, **kwargs):
+def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, **kwargs):
     """
     Create 1st order ODE problem and solve with `ODEInt` time integrator.
 
-    First order ODE: dot u + a * u = b with initial condition u(t=0) = u_0
+    First order linear ODE:
+    dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
     mesh = UnitCubeMesh(MPI.COMM_WORLD, 1, 1, 1)
@@ -153,7 +159,7 @@ def ode_1st_order_odeint(a=1.0, b=0.0, u_0=1.0, nT=10, dt=0.1, **kwargs):
     odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=u, xt=ut, **kwargs)
 
     # Weak form (as one-form)
-    f = δu * ut * dx + δu * a * u * dx - δu * b * dx
+    f = δu * (ut + a * u - b) * dx
 
     # Overall form (as one-form)
     F = odeint.discretise_in_time(f)
@@ -164,10 +170,12 @@ def ode_1st_order_odeint(a=1.0, b=0.0, u_0=1.0, nT=10, dt=0.1, **kwargs):
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, [u])
 
     u_avg = numpy.zeros(nT + 1)
-    u_avg[0] = u.vector.norm(0) / u.vector.getSize()
+    u_avg[0] = u.vector.sum() / u.vector.getSize()
 
     # Process time steps
     for time_step in range(1, nT + 1):
+
+        dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}")
 
         # Stage next time step
         odeint.stage()
@@ -178,63 +186,245 @@ def ode_1st_order_odeint(a=1.0, b=0.0, u_0=1.0, nT=10, dt=0.1, **kwargs):
         # Update solution states for time integration
         odeint.update()
 
-        u_avg[time_step] = u.vector.norm(0) / u.vector.getSize()
+        u_avg[time_step] = u.vector.sum() / u.vector.getSize()
 
     return u_avg
 
 
-def test_odeint_highlevel():
+def ode_1st_nonlinear_closed(a=1.0, b=1.0, c=1.0, nT=10, dt=0.1):
+    """
+    Solve ODE in closed form (analytically, at discrete time instances).
 
-    # (1) Check wrt hand-coded results
+    First order nonlinear non-autonomous ODE:
+    t * dot u - a * cos(c*t) * u^2 - 2*u - a * b^2 * t^4 * cos(c*t) = 0 with initial condition u(t=1) = 0
+    """
+
+    t = numpy.linspace(1, 1 + nT * dt, num=nT + 1)
+
+    z = c * t * numpy.sin(c * t) - c * numpy.sin(c) + numpy.cos(c * t) - numpy.cos(c)
+    u = b * t**2 * numpy.tan(a * b / c**2 * z)
+
+    return u
+
+
+def ode_1st_nonlinear_odeint(a=1.0, b=1.0, c=1.0, nT=10, dt=0.1, **kwargs):
+    """
+    Create 1st order ODE problem and solve with `ODEInt` time integrator.
+
+    First order nonlinear non-autonomous ODE:
+    t * dot u - a * cos(c*t) * u^2 - 2 * u - a * b^2 * t^4 * cos(c*t) = 0 with initial condition u(t=1) = 0
+    """
+
+    mesh = UnitCubeMesh(MPI.COMM_WORLD, 1, 1, 1)
+    U = FunctionSpace(mesh, ("DG", 0))
+
+    u = Function(U, name="u")
+    ut = Function(U, name="ut")
+
+    u.vector.set(0.0)  # initial condition
+    ut.vector.set(a * b**2 * numpy.cos(c))  # exact initial rate of this ODE for generalised alpha
+
+    δu = ufl.TestFunction(U)
+
+    dx = ufl.Measure("dx", domain=mesh)
+
+    # Global time
+    t = dolfinx.Constant(mesh, 1.0)
+
+    # Time step size
+    dt = dolfinx.Constant(mesh, dt)
+
+    # Time integrator
+    odeint = dolfiny.odeint.ODEInt(t=t, dt=dt, x=u, xt=ut, **kwargs)
+
+    # Weak form (as one-form)
+    f = δu * (t * ut - a * ufl.cos(c * t) * u**2 - 2 * u - a * b**2 * t**4 * ufl.cos(c * t)) * dx
+
+    # Overall form (as one-form)
+    F = odeint.discretise_in_time(f)
+    # Overall form (as list of forms)
+    F = dolfiny.function.extract_blocks(F, [δu])
+
+    # # Options for PETSc backend
+    from petsc4py import PETSc
+    opts = PETSc.Options()
+    opts["snes_type"] = "newtonls"
+    opts["snes_linesearch_type"] = "basic"
+    opts["snes_atol"] = 1.0e-10
+    opts["snes_rtol"] = 1.0e-12
+
+    # Create nonlinear problem
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(F, [u])
+
+    u_avg = numpy.zeros(nT + 1)
+    u_avg[0] = u.vector.sum() / u.vector.getSize()
+
+    # Process time steps
+    for time_step in range(1, nT + 1):
+
+        dolfiny.utils.pprint(f"\n+++ Processing time instant = {t.value + dt.value:7.3f} in step {time_step:d}")
+
+        # Stage next time step
+        odeint.stage()
+
+        # Solve nonlinear problem
+        u, = problem.solve()
+
+        # Assert convergence of nonlinear solver
+        assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+
+        # Update solution states for time integration
+        odeint.update()
+
+        u_avg[time_step] = u.vector.sum() / u.vector.getSize()
+
+    return u_avg
+
+
+def test_odeint_linear():
+
+    # *** Check wrt hand-coded results
 
     # Euler forward
-    u_computed = ode_1st_order_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, alpha_f=0.0, alpha_m=0.5, gamma=0.5)
-    u_expected = ode_1st_order_eulerf(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1)
+    u_computed = ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, alpha_f=0.0, alpha_m=0.5, gamma=0.5)
+    u_expected = ode_1st_linear_eulerf(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1)
     assert(numpy.isclose(u_computed, u_expected, rtol=1.0e-12).all())
 
     # Euler backward
-    u_computed = ode_1st_order_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, alpha_f=1.0, alpha_m=0.5, gamma=0.5)
-    u_expected = ode_1st_order_eulerb(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1)
+    u_computed = ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, alpha_f=1.0, alpha_m=0.5, gamma=0.5)
+    u_expected = ode_1st_linear_eulerb(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1)
     assert(numpy.isclose(u_computed, u_expected, rtol=1.0e-12).all())
 
     # Crank-Nicolson
-    u_computed = ode_1st_order_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, rho=1.0)
-    u_expected = ode_1st_order_crankn(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1)
+    u_computed = ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, rho=1.0)
+    u_expected = ode_1st_linear_crankn(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1)
     assert(numpy.isclose(u_computed, u_expected, rtol=1.0e-12).all())
 
     # Generalised Alpha, rho = 0.5
-    u_computed = ode_1st_order_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, rho=0.5)
-    u_expected = ode_1st_order_galpha(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, rho=0.5)
+    u_computed = ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, rho=0.5)
+    u_expected = ode_1st_linear_galpha(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, rho=0.5)
     assert(numpy.isclose(u_computed, u_expected, rtol=1.0e-12).all())
 
-    # (2) Check wrt convergence order
+    # *** Check wrt convergence order
 
     # Parameter/order sets
-    mi = {'euler_forward': {'param': {'alpha_f': 0.0, 'alpha_m': 0.5, 'gamma': 0.5}, 'order': 1},
-          'euler_backward': {'param': {'alpha_f': 1.0, 'alpha_m': 0.5, 'gamma': 0.5}, 'order': 1},
-          'crank_nicolson': {'param': {'alpha_f': 0.5, 'alpha_m': 0.5, 'gamma': 0.5}, 'order': 2},
-          'generalised_alpha_rho_1.0': {'param': {'rho': 1.0}, 'order': 2},
-          'generalised_alpha_rho_0.8': {'param': {'rho': 0.8}, 'order': 2},
-          'generalised_alpha_rho_0.6': {'param': {'rho': 0.6}, 'order': 2},
-          'generalised_alpha_rho_0.4': {'param': {'rho': 0.4}, 'order': 2},
-          'generalised_alpha_rho_0.2': {'param': {'rho': 0.2}, 'order': 2},
-          'generalised_alpha_rho_0.0': {'param': {'rho': 0.0}, 'order': 2}, }
+    mi = {'euler_forward': {'param': {'alpha_f': 0.0, 'alpha_m': 0.5, 'gamma': 0.5}, 'order_expected': 1},
+          'euler_backward': {'param': {'alpha_f': 1.0, 'alpha_m': 0.5, 'gamma': 0.5}, 'order_expected': 1},
+          'crank_nicolson': {'param': {'alpha_f': 0.5, 'alpha_m': 0.5, 'gamma': 0.5}, 'order_expected': 2},
+          'generalised_alpha_rho_1.0': {'param': {'rho': 1.0}, 'order_expected': 2},
+          'generalised_alpha_rho_0.5': {'param': {'rho': 0.5}, 'order_expected': 2},
+          'generalised_alpha_rho_0.0': {'param': {'rho': 0.0}, 'order_expected': 2}, }
 
+    # Compute error for each method and resolution
     for method, info in mi.items():
 
-        l2 = dict.fromkeys((100, 200, 400), 1.0)
+        l2 = dict.fromkeys((50, 100, 500, 1000), 1.0)
 
         for N in l2.keys():
-            u_computed = ode_1st_order_odeint(a=1.0, b=0.5, u_0=1.0, nT=N, dt=10.0 / N, **info['param'])
-            u_expected = ode_1st_order_closed(a=1.0, b=0.5, u_0=1.0, nT=N, dt=10.0 / N)
+            u_computed = ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=N, dt=1.0 / N, **info['param'])
+            u_expected = ode_1st_linear_closed(a=1.0, b=0.5, u_0=1.0, nT=N, dt=1.0 / N)
             l2[N] = numpy.linalg.norm(u_computed - u_expected, 2) / numpy.linalg.norm(u_expected, 2)
 
-        x = numpy.log(numpy.fromiter(l2.keys(), dtype=float))
-        y = numpy.log(numpy.fromiter(l2.values(), dtype=float))
-        A = numpy.vstack([x, numpy.ones(len(x))]).T
-        m = numpy.linalg.lstsq(A, y, rcond=None)[0][0]
+        # Get order of convergence
+        x = numpy.log10(numpy.fromiter(l2.keys(), dtype=float))
+        y = numpy.log10(numpy.fromiter(l2.values(), dtype=float))
+        k = 3  # consider the k finest for determining the convergence order
+        A = numpy.vstack([x[-k:], numpy.ones(k)]).T
+        m = numpy.linalg.lstsq(A, y[-k:], rcond=None)[0][0]
 
-        print(f"{method:s}: measured convergence rate = {numpy.abs(m):3.2f}")
-        print(l2)
+        info["l2error"] = l2
+        info["order_measured"] = numpy.abs(m)
 
-        assert(numpy.isclose(numpy.abs(m), info['order'], rtol=1.0e-1))
+        assert(numpy.isclose(info["order_measured"], info['order_expected'], rtol=0.05))
+
+    # output
+    if MPI.COMM_WORLD.rank == 0:
+
+        # write results as json file
+        import json
+        with open('test_odeint_linear_convergence.json', 'w') as file:
+            json.dump(mi, file, indent=3, sort_keys=True)
+
+        # plot results as pdf file
+        import json
+        with open('test_odeint_linear_convergence.json', 'r') as file:
+            mi = json.load(file)
+        import matplotlib.pyplot
+        fig, ax1 = matplotlib.pyplot.subplots()
+        ax1.set_title("ODEInt: linear ODE, convergence", fontsize=12)
+        ax1.set_xlabel(r'number of time steps $\log(N)$', fontsize=12)
+        ax1.set_ylabel(r'L2 error $\log (e)$', fontsize=12)
+        ax1.grid(linewidth=0.25)
+        fig.tight_layout()
+        import itertools
+        markers = itertools.cycle(['o', 's', 'x', '+', 'p', 'h'])
+        for method, info in mi.items():
+            n = numpy.log10(numpy.fromiter(info["l2error"].keys(), dtype=float))
+            e = numpy.log10(numpy.fromiter(info["l2error"].values(), dtype=float))
+            ax1.plot(n, e, marker=next(markers), linewidth=1.0, markersize=6.0, label=method)
+        ax1.legend(loc='lower left')
+        fig.savefig("test_odeint_linear_convergence.pdf")
+
+
+def test_odeint_nonlinear():
+
+    # *** Check wrt convergence order
+
+    # Parameter/order sets
+    mi = {'euler_forward': {'param': {'alpha_f': 0.0, 'alpha_m': 0.5, 'gamma': 0.5}, 'order_expected': 1},
+          'euler_backward': {'param': {'alpha_f': 1.0, 'alpha_m': 0.5, 'gamma': 0.5}, 'order_expected': 1},
+          'crank_nicolson': {'param': {'alpha_f': 0.5, 'alpha_m': 0.5, 'gamma': 0.5}, 'order_expected': 2},
+          'generalised_alpha_rho_1.0': {'param': {'rho': 1.0}, 'order_expected': 2},
+          'generalised_alpha_rho_0.5': {'param': {'rho': 0.5}, 'order_expected': 2},
+          'generalised_alpha_rho_0.0': {'param': {'rho': 0.0}, 'order_expected': 2}, }
+
+    # Compute error for each method and resolution
+    for method, info in mi.items():
+
+        # l2 = dict.fromkeys((250, 500, 1000, 1500, 2000, 3000, 4000), 1.0)
+        l2 = dict.fromkeys((250, 500, 1000, 1500, 3000), 1.0)
+
+        for N in l2.keys():
+            u_computed = ode_1st_nonlinear_odeint(a=5.0, b=1.0, c=8.0, nT=N, dt=1.0 / N, **info['param'])
+            u_expected = ode_1st_nonlinear_closed(a=5.0, b=1.0, c=8.0, nT=N, dt=1.0 / N)
+            l2[N] = numpy.linalg.norm(u_computed - u_expected, 2) / numpy.linalg.norm(u_expected, 2)
+
+        # Get order of convergence
+        x = numpy.log10(numpy.fromiter(l2.keys(), dtype=float))
+        y = numpy.log10(numpy.fromiter(l2.values(), dtype=float))
+        k = 2  # consider the k finest for determining the convergence order
+        A = numpy.vstack([x[-k:], numpy.ones(k)]).T
+        m = numpy.linalg.lstsq(A, y[-k:], rcond=None)[0][0]
+
+        info["l2error"] = l2
+        info["order_measured"] = numpy.abs(m)
+
+        assert(numpy.isclose(info["order_measured"], info['order_expected'], rtol=0.10))
+
+    # output
+    if MPI.COMM_WORLD.rank == 0:
+
+        # write results as json file
+        import json
+        with open('test_odeint_nonlinear_convergence.json', 'w') as file:
+            json.dump(mi, file, indent=3, sort_keys=True)
+
+        # plot results as pdf file
+        import json
+        with open('test_odeint_nonlinear_convergence.json', 'r') as file:
+            mi = json.load(file)
+        import matplotlib.pyplot
+        fig, ax1 = matplotlib.pyplot.subplots()
+        ax1.set_title("ODEInt: nonlinear ODE, convergence", fontsize=12)
+        ax1.set_xlabel(r'number of time steps $\log(N)$', fontsize=12)
+        ax1.set_ylabel(r'L2 error $\log (e)$', fontsize=12)
+        ax1.grid(linewidth=0.25)
+        fig.tight_layout()
+        import itertools
+        markers = itertools.cycle(['o', 's', 'x', '+', 'p', 'h'])
+        for method, info in mi.items():
+            n = numpy.log10(numpy.fromiter(info["l2error"].keys(), dtype=float))
+            e = numpy.log10(numpy.fromiter(info["l2error"].values(), dtype=float))
+            ax1.plot(n, e, marker=next(markers), linewidth=1.0, markersize=6.0, label=method)
+        ax1.legend(loc='lower left')
+        fig.savefig("test_odeint_nonlinear_convergence.pdf")
