@@ -40,6 +40,11 @@ pytest:
       - mpirun -n 4 python3 -u -m pytest -vsx test/.
       # Run Python unit tests (serial)
       - python3 -m pytest -vsx test/.
+   artifacts:
+      name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
+      paths:
+         - test_*.*
+      expire_in: 1 week
 
 demos:
    image: $CONTAINER_TEST_IMAGE
