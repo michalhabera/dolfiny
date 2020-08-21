@@ -208,18 +208,15 @@ class SNESBlockProblem():
             return 4
 
     def _monitor_block(self, snes, it, norm):
-        pprint("\n### SNES iteration {}".format(it))
         self.compute_norms_block(snes)
-        it = snes.getIterationNumber()
         self.print_norms(it)
 
     def _monitor_nest(self, snes, it, norm):
-        pprint("\n### SNES iteration {}".format(it))
         self.compute_norms_nest(snes)
-        it = snes.getIterationNumber()
         self.print_norms(it)
 
     def print_norms(self, it):
+        pprint("\n### SNES iteration {}".format(it))
         for i, ui in enumerate(self.u):
             pprint("# sub {:2d} |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(
                 i, self.norm_x[it][i], self.norm_dx[it][i], self.norm_r[it][i], ui.name))
