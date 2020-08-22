@@ -93,7 +93,13 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
                  #  'hexahedron64': 64,
                  }
 
-        node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
+        # node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
+
+        # FIXME: This silences the RuntimeWarning (ctypes / PEP3118 format string) caused by Gmsh/numpy
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
 
         # Fetch elements for the mesh
         cell_types, cell_tags, cell_node_tags = gmsh_model.mesh.getElements(dim=tdim)
