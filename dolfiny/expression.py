@@ -148,14 +148,14 @@ def assemble(e, dx):
     shape = ufl.shape(e)
 
     if rank == 0:
-        f_ = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e * dx), op=MPI.SUM)  # dolfinx.fem.assemble_scalar(e * dx)
+        f_ = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e * dx), op=MPI.SUM)
     elif rank == 1:
         f_ = np.zeros(shape)
         for row in range(shape[0]):
-            f_[row] = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e[row] * dx), op=MPI.SUM)  # dolfinx.fem.assemble_scalar(e[row] * dx)
+            f_[row] = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e[row] * dx), op=MPI.SUM)
     elif rank == 2:
         f_ = np.zeros(shape)
         for row in range(shape[0]):
             for col in range(shape[1]):
-                f_[row, col] = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e[row, col] * dx), op=MPI.SUM)  # dolfinx.fem.assemble_scalar(e[row, col] * dx)
+                f_[row, col] = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e[row, col] * dx), op=MPI.SUM)
     return f_
