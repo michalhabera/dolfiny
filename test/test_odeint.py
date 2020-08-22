@@ -145,6 +145,9 @@ def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=10, dt=0.1, **kwargs):
     u.vector.set(u_0)  # initial condition
     ut.vector.set(b - a * u_0)  # exact initial rate of this ODE for generalised alpha
 
+    u.vector.ghostUpdate()
+    ut.vector.ghostUpdate()
+
     δu = ufl.TestFunction(U)
 
     dx = ufl.Measure("dx", domain=mesh)
@@ -228,6 +231,9 @@ def ode_1st_nonlinear_odeint(a=1.0, b=1.0, c=1.0, nT=10, dt=0.1, **kwargs):
 
     u.vector.set(0.0)  # initial condition
     ut.vector.set(a * b**2 * numpy.cos(c))  # exact initial rate of this ODE for generalised alpha
+
+    u.vector.ghostUpdate()
+    ut.vector.ghostUpdate()
 
     δu = ufl.TestFunction(U)
 
