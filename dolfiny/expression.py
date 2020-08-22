@@ -4,17 +4,17 @@ import dolfinx
 
 def evaluate(e, u, u0):
     """Evaluate a UFL expression (or list of expressions).
-    Basically replaces function(s) u by function(s) u0.
+       Basically replaces function(s) u by function(s) u0.
 
     Parameters
     ----------
-    e: UFL Expr or list of UFL expressions
+    e: UFL Expr or list of UFL expressions/forms
     u: UFL Function or list of UFL functions
     u0: UFL Function or list of UFL functions
 
     Returns
     -------
-    Expr (or list of expressions) with function u replaced by function u0.
+    Expression (or list of expressions) with function(s) u replaced by function(s) u0.
 
     """
 
@@ -48,14 +48,14 @@ def derivative(e, u, du, u0=None):
 
     Parameters
     ----------
-    e: UFL Expr or list of UFL expressions
+    e: UFL Expr or list of UFL expressions/forms
     u: UFL Function or list of UFL functions
     du: UFL Function or list of UFL functions
     u0: UFL Function or list of UFL functions, defaults to u
 
     Returns
     -------
-    Functional derivative.
+    Expression (or list of expressions) with functional derivative.
 
     """
 
@@ -67,12 +67,18 @@ def derivative(e, u, du, u0=None):
     if isinstance(e0, list):
         de0 = []
         for e0_ in e0:
-            de0_ = sum(ufl.derivative(e0_, v0, du) for v0, du in zip(u0, du))
+            if isinstance(u0, list) and isinstance(du, list):
+                de0_ = sum(ufl.derivative(e0_, v0, dv) for v0, dv in zip(u0, du))
+            else:
+                de0_ = ufl.derivative(e0_, u0, du)
             de0_ = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(de0_)
             de0_ = ufl.algorithms.apply_derivatives.apply_derivatives(de0_)
-        de0.append(de0_)
+            de0.append(de0_)
     else:
-        de0 = sum(ufl.derivative(e0, v0, du) for v0, du in zip(u0, du))
+        if isinstance(u0, list) and isinstance(du, list):
+            de0 = sum(ufl.derivative(e0, v0, dv) for v0, dv in zip(u0, du))
+        else:
+            de0 = ufl.derivative(e0, u0, du)
         de0 = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(de0)
         de0 = ufl.algorithms.apply_derivatives.apply_derivatives(de0)
 
@@ -90,7 +96,6 @@ def linearise(e, u, u0=None):
     ----------
     e: UFL Expr/Form or list of UFL expressions/forms
     u: UFL Function or list of UFL functions
-    du: UFL Function or list of UFL functions
     u0: UFL Function or list of UFL functions, defaults to zero
 
     Returns
@@ -100,7 +105,6 @@ def linearise(e, u, u0=None):
     """
 
     if u0 is None:
-        # TODO: do not assume u as Function
         if isinstance(u, list):
             u0 = []
             for v in u:
@@ -123,7 +127,7 @@ def linearise(e, u, u0=None):
 
 
 def assemble(e, dx):
-    """Assemble form given by expression e and integration measure dx.
+    """Assemble UFL form given by UFL expression e and UFL integration measure dx.
        The expression can be a tensor quantity of rank 0, 1 or 2.
 
     Parameters
@@ -133,24 +137,25 @@ def assemble(e, dx):
 
     Returns
     -------
-    Assembled form f = e * dx
+    Assembled form f = e * dx as scalar or numpy array (depends on rank of e).
 
     """
 
     import numpy as np
+    from mpi4py import MPI
 
     rank = ufl.rank(e)
     shape = ufl.shape(e)
 
     if rank == 0:
-        f_ = dolfinx.fem.assemble_scalar(e * dx)
+        f_ = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e * dx), op=MPI.SUM)  # dolfinx.fem.assemble_scalar(e * dx)
     elif rank == 1:
         f_ = np.zeros(shape)
         for row in range(shape[0]):
-            f_[row] = dolfinx.fem.assemble_scalar(e[row] * dx)
+            f_[row] = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e[row] * dx), op=MPI.SUM)  # dolfinx.fem.assemble_scalar(e[row] * dx)
     elif rank == 2:
         f_ = np.zeros(shape)
         for row in range(shape[0]):
             for col in range(shape[1]):
-                f_[row, col] = dolfinx.fem.assemble_scalar(e[row, col] * dx)
+                f_[row, col] = MPI.COMM_WORLD.allreduce(dolfinx.fem.assemble_scalar(e[row, col] * dx), op=MPI.SUM)  # dolfinx.fem.assemble_scalar(e[row, col] * dx)
     return f_
