@@ -154,7 +154,7 @@ class ODEInt():
         self.t.value += (1.0 - self.alpha_f.value) * self.dt.value
 
     def discretise_in_time(self, f):
-        """Discretes the form f(t, x, xt) in time using weighted states ta, xa, xat.
+        """Discretises the form f(t, x, xt) in time using weighted states ta, xa, xat.
            As a consequence, the solution fulfills f = 0 at ta.
         """
         # xa
@@ -371,7 +371,7 @@ class ODEInt2():
         self.t.value += (1.0 - self.alpha_f.value) * self.dt.value
 
     def discretise_in_time(self, f):
-        """Discretes the form f(t, x, xt, xtt) in time using weighted states ta, xa, xat, xatt.
+        """Discretises the form f(t, x, xt, xtt) in time using weighted states ta, xa, xat, xatt.
            As a consequence, the solution fulfills f = 0 at ta.
         """
 
