@@ -3,28 +3,48 @@ import dolfiny.expression
 import dolfiny.interpolation
 
 
+def _copy_entries(source, target):
+    """Helper function to copy solution values from the source Function to the target Function."""
+
+    if isinstance(source, list):
+        for si, ti in zip(source, target):
+            with si.vector.localForm() as locs, ti.vector.localForm() as loct:
+                locs.copy(loct)
+    else:
+        with source.vector.localForm() as locs, target.vector.localForm() as loct:
+            locs.copy(loct)
+
+
 class ODEInt():
 
     def __init__(self, t, dt, x, xt, **kwargs):
         """Initialises the ODE integrator (single-step-method) for 1st order ODEs.
-           Uses underneath the generalised alpha method and its limits.
+        Uses underneath the generalised alpha method and its limits.
+
+        Important: This variant ensures that the solution x(t1), xt(t1)
+                   fulfills the residual r(t, x, xt) at the end of the time step t1.
+                   Properties of the generalised alpha method (controlled by the parameters
+                   alpha_f, alpha_m and gamma) remain intact. In addition, the rate of the
+                   state converges with 2nd order in time (with appropriate gamma).
+                   This is achieved with help of the auxiliary rate xt_aux.
+
+        (1) xt_gamma = (x1 - x0) / dt = [ (1 - gamma) * x0t_aux + gamma * x1t_aux ]
+        (2) xt_alpha = (1 - alpha_f) * x0t + alpha_f * x1t = (1 - alpha_m) * x0t_aux + alpha_m * x1t_aux
 
         K.E. Jansen, C.H. Whiting, G.M. Hulbert. CMAME, 190, 305-319, 2000.
         http://dx.doi.org/10.1016/S0045-7825(00)00203-6
 
-        Euler forward:
-            alpha_f = 0, alpha_m = 1/2, gamma = 1/2
+        Crank-Nicolson: [default]
+            alpha_f = 1/2, alpha_m = 1/2, gamma = 1/2
         Euler backward:
             alpha_f = 1, alpha_m = 1/2, gamma = 1/2
-        Crank-Nicolson:
-            alpha_f = 1/2, alpha_m = 1/2, gamma = 1/2
         Theta:
             alpha_f = theta, alpha_m = 1/2, gamma = 1/2
         Generalised alpha:
             The value of rho can be used to determine the values
             alpha_f = 1 / (1 + rho),
             alpha_m = 1 / 2 * (3 - rho) / (1 + rho),
-            gamma = 1 / 2 + alpha_m - alpha_f
+            gamma = 1 / 2 + alpha_m - alpha_f --> second order
 
         Parameters
         ----------
@@ -49,53 +69,51 @@ class ODEInt():
         if not isinstance(self.dt, dolfinx.Constant):
             raise RuntimeError("No time step dt as dolfinx.Constant provided.")
 
-        # Pointers to state x and rate xt (as function or list of functions)
-        self.x = x
-        self.xt = xt
+        # Pointers to state x1 and rate x1t (as function or list of functions)
+        self.x1 = x
+        self.x1t = xt
 
-        if isinstance(self.x, list):
+        if isinstance(self.x1, list):
             self.x0 = []
-            for x, xt in zip(self.x, self.xt):
-                if x.function_space is not xt.function_space:
+            for x1, x1t in zip(self.x1, self.x1t):
+                if x1.function_space is not x1t.function_space:
                     raise RuntimeError("Incompatible function spaces for state and rate.")
         else:
-            if self.x.function_space is not self.xt.function_space:
+            if self.x1.function_space is not self.x1t.function_space:
                 raise RuntimeError("Incompatible function spaces for state and rate.")
 
         # Set state x0
-        if isinstance(self.x, list):
+        if isinstance(self.x1, list):
             self.x0 = []
-            for xi in self.x:
-                self.x0.append(dolfinx.function.Function(xi.function_space))
+            for x1i in self.x1:
+                self.x0.append(dolfinx.function.Function(x1i.function_space))
         else:
-            self.x0 = dolfinx.function.Function(self.x.function_space)
+            self.x0 = dolfinx.function.Function(self.x1.function_space)
 
         # Set rate of state x0t
-        if isinstance(self.xt, list):
+        if isinstance(self.x1t, list):
             self.x0t = []
-            for xti in self.xt:
-                self.x0t.append(dolfinx.function.Function(xti.function_space))
+            for x1ti in self.x1t:
+                self.x0t.append(dolfinx.function.Function(x1ti.function_space))
         else:
-            self.x0t = dolfinx.function.Function(self.xt.function_space)
+            self.x0t = dolfinx.function.Function(self.x1t.function_space)
 
-        # Expression: derivative in time
-        self.derivative_dt = lambda x, x0, x0t: \
-            1.0 / (self.gamma * self.dt) * (x - x0) + (self.gamma - 1.0) / self.gamma * x0t
+        # Set *auxiliary* rate of state x1t_aux and x0t_aux
+        if isinstance(self.x1t, list):
+            self.x1t_aux = []
+            self.x0t_aux = []
+            for x1ti in self.x1t:
+                self.x1t_aux.append(dolfinx.function.Function(x1ti.function_space))
+                self.x0t_aux.append(dolfinx.function.Function(x1ti.function_space))
+        else:
+            self.x1t_aux = dolfinx.function.Function(self.x1t.function_space)
+            self.x0t_aux = dolfinx.function.Function(self.x1t.function_space)
 
-        # Expression: integral in time
-        self.integral_dt = lambda x, xt, x0, x0t: \
-            self.dt / 2 * (x0 + x) + self.dt**2 / 12 * (x0t - xt)
+        # Initialise values of auxiliary state
+        dolfiny.odeint._copy_entries(self.x1t, self.x1t_aux)
 
-        # Expression: state at collocation point in time interval
-        self.state = lambda x0, x1: \
-            self.alpha_f * x1 + (1.0 - self.alpha_f) * x0
-
-        # Expression: rate of state at collocation point in time interval
-        self.rate = lambda x0t, x1t: \
-            self.alpha_m * x1t + (1.0 - self.alpha_m) * x0t
-
-        # Default values: Backward Euler
-        self.alpha_f = dolfinx.Constant(self.t.ufl_domain(), 1.0)
+        # Default values: Crank-Nicolson
+        self.alpha_f = dolfinx.Constant(self.t.ufl_domain(), 0.5)
         self.alpha_m = dolfinx.Constant(self.t.ufl_domain(), 0.5)
         self.gamma = dolfinx.Constant(self.t.ufl_domain(), 0.5)
 
@@ -111,7 +129,25 @@ class ODEInt():
             self.alpha_m.value = kwargs["alpha_m"]
             self.gamma.value = kwargs["gamma"]
 
+    def _derivative_dt(self, x1t_aux, x0t_aux, x0t):
+        """Returns the UFL expression for: derivative in time x1t."""
+
+        # return equation (1) solved for x1t
+        return 1 / self.alpha_f * ((1 - self.alpha_m) * x0t_aux + self.alpha_m * x1t_aux - (1 - self.alpha_f) * x0t)
+
+    def _derivative_dt_aux(self, x1, x0, x0t_aux):
+        """Returns the UFL expression for: derivative in time x1t_aux."""
+
+        # return equation (2) solved for x1t_aux
+        return 1 / self.gamma * (1 / self.dt * (x1 - x0) - (1 - self.gamma) * x0t_aux)
+
+    def integral_dt(self, x1, x1t, x0, x0t):
+        """Returns the UFL expression for: integral over the time interval int_t0^t1 x(t) dt."""
+
+        return self.dt / 2 * (x0 + x1) + self.dt**2 / 12 * (x0t - x1t)
+
     def stage(self, t0=None, dt=None):
+        """Stages the processing of the next time step: sets time value (to t1) and initial values."""
 
         if t0 is not None:
             self.t.value = t0
@@ -119,64 +155,56 @@ class ODEInt():
         if dt is not None:
             self.dt.value = dt
 
-        self.t.value += self.alpha_f.value * self.dt.value
+        # Set time
+        self.t.value += self.dt.value
 
-        # update x0 (copy values)
-        if isinstance(self.x, list):
-            for xi, x0i in zip(self.x, self.x0):
-                with xi.vector.localForm() as locxi, x0i.vector.localForm() as locx0i:
-                    locxi.copy(locx0i)
-        else:
-            with self.x.vector.localForm() as locx, self.x0.vector.localForm() as locx0:
-                locx.copy(locx0)
-
-        # update x0t (copy values)
-        if isinstance(self.xt, list):
-            for xti, x0ti in zip(self.xt, self.x0t):
-                with xti.vector.localForm() as locxti, x0ti.vector.localForm() as locx0ti:
-                    locxti.copy(locx0ti)
-        else:
-            with self.xt.vector.localForm() as locxt, self.x0t.vector.localForm() as locx0t:
-                locxt.copy(locx0t)
+        # Store states (set initial values for next time step)
+        dolfiny.odeint._copy_entries(self.x1, self.x0)
+        dolfiny.odeint._copy_entries(self.x1t, self.x0t)
+        dolfiny.odeint._copy_entries(self.x1t_aux, self.x0t_aux)
 
         return self.t, self.dt
 
     def update(self):
+        """Set rate x1t and auxiliary rate x1t_aux once x1 has been computed."""
 
-        # update xt
-        if isinstance(self.xt, list):
-            for x, xt, x0, x0t in zip(self.x, self.xt, self.x0, self.x0t):
-                dolfiny.interpolation.interpolate(self.derivative_dt(x, x0, x0t), xt)
+        # update x1t_aux
+        if isinstance(self.x1t_aux, list):
+            for x1, x0, x1t_aux, x0t_aux in zip(self.x1, self.x0, self.x1t_aux, self.x0t_aux):
+                dolfiny.interpolation.interpolate(self._derivative_dt_aux(x1, x0, x0t_aux), x1t_aux)
         else:
-            dolfiny.interpolation.interpolate(self.derivative_dt(self.x, self.x0, self.x0t), self.xt)
+            dolfiny.interpolation.interpolate(self._derivative_dt_aux(self.x1, self.x0, self.x0t_aux), self.x1t_aux)
 
-        # update to final time of staged time step
-        self.t.value += (1.0 - self.alpha_f.value) * self.dt.value
+        # update x1t
+        if isinstance(self.x1t, list):
+            for x1t_aux, x0t_aux, x1t, x0t in zip(self.x1t_aux, self.x0t_aux, self.x1t, self.x0t):
+                dolfiny.interpolation.interpolate(self._derivative_dt(x1t_aux, x0t_aux, x0t), x1t)
+        else:
+            dolfiny.interpolation.interpolate(self._derivative_dt(self.x1t_aux, self.x0t_aux, self.x0t), self.x1t)
 
     def discretise_in_time(self, f):
-        """Discretises the form f(t, x, xt) in time using weighted states ta, xa, xat.
-           As a consequence, the solution fulfills f = 0 at ta.
+        """Discretises the form f(t, x, xt) in time. The solution fulfills f(t1, x1, x1t) = 0.
         """
-        # xa
-        if isinstance(self.x, list):
-            xa = []
-            for x0, x1 in zip(self.x0, self.x):
-                xa.append(self.state(x0, x1))
-        else:
-            xa = self.state(self.x0, self.x)
 
-        # xat
-        if isinstance(self.x, list):
-            xat = []
-            for x, x0, x0t in zip(self.x, self.x0, self.x0t):
-                x1t = self.derivative_dt(x, x0, x0t)
-                xat.append(self.rate(x0t, x1t))
+        # Construct expression for x1t_aux
+        if isinstance(self.x1t, list):
+            x1t_aux = []
+            for x1i, x0i, x0ti_aux in zip(self.x1, self.x0, self.x0t_aux):
+                x1t_aux.append(self._derivative_dt_aux(x1i, x0i, x0ti_aux))
         else:
-            x1t = self.derivative_dt(self.x, self.x0, self.x0t)
-            xat = self.rate(self.x0t, x1t)
+            x1t_aux = self._derivative_dt_aux(self.x1, self.x0, self.x0t_aux)
 
-        f = dolfiny.expression.evaluate(f, self.x, xa)
-        f = dolfiny.expression.evaluate(f, self.xt, xat)
+        # Construct expression for x1t
+        if isinstance(self.x1t, list):
+            x1t = []
+            for x1ti_aux, x0ti_aux, x0ti in zip(self.x1t_aux, self.x0t_aux, self.x0t):
+                x1t.append(self._derivative_dt(x1ti_aux, x0ti_aux, x0ti))
+        else:
+            x1t = self._derivative_dt(self.x1t_aux, self.x0t_aux, self.x0t)
+
+        # Replace in form
+        f = dolfiny.expression.evaluate(f, self.x1t, x1t)
+        f = dolfiny.expression.evaluate(f, self.x1t_aux, x1t_aux)
 
         return f
 
@@ -185,12 +213,26 @@ class ODEInt2():
 
     def __init__(self, t, dt, x, xt, xtt, **kwargs):
         """Initialises the ODE integrator (single-step-method) for 2nd order ODEs.
-           Uses underneath the generalised alpha method and its limits.
+        Uses underneath the generalised alpha method and its limits.
 
-        J. Chung, G. M. Hulbert. ASME Journal of Applied Mechanics, 60, 371:375, 1993.
+        Important: This variant ensures that the solution x(t1), xt(t1), xtt(t1)
+                   fulfills the residual r(t, x, xt, xtt) at the end of the time step t1.
+                   Properties of the generalised alpha method (controlled by the parameters
+                   alpha_f, alpha_m and gamma) remain intact. In addition, the second derivative
+                   of the state converges with 2nd order in time (with appropriate gamma and beta).
+                   This is achieved with help of the auxiliary rate of rate xtt_aux.
+
+        (1) xt_beta = (x1 - x0) / dt = x0t + dt * [ (1 / 2 - beta) * x0tt_aux + beta * x1tt_aux ]
+        (2) xtt_gamma = (xt1 - xt0) / dt = [ (1 - gamma) * x0tt_aux + gamma * x1tt_aux ]
+        (3) xtt_alpha = (1 - alpha_f) * x0tt + alpha_f * x1tt = (1 - alpha_m) * x0tt_aux + alpha_m * x1tt_aux
+
+        J. Chung, G. M. Hulbert. ASME Journal of Applied Mechanics, 60, 371-375, 1993.
         http://dx.doi.org/10.1115/1.2900803
 
-        Newmark: (average constant acceleration)
+        M. Arnold, O. Brüls. Multibody Syst Dyn, 18, 185-202, 2007.
+        http://dx.doi.org/10.1007/s11044-007-9084-0
+
+        Newmark: [default]
             alpha_f = 1, alpha_m = 1, gamma = 1/2, beta = 1/4
         HHT-a:
             alpha_f = a, alpha_m = 1, gamma = 3/2 - a, beta = (2-a)^2 / 4
@@ -228,69 +270,59 @@ class ODEInt2():
         if not isinstance(self.dt, dolfinx.Constant):
             raise RuntimeError("No time step dt as dolfinx.Constant provided.")
 
-        # Pointers to state x, rate xt and rate of rate xtt (as function or list of functions)
-        self.x = x
-        self.xt = xt
-        self.xtt = xtt
+        # Pointers to state x1, rate x1t and rate of rate x1tt (as function or list of functions)
+        self.x1 = x
+        self.x1t = xt
+        self.x1tt = xtt
 
-        if isinstance(self.x, list):
+        if isinstance(self.x1, list):
             self.x0 = []
-            for x, xt, xtt in zip(self.x, self.xt, self.xtt):
-                if x.function_space is not xt.function_space \
-                   or x.function_space is not xtt.function_space:
+            for x1, x1t, x1tt in zip(self.x1, self.x1t, self.x1tt):
+                if x1.function_space is not x1t.function_space \
+                   or x1.function_space is not x1tt.function_space:
                     raise RuntimeError("Incompatible function spaces for state and rate.")
         else:
-            if self.x.function_space is not self.xt.function_space \
-               or self.x.function_space is not self.xtt.function_space:
+            if self.x1.function_space is not self.x1t.function_space \
+               or self.x1.function_space is not self.x1tt.function_space:
                 raise RuntimeError("Incompatible function spaces for state and rate.")
 
         # Set state x0
-        if isinstance(self.x, list):
+        if isinstance(self.x1, list):
             self.x0 = []
-            for xi in self.x:
-                self.x0.append(dolfinx.function.Function(xi.function_space))
+            for x1i in self.x1:
+                self.x0.append(dolfinx.function.Function(x1i.function_space))
         else:
-            self.x0 = dolfinx.function.Function(self.x.function_space)
+            self.x0 = dolfinx.function.Function(self.x1.function_space)
 
         # Set rate of state x0t
-        if isinstance(self.xt, list):
+        if isinstance(self.x1t, list):
             self.x0t = []
-            for xti in self.xt:
-                self.x0t.append(dolfinx.function.Function(xti.function_space))
+            for x1ti in self.x1t:
+                self.x0t.append(dolfinx.function.Function(x1ti.function_space))
         else:
-            self.x0t = dolfinx.function.Function(self.xt.function_space)
+            self.x0t = dolfinx.function.Function(self.x1t.function_space)
 
         # Set rate of rate of state x0tt
-        if isinstance(self.xtt, list):
+        if isinstance(self.x1tt, list):
             self.x0tt = []
-            for xtti in self.xtt:
-                self.x0tt.append(dolfinx.function.Function(xtti.function_space))
+            for x1tti in self.x1tt:
+                self.x0tt.append(dolfinx.function.Function(x1tti.function_space))
         else:
-            self.x0tt = dolfinx.function.Function(self.xtt.function_space)
+            self.x0tt = dolfinx.function.Function(self.x1tt.function_space)
 
-        # Expression: 1st derivative in time
-        self.derivative_dt = lambda xtt, x0t, x0tt: \
-            x0t + self.dt * ((1.0 - self.gamma) * x0tt + self.gamma * xtt)
+        # Set *auxiliary* of rate of rate of state x1tt_aux and x0tt_aux
+        if isinstance(self.x1tt, list):
+            self.x1tt_aux = []
+            self.x0tt_aux = []
+            for x1tti in self.x1tt:
+                self.x1tt_aux.append(dolfinx.function.Function(x1tti.function_space))
+                self.x0tt_aux.append(dolfinx.function.Function(x1tti.function_space))
+        else:
+            self.x1tt_aux = dolfinx.function.Function(self.x1tt.function_space)
+            self.x0tt_aux = dolfinx.function.Function(self.x1tt.function_space)
 
-        # Expression: 2nd derivative in time
-        self.derivative_dt2 = lambda x, x0, x0t, x0tt: \
-            1.0 / self.beta * (1.0 / self.dt**2 * (x - x0) - 1.0 / self.dt * x0t - (0.5 - self.beta) * x0tt)
-
-        # Expression: integral in time
-        self.integral_dt = lambda x, xt, x0, x0t: \
-            self.dt / 2 * (x0 + x) + self.dt**2 / 12 * (x0t - xt)  # CHECK: include action of x0tt, xtt ?
-
-        # Expression: state at collocation point in time interval
-        self.state = lambda x0, x1: \
-            self.alpha_f * x1 + (1.0 - self.alpha_f) * x0
-
-        # Expression: rate of state at collocation point in time interval
-        self.rate = lambda x0t, x1t: \
-            self.alpha_f * x1t + (1.0 - self.alpha_f) * x0t
-
-        # Expression: rate of rate of state at collocation point in time interval
-        self.rate2 = lambda x0tt, x1tt: \
-            self.alpha_m * x1tt + (1.0 - self.alpha_m) * x0tt
+        # Initialise values of auxiliary state
+        dolfiny.odeint._copy_entries(self.x1tt, self.x1tt_aux)
 
         # Default values: Newmark
         self.alpha_f = dolfinx.Constant(self.t.ufl_domain(), 1.0)
@@ -312,7 +344,26 @@ class ODEInt2():
             self.gamma.value = kwargs["gamma"]
             self.beta.value = kwargs["beta"]
 
+    def _derivative_dt(self, x1tt_aux, x0tt_aux, x0t):
+        """Returns the UFL expression for: derivative in time x1t."""
+
+        # return equation (2) solved for x1t
+        return x0t + self.dt * ((1 - self.gamma) * x0tt_aux + self.gamma * x1tt_aux)
+
+    def _derivative_dt2(self, x1tt_aux, x0tt_aux, x0tt):
+        """Returns the UFL expression for: derivative in time x1tt."""
+
+        # return equation (3) solved for x1t
+        return ((1 - self.alpha_m) * x0tt_aux + self.alpha_m * x1tt_aux - (1 - self.alpha_f) * x0tt) / self.alpha_f
+
+    def _derivative_dt2_aux(self, x1, x0, x0t, x0tt_aux):
+        """Returns the UFL expression for: derivative in time x1tt."""
+
+        # return equation (1) solved for x1tt_aux
+        return ((x1 - x0) / self.dt**2 - x0t / self.dt - (1 / 2 - self.beta) * x0tt_aux) / self.beta
+
     def stage(self, t0=None, dt=None):
+        """Stages the processing of the next time step: sets time value (to t1) and initial values."""
 
         if t0 is not None:
             self.t.value = t0
@@ -320,91 +371,71 @@ class ODEInt2():
         if dt is not None:
             self.dt.value = dt
 
+        # Set time
         self.t.value += self.alpha_f.value * self.dt.value
 
-        # update x0 (copy values)
-        if isinstance(self.x, list):
-            for xi, x0i in zip(self.x, self.x0):
-                with xi.vector.localForm() as locxi, x0i.vector.localForm() as locx0i:
-                    locxi.copy(locx0i)
-        else:
-            with self.x.vector.localForm() as locx, self.x0.vector.localForm() as locx0:
-                locx.copy(locx0)
-
-        # update x0t (copy values)
-        if isinstance(self.xt, list):
-            for xti, x0ti in zip(self.xt, self.x0t):
-                with xti.vector.localForm() as locxti, x0ti.vector.localForm() as locx0ti:
-                    locxti.copy(locx0ti)
-        else:
-            with self.xt.vector.localForm() as locxt, self.x0t.vector.localForm() as locx0t:
-                locxt.copy(locx0t)
-
-        # update x0tt (copy values)
-        if isinstance(self.xtt, list):
-            for xtti, x0tti in zip(self.xtt, self.x0tt):
-                with xtti.vector.localForm() as locxtti, x0tti.vector.localForm() as locx0tti:
-                    locxtti.copy(locx0tti)
-        else:
-            with self.xtt.vector.localForm() as locxtt, self.x0tt.vector.localForm() as locx0tt:
-                locxtt.copy(locx0tt)
-
-        return self.t, self.dt
+        # Store states (set initial values for next time step)
+        dolfiny.odeint._copy_entries(self.x1, self.x0)
+        dolfiny.odeint._copy_entries(self.x1t, self.x0t)
+        dolfiny.odeint._copy_entries(self.x1tt, self.x0tt)
+        dolfiny.odeint._copy_entries(self.x1tt_aux, self.x0tt_aux)
 
     def update(self):
+        """Set rate x1t, rate2 x1tt and auxiliary rate2 x1tt_aux once x1 has been computed."""
 
-        # update xtt
-        if isinstance(self.xtt, list):
-            for x, x0, x0t, x0tt, xtt in zip(self.x, self.x0, self.x0t, self.x0tt, self.xtt):
-                dolfiny.interpolation.interpolate(self.derivative_dt2(x, x0, x0t, x0tt), xtt)
+        # update x1tt_aux
+        if isinstance(self.x1tt_aux, list):
+            for x1, x0, x0t, x1tt_aux, x0tt_aux in zip(self.x1, self.x0, self.x0t, self.x1tt_aux, self.x0tt_aux):
+                dolfiny.interpolation.interpolate(self._derivative_dt2_aux(x1, x0, x0t, x0tt_aux), x1tt_aux)
         else:
-            dolfiny.interpolation.interpolate(self.derivative_dt2(self.x, self.x0, self.x0t, self.x0tt), self.xtt)
+            dolfiny.interpolation.interpolate(
+                self._derivative_dt2_aux(self.x1, self.x0, self.x0t, self.x0tt_aux), self.x1tt_aux)
 
-        # update xt
-        if isinstance(self.xt, list):
-            for xt, xtt, x0t, x0tt in zip(self.xt, self.xtt, self.x0t, self.x0tt):
-                dolfiny.interpolation.interpolate(self.derivative_dt(xtt, x0t, x0tt), xt)
+        # update x1t
+        if isinstance(self.x1t, list):
+            for x1tt_aux, x0tt_aux, x1t, x0t in zip(self.x1tt_aux, self.x0tt_aux, self.x1t, self.x0t):
+                dolfiny.interpolation.interpolate(self._derivative_dt(x1tt_aux, x0tt_aux, x0t), x1t)
         else:
-            dolfiny.interpolation.interpolate(self.derivative_dt(self.xtt, self.x0t, self.x0tt), self.xt)
+            dolfiny.interpolation.interpolate(self._derivative_dt(self.x1tt_aux, self.x0tt_aux, self.x0t), self.x1t)
 
-        # update to final time of staged time step
-        self.t.value += (1.0 - self.alpha_f.value) * self.dt.value
+        # update x1tt
+        if isinstance(self.x1tt, list):
+            for x1tt_aux, x0tt_aux, x1tt, x0tt in zip(self.x1tt_aux, self.x0tt_aux, self.x1tt, self.x0tt):
+                dolfiny.interpolation.interpolate(self._derivative_dt2(x1tt_aux, x0tt_aux, x0tt), x1tt)
+        else:
+            dolfiny.interpolation.interpolate(self._derivative_dt2(self.x1tt_aux, self.x0tt_aux, self.x0tt), self.x1tt)
 
     def discretise_in_time(self, f):
-        """Discretises the form f(t, x, xt, xtt) in time using weighted states ta, xa, xat, xatt.
-           As a consequence, the solution fulfills f = 0 at ta.
+        """Discretises the form f(t, x, xt, xtt) in time. The solution fulfills f(t1, x1, x1t, x1tt) = 0.
         """
 
-        # xa
-        if isinstance(self.x, list):
-            xa = []
-            for x0, x1 in zip(self.x0, self.x):
-                xa.append(self.state(x0, x1))
+        # Construct expression for x1tt_aux
+        if isinstance(self.x1tt, list):
+            x1tt_aux = []
+            for x1i, x0i, x0ti, x0tti_aux in zip(self.x1, self.x0, self.x0t, self.x0tt_aux):
+                x1tt_aux.append(self._derivative_dt_aux(x1i, x0i, x0ti, x0tti_aux))
         else:
-            xa = self.state(self.x0, self.x)
+            x1tt_aux = self._derivative_dt2_aux(self.x1, self.x0, self.x0t, self.x0tt_aux)
 
-        # xat
-        if isinstance(self.x, list):
-            xat = []
-            for xtt, x0t, x0tt in zip(self.xtt, self.x0t, self.x0tt):
-                x1t = self.derivative_dt(xtt, x0t, x0tt)
-                xat.append(self.rate(x0t, x1t))
+        # Construct expression for x1t
+        if isinstance(self.x1t, list):
+            x1t = []
+            for x1tti_aux, x0tti_aux, x0ti in zip(self.x1tt_aux, self.x0tt_aux, self.x0t):
+                x1t.append(self._derivative_dt(x1tti_aux, x0tti_aux, x0ti))
         else:
-            x1t = self.derivative_dt(self.xtt, self.x0t, self.x0tt)
-            xat = self.rate(self.x0t, x1t)
+            x1t = self._derivative_dt(self.x1tt_aux, self.x0tt_aux, self.x0t)
 
-        # xatt
-        if isinstance(self.x, list):
-            xatt = []
-            for x, x0, x0t, x0tt in zip(self.x, self.x0, self.x0t, self.x0tt):
-                x1tt = self.derivative_dt2(x, x0, x0t, x0tt)
-                xatt.append(self.rate2(x0tt, x1tt))
+        # Construct expression for x1tt
+        if isinstance(self.x1tt, list):
+            x1tt = []
+            for x1tti_aux, x0tti_aux, x0tti in zip(self.x1tt_aux, self.x0tt_aux, self.x0tt):
+                x1t.append(self._derivative_dt2(x1tti_aux, x0tti_aux, x0tti))
         else:
-            x1tt = self.derivative_dt2(self.x, self.x0, self.x0t, self.x0tt)
-            xatt = self.rate2(self.x0tt, x1tt)
+            x1tt = self._derivative_dt2(self.x1tt_aux, self.x0tt_aux, self.x0tt)
 
-        f = dolfiny.expression.evaluate(f, self.x, xa)
-        f = dolfiny.expression.evaluate(f, self.xt, xat)
-        f = dolfiny.expression.evaluate(f, self.xtt, xatt)
+        # Replace in form
+        f = dolfiny.expression.evaluate(f, self.x1t, x1t)
+        f = dolfiny.expression.evaluate(f, self.x1tt, x1tt)
+        f = dolfiny.expression.evaluate(f, self.x1tt_aux, x1tt_aux)
 
         return f
