@@ -218,16 +218,16 @@ for time_step in range(1, nT + 1):
     ]
 
     # Solve nonlinear problem
-    m = problem.solve()
+    problem.solve()
 
     # Assert convergence of nonlinear solver
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
+    # Update solution states for time integration
+    odeint.update()
+
     # Write output
     ofile.write_function(v, time.value)
     ofile.write_function(p, time.value)
-
-    # Update solution states for time integration
-    odeint.update()
 
 ofile.close()
