@@ -35,9 +35,9 @@ pytest:
       # Install dolfin-y package
       - pip3 install .
       # Run Python unit tests (parallel)
-      - mpirun -n 2 python3 -u -m pytest -vsx test/.
+      - mpirun -n 2 python3 -u -m pytest $DOLFINY_TEST_MARK_FLAGS -vsx test/.
       # Run Python unit tests (serial)
-      - python3 -m pytest -vsx test/.
+      - python3 -m pytest $DOLFINY_TEST_MARK_FLAGS -vsx test/.
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
