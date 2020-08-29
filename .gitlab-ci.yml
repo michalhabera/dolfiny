@@ -35,9 +35,28 @@ pytest:
       # Install dolfin-y package
       - pip3 install .
       # Run Python unit tests (parallel)
-      - mpirun -n 2 python3 -u -m pytest $DOLFINY_TEST_MARK_FLAGS -vsx test/.
+      - mpirun -n 2 python3 -u -m pytest -m 'not convergence' -vsx test/.
       # Run Python unit tests (serial)
-      - python3 -m pytest $DOLFINY_TEST_MARK_FLAGS -vsx test/.
+      - python3 -m pytest -m 'not convergence' -vsx test/.
+   artifacts:
+      name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
+      paths:
+         - test_*.*
+      expire_in: 1 week
+
+convergence:
+   image: $CONTAINER_TEST_IMAGE
+   stage: test
+   only:
+      refs:
+        - master
+      variables:
+        - $CI_RUN_TEST_CONVERGENCE == yes
+   script:
+      # Install dolfin-y package
+      - pip3 install .
+      # Run Python unit tests (parallel)
+      - mpirun -n 2 python3 -u -m pytest -m 'convergence' -vsx test/.
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
