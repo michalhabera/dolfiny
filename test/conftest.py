@@ -22,6 +22,12 @@ def pytest_runtest_teardown(item):
     comm.Barrier()
 
 
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "convergence: mark as convergence test (time-consuming)"
+    )
+
+
 @pytest.fixture(scope="module")
 def squaremesh_5():
     return dolfinx.generation.UnitSquareMesh(MPI.COMM_WORLD, 5, 5)
