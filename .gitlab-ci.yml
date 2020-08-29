@@ -51,7 +51,7 @@ convergence:
       refs:
         - master
       variables:
-        - $CI_RUN_TEST_CONVERGENCE == yes
+        - $CI_RUN_TEST_CONVERGENCE == "yes"
    script:
       # Install dolfin-y package
       - pip3 install .
