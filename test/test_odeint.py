@@ -620,6 +620,7 @@ def ode_2nd_nonlinear_closed(a=100, b=-50, u_0=1.0, nT=400, dt=0.0025):
     (ode_1st_nonlinear_odeint, ode_1st_nonlinear_closed),
     (ode_2nd_linear_odeint, ode_2nd_linear_closed),
     (ode_2nd_nonlinear_odeint, ode_2nd_nonlinear_closed),
+    (ode_1st_nonlinear_mdof_odeint, ode_2nd_nonlinear_closed),
 ])
 def test_odeint_accuracy(odeint_m, closed_m):
 
