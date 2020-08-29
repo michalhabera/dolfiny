@@ -141,10 +141,26 @@ class ODEInt():
         # return equation (2) solved for x1t_aux
         return 1 / self.gamma * (1 / self.dt * (x1 - x0) - (1 - self.gamma) * x0t_aux)
 
-    def integral_dt(self, x1, x1t, x0, x0t):
+    def _integral_dt(self, x1, x1t, x0, x0t):
         """Returns the UFL expression for: integral over the time interval int_t0^t1 x(t) dt."""
 
-        return self.dt / 2 * (x0 + x1) + self.dt**2 / 12 * (x0t - x1t)
+        # return integrated polynomial of degree 3
+        return self.dt / 2 * (x0 + x1) + self.dt**2 / 10 * (x0t - x1t)
+
+    def integral_dt(self, y):
+        """Returns the UFL expression for: time integral of given UFL function y registered in ODEInt."""
+
+        if isinstance(self.x1, list):
+            if y not in self.x1:
+                raise RuntimeError("Given function not registered in ODEInt object.")
+            else:
+                i = self.x1.index(y)
+                return self._integral_dt(self.x1[i], self.x1t[i], self.x0[i], self.x0t[i])
+        else:
+            if y != self.x1:
+                raise RuntimeError("Given function not registered in ODEInt object.")
+            else:
+                return self._integral_dt(self.x1, self.x1t, self.x0, self.x0t)
 
     def stage(self, t0=None, dt=None):
         """Stages the processing of the next time step: sets time value (to t1) and initial values."""
@@ -361,6 +377,27 @@ class ODEInt2():
 
         # return equation (1) solved for x1tt_aux
         return ((x1 - x0) / self.dt**2 - x0t / self.dt - (1 / 2 - self.beta) * x0tt_aux) / self.beta
+
+    def _integral_dt(self, x1, x1t, x1tt, x0, x0t, x0tt):
+        """Returns the UFL expression for: integral over the time interval int_t0^t1 x(t) dt."""
+
+        # return integrated polynomial of degree 5
+        return self.dt / 2 * (x0 + x1) + self.dt**2 / 10 * (x0t - x1t) + self.dt**3 / 120 * (x0tt + x1tt)
+
+    def integral_dt(self, y):
+        """Returns the UFL expression for: time integral of given UFL function y registered in ODEInt2."""
+
+        if isinstance(self.x1, list):
+            if y not in self.x1:
+                raise RuntimeError("Given function not registered in ODEInt2 object.")
+            else:
+                i = self.x1.index(y)
+                return self._integral_dt(self.x1[i], self.x1t[i], self.x1tt[i], self.x0[i], self.x0t[i], self.x0tt[i])
+        else:
+            if y != self.x1:
+                raise RuntimeError("Given function not registered in ODEInt2 object.")
+            else:
+                return self._integral_dt(self.x1, self.x1t, self.x1tt, self.x0, self.x0t, self.x0tt)
 
     def stage(self, t0=None, dt=None):
         """Stages the processing of the next time step: sets time value (to t1) and initial values."""
