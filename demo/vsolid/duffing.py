@@ -82,7 +82,7 @@ dt = dolfinx.Constant(mesh, 25 / nT)
 odeint = dolfiny.odeint.ODEInt(t=t, dt=dt, x=m, xt=mt)
 
 # Expression for time-integrated quantities
-u_expr = u + odeint.integral_dt(odeint.x1[0], odeint.x1t[0], odeint.x0[0], odeint.x0t[0])
+u_expr = u + odeint.integral_dt(v)
 
 # Strong form residuals
 r1 = vt + s
@@ -107,17 +107,13 @@ opts["snes_rtol"] = 1.0e-12
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m)
 
 # Book-keeping of results
-v_, vt_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1)
-s_, st_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1)
-u_ = numpy.zeros(nT + 1)
-v_[0], vt_[0] = [w.vector.sum() / w.vector.getSize() for w in [v, vt]]
-s_[0], st_[0] = [w.vector.sum() / w.vector.getSize() for w in [s, st]]
-u_[0] = u.vector.sum() / u.vector.getSize()
+v_, vt_, s_, st_, u_ = [numpy.zeros(nT + 1) for w in [v, vt, s, st, u]]
+v_[0], vt_[0], s_[0], st_[0], u_[0] = [w.vector.sum() / w.vector.getSize() for w in [v, vt, s, st, u]]
 
 # Process time steps
-for time_step in range(1, nT + 1):
+for ts in range(1, nT + 1):
 
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {t.value + dt.value:7.3f} in step {time_step:d}")
+    dolfiny.utils.pprint(f"\n+++ Processing time instant = {t.value + dt.value:7.3f} in step {ts:d}")
 
     # Stage next time step
     odeint.stage()
@@ -140,9 +136,7 @@ for time_step in range(1, nT + 1):
     dolfiny.interpolation.interpolate(d, u)
 
     # Store results
-    v_[time_step], vt_[time_step] = [w.vector.sum() / w.vector.getSize() for w in [v, vt]]
-    s_[time_step], st_[time_step] = [w.vector.sum() / w.vector.getSize() for w in [s, st]]
-    u_[time_step] = u.vector.sum() / u.vector.getSize()
+    v_[ts], vt_[ts], s_[ts], st_[ts], u_[ts] = [w.vector.sum() / w.vector.getSize() for w in [v, vt, s, st, u]]
 
 
 # Compare with reference solution
