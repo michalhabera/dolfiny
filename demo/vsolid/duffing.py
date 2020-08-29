@@ -147,7 +147,7 @@ from test_odeint import ode_2nd_nonlinear_odeint
 
 u_c, v_c, a_c = u_, v_, vt_
 u_e, v_e, a_e = ode_2nd_nonlinear_closed(a, b, u_0, nT=nT, dt=dt.value)
-u_z, v_z, a_z = ode_2nd_nonlinear_odeint(a, b, u_0, nT=nT, dt=dt.value, rho=1.0)
+u_z, v_z, a_z = ode_2nd_nonlinear_odeint(a, b, u_0, nT=nT, dt=dt.value)
 
 if MPI.COMM_WORLD.rank == 0:
 
