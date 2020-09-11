@@ -147,8 +147,11 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     # dofmap of the actual element (these are different for symmetric spaces)
     b_local = np.zeros(b_size_knl, dtype=PETSc.ScalarType)
 
-    # Number of collocated dofs for a point
-    dofs_per_block = int(b_size_knl / value_size)
+    # Number of collocated dofs for a point for a kernel
+    dofs_per_block_knl = int(b_size_knl / value_size)
+
+    # Number of collocated dofs for a point in dolfin (i.e. incl. symmetry)
+    dofs_per_block = int(b_size / dofs_per_block_knl)
 
     for i, cell in enumerate(geom_pos[:-1]):
         num_vertices = geom_pos[i + 1] - geom_pos[i]
@@ -168,6 +171,6 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
         kernel(ffi.from_buffer(b_local), ffi.from_buffer(coeffs),
                ffi.from_buffer(const_vector), ffi.from_buffer(coordinate_dofs))
 
-        for j in range(dofs_per_block):
+        for j in range(dofs_per_block_knl):
             for k in range(value_size):
-                b[dofmap[i * b_size + j * value_size + subel_map[k]]] = b_local[dofs_per_block * k + j]
+                b[dofmap[i * b_size + j * dofs_per_block + subel_map[k]]] = b_local[dofs_per_block_knl * k + j]
