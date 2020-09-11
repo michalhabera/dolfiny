@@ -111,28 +111,44 @@ def interpolate_cached(compiled_expression, target_func):
         constants_vector = np.hstack([c.value.flatten() for c in constants])
 
     # Num DOFs of the target element
-    local_b_size = target_func.function_space.element.space_dimension()
     value_size = int(np.product(compiled_expression.expr.ufl_shape))
+    b_size_knl = compiled_expression.fiat_element.space_dimension() * value_size
+    b_size = target_func.function_space.element.space_dimension()
+
+    # Prepare mapping of subelements into the parent finite element
+    # This mapping stores also how dofs are collapsed when symmetry to a TensorElement
+    # is applied
+    if hasattr(compiled_expression.target_el, "flattened_sub_element_mapping"):
+        subel_map = np.array(compiled_expression.target_el.flattened_sub_element_mapping())
+    else:
+        subel_map = np.array(range(value_size))
+
     num_coeffs = len(coeffs_vectors)
 
     with target_func.vector.localForm() as b:
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
                             coeffs_vectors, coeffs_dofmaps, constants_vector, reference_geometry,
-                            local_coeffs_sizes, local_coeffs_size, local_b_size, gdim, value_size)
+                            local_coeffs_sizes, local_coeffs_size, gdim, b_size_knl, b_size, value_size, subel_map)
 
 
 @numba.njit
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
                         const_vector, reference_geometry, local_coeffs_sizes, local_coeffs_size,
-                        local_b_size, gdim, value_size):
+                        gdim, b_size_knl, b_size, value_size, subel_map):
     geom_dofmap, geom_pos, geom = mesh
 
     # Coord dofs have shape (num_geometry_dofs, gdim)
     coordinate_dofs = np.zeros((geom_pos[1], gdim))
     coeffs = np.zeros(local_coeffs_size, dtype=PETSc.ScalarType)
-    b_local = np.zeros(local_b_size, dtype=PETSc.ScalarType)
-    dofs_per_block = int(local_b_size / value_size)
+
+    # Allocate space for local element tensor
+    # This has the size which generated code expects, not the local
+    # dofmap of the actual element (these are different for symmetric spaces)
+    b_local = np.zeros(b_size_knl, dtype=PETSc.ScalarType)
+
+    # Number of collocated dofs for a point
+    dofs_per_block = int(b_size_knl / value_size)
 
     for i, cell in enumerate(geom_pos[:-1]):
         num_vertices = geom_pos[i + 1] - geom_pos[i]
@@ -154,4 +170,4 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
 
         for j in range(dofs_per_block):
             for k in range(value_size):
-                b[dofmap[i * local_b_size + j * value_size + k]] = b_local[dofs_per_block * k + j]
+                b[dofmap[i * b_size + j * value_size + subel_map[k]]] = b_local[dofs_per_block * k + j]

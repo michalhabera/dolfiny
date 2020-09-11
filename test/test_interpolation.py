@@ -16,6 +16,7 @@ DG1 = FunctionSpace(mesh, ("DG", 1))
 CG1 = FunctionSpace(mesh, ("CG", 1))
 TCG1 = TensorFunctionSpace(mesh, ("CG", 1))
 TDG0 = TensorFunctionSpace(mesh, ("DG", 0))
+TDG0s = TensorFunctionSpace(mesh, ("DG", 0), symmetry=True)
 
 CG2 = FunctionSpace(mesh, ("CG", 2))
 VCG1 = FunctionSpace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
@@ -52,6 +53,18 @@ def test_expr():
     h_project2.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
     assert h_project2.vector.norm() < 0.1
+
+    expr3 = h_interp
+    h_interp3 = Function(TDG0s)
+    interpolation.interpolate(expr3, h_interp3)
+
+    h_project3 = Function(TDG0s)
+    projection.project(expr3, h_project3)
+
+    h_project3.vector.axpy(-1.0, h_interp3.vector)
+    h_project3.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+
+    assert h_project3.vector.norm() < 0.1
 
 
 def test_diff():
