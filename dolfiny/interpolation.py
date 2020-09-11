@@ -118,7 +118,7 @@ def interpolate_cached(compiled_expression, target_func):
     # Prepare mapping of subelements into the parent finite element
     # This mapping stores also how dofs are collapsed when symmetry to a TensorElement
     # is applied
-    if compiled_expression.target_el.num_sub_elements() > 0 and compiled_expression.target_el.value_size() > 1:
+    if hasattr(compiled_expression.target_el, "flattened_sub_element_mapping"):
         subel_map = np.array(compiled_expression.target_el.flattened_sub_element_mapping())
     else:
         subel_map = np.array(range(value_size))
