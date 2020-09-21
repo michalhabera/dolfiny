@@ -4,7 +4,7 @@ from mpi4py import MPI
 
 
 def mesh_din50154_gmshapi(name="din50154", dx=1.0, dy=1.0, dz=1.0, nx=10, ny=10, nz=10, x0=0.0, y0=0.0, z0=0.0,
-                         do_quads=False, px=1.0, py=1.0, pz=1.0, order=1, msh_file=None, comm=MPI.COMM_WORLD):
+                          do_quads=False, px=1.0, py=1.0, pz=1.0, order=1, msh_file=None, comm=MPI.COMM_WORLD):
     """
     Create mesh of 3d tensile test specimen accoring to DIN 50154 using the Python API of Gmsh.
     TODO: create actual specimen (this is a simple block)
@@ -127,4 +127,4 @@ def mesh_din50154_gmshapi(name="din50154", dx=1.0, dy=1.0, dz=1.0, nx=10, ny=10,
 
 
 if __name__ == "__main__":
-    mesh_block3d_gmshapi(msh_file="block3d.msh")
+    mesh_din50154_gmshapi(msh_file="din50154.msh")

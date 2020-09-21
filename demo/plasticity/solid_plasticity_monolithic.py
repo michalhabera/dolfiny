@@ -53,17 +53,17 @@ surface_right = interfaces_keys["surface_right"]
 
 # Solid: material parameters
 mu = dolfinx.Constant(mesh, 100)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.Constant(mesh,  10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+la = dolfinx.Constant(mesh, 10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
 Sy = dolfinx.Constant(mesh, 0.3)  # initial yield stress
-bh = dolfinx.Constant(mesh,  20)  # isotropic hardening: saturation rate   [-]
+bh = dolfinx.Constant(mesh, 20)  # isotropic hardening: saturation rate   [-]
 qh = dolfinx.Constant(mesh, 0.1)  # isotropic hardening: saturation value [GPa]
-bb = dolfinx.Constant(mesh,  20)  # kinematic hardening: saturation rate   [-]
+bb = dolfinx.Constant(mesh, 20)  # kinematic hardening: saturation rate   [-]
 qb = dolfinx.Constant(mesh, 0.2)  # kinematic hardening: saturation value [GPa] includes factor 2/3
 
 # Solid: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
 t0 = μ * dolfinx.Constant(mesh, [0.0, 0.0, 0.0])  # [GPa]
-u_bar = lambda x: μ.value * np.array([0.01 * x[0] / 1.0, 0.0 * x[1], 0.0 * x[2]])  # [m]
+u_bar = lambda x: μ.value * np.array([0.01 * x[0] / 1.0, 0.0 * x[1], 0.0 * x[2]])  # noqa: E731 [m]
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
@@ -106,12 +106,14 @@ def rJ2(A):
     rJ2 = ufl.sqrt(J2)
     return ufl.conditional(rJ2 < 1.0e-12, 0.0, rJ2)
 
+
 def f(S, h, B):
     """
     Yield function
     """
-    f = ufl.sqrt(3) * rJ2(ufl.dev(S)-ufl.dev(B)) - (Sy + h)
+    f = ufl.sqrt(3) * rJ2(ufl.dev(S) - ufl.dev(B)) - (Sy + h)
     return f
+
 
 def df(S, h, B):
     """
@@ -122,8 +124,9 @@ def df(S, h, B):
     varB = ufl.variable(B)
     f_ = f(varS, varh, varB)
     return ufl.inner(ufl.diff(f_, varS), (S - S0)) \
-            + ufl.inner(ufl.diff(f_, varh), (h - h0)) \
-            + ufl.inner(ufl.diff(f_, varB), (B - B0))
+        + ufl.inner(ufl.diff(f_, varh), (h - h0)) \
+        + ufl.inner(ufl.diff(f_, varB), (B - B0))
+
 
 def g(S, h, B):
     """
@@ -131,12 +134,14 @@ def g(S, h, B):
     """
     return f(S, h, B)
 
+
 def dgdS(S, h, B):
     """
     Derivative of plastic potential wrt stress: dg / dS
     """
     varS = ufl.variable(S)
     return ufl.diff(g(varS, h, B), varS)
+
 
 def ppos(f):
     """
@@ -161,7 +166,7 @@ S = 2 * mu * E_el + la * ufl.tr(E_el) * I
 δE = dolfiny.expression.derivative(E, m, δm)
 
 # Plastic multiplier (J2 plasticity, closed-for solution for return-map)
-dλ = ppos(f(S,h,B))
+dλ = ppos(f(S, h, B))
 
 # Weak form (as one-form)
 F = + ufl.inner(δE, S) * dx \
@@ -183,8 +188,8 @@ opts = PETSc.Options(name)
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-08#12
-opts["snes_rtol"] = 1.0e-06#09
+opts["snes_atol"] = 1.0e-08  # 12
+opts["snes_rtol"] = 1.0e-06  # 09
 opts["snes_max_it"] = 10
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
@@ -219,7 +224,7 @@ load, unload = np.linspace(0.0, 1.0, num=K + 1), np.linspace(1.0, 0.0, num=K + 1
 cycle = np.concatenate((load, unload, -load, -unload))
 cycles = np.concatenate([cycle] * Z)
 
-dedup = lambda a: np.r_[ a[np.nonzero(np.diff(a))[0]], a[-1] ]
+dedup = lambda a: np.r_[a[np.nonzero(np.diff(a))[0]], a[-1]]  # noqa: E731
 
 # Process load steps
 for step, factor in enumerate(dedup(cycles)):
@@ -244,13 +249,13 @@ for step, factor in enumerate(dedup(cycles)):
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
     V = dolfiny.expression.assemble(1.0, dx)
-    E_avg.append(dolfiny.expression.assemble(E[0,0], dx) / V)
-    S_avg.append(dolfiny.expression.assemble(S[0,0], dx) / V)
-    P_avg.append(dolfiny.expression.assemble(P[0,0], dx) / V)
+    E_avg.append(dolfiny.expression.assemble(E[0, 0], dx) / V)
+    S_avg.append(dolfiny.expression.assemble(S[0, 0], dx) / V)
+    P_avg.append(dolfiny.expression.assemble(P[0, 0], dx) / V)
 
-    dλdf_avg = dolfiny.expression.assemble(dλ * df(S,h,B), dx) / V
+    dλdf_avg = dolfiny.expression.assemble(dλ * df(S, h, B), dx) / V
     print(f"(dλ * df)_avg = {dλdf_avg:4.3e}")
-    dλ_f_avg = dolfiny.expression.assemble(dλ * f(S,h,B), dx) / V
+    dλ_f_avg = dolfiny.expression.assemble(dλ * f(S, h, B), dx) / V
     print(f"(dλ *  f)_avg = {dλ_f_avg:4.3e}")
     Pvol_avg = dolfiny.expression.assemble(ufl.sqrt(ufl.tr(P)**2), dx) / V
 
@@ -283,13 +288,13 @@ ax1.set_ylabel(r'volume-averaged stress $\frac{1}{V}\int S_{00} dV$ [GPa]', font
 ax1.grid(linewidth=0.25)
 fig.tight_layout()
 
-E_avg = np.array(E_avg) * 100.0 # strain in percent
+E_avg = np.array(E_avg) * 100.0  # strain in percent
 S_avg = np.array(S_avg)
 P_avg = np.array(P_avg)
 
 # stress-strain curve
 ax1.plot(E_avg, S_avg, color='tab:blue', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$S-E$ curve')
-# ax1.plot(E_avg, P_avg, color='tab:orange', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$P-E$ curve')
+# ax1.plot(E_avg, P_avg, color='tab:orange', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$P-E$')
 
 ax1.legend(loc='lower right')
 fig.savefig(f"{name}.pdf")
