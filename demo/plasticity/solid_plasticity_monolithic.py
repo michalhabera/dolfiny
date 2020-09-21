@@ -71,31 +71,31 @@ ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Function spaces
 Ue = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
-Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
-Pe = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=None)
-Le = ufl.FiniteElement("DG", mesh.ufl_cell(), 1)
+Pe = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
+He = ufl.FiniteElement("DG", mesh.ufl_cell(), 1)
+Be = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
 
 Uf = dolfinx.FunctionSpace(mesh, Ue)
-Sf = dolfinx.FunctionSpace(mesh, Se)
 Pf = dolfinx.FunctionSpace(mesh, Pe)
-Lf = dolfinx.FunctionSpace(mesh, Le)
+Hf = dolfinx.FunctionSpace(mesh, He)
+Bf = dolfinx.FunctionSpace(mesh, Be)
 
 # Define functions
 u = dolfinx.Function(Uf, name="u")
 P = dolfinx.Function(Pf, name="P")
-h = dolfinx.Function(Lf, name="h")
-B = dolfinx.Function(Sf, name="B")
+h = dolfinx.Function(Hf, name="h")
+B = dolfinx.Function(Bf, name="B")
 
 u0 = dolfinx.Function(Uf, name="u0")
 P0 = dolfinx.Function(Pf, name="P0")
-h0 = dolfinx.Function(Lf, name="h0")
-B0 = dolfinx.Function(Sf, name="B0")
-S0 = dolfinx.Function(Pf, name="S0")
+h0 = dolfinx.Function(Hf, name="h0")
+B0 = dolfinx.Function(Bf, name="B0")
+S0 = dolfinx.Function(Bf, name="S0")
 
 δu = ufl.TestFunction(Uf)
 δP = ufl.TestFunction(Pf)
-δh = ufl.TestFunction(Lf)
-δB = ufl.TestFunction(Sf)
+δh = ufl.TestFunction(Hf)
+δB = ufl.TestFunction(Bf)
 
 # Define state and rate as (ordered) list of functions
 m, δm = [u, P, h, B], [δu, δP, δh, δB]
@@ -159,13 +159,13 @@ F = I + ufl.grad(u)  # deformation gradient as function of displacement
 E = 1 / 2 * (ufl.grad(u) + ufl.grad(u).T)
 # E_el = E(u) - P, elastic strain
 E_el = E - P
-# S = S(E_el), SVK
+# S = S(E_el), Saint-Venant-Kirchhoff
 S = 2 * mu * E_el + la * ufl.tr(E_el) * I
 
-# Variation of rate of Green-Lagrange strain
+# Variation of Green-Lagrange strain
 δE = dolfiny.expression.derivative(E, m, δm)
 
-# Plastic multiplier (J2 plasticity, closed-for solution for return-map)
+# Plastic multiplier (J2 plasticity, closed-form solution for return-map)
 dλ = ppos(f(S, h, B))
 
 # Weak form (as one-form)
@@ -188,15 +188,15 @@ opts = PETSc.Options(name)
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-08  # 12
-opts["snes_rtol"] = 1.0e-06  # 09
-opts["snes_max_it"] = 10
+opts["snes_atol"] = 1.0e-12
+opts["snes_rtol"] = 1.0e-09
+opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 
-# opts["pc_factor_mat_solver_type"] = "mumps"
+opts["pc_factor_mat_solver_type"] = "mumps"
 # opts["pc_factor_mat_solver_type"] = "superlu_dist"
-opts["pc_factor_mat_solver_type"] = "umfpack"
+# opts["pc_factor_mat_solver_type"] = "umfpack"
 
 opts_global = PETSc.Options()
 opts_global["mat_mumps_icntl_7"] = 6
@@ -218,8 +218,8 @@ S_avg = []
 P_avg = []
 
 # Set up load steps
-K = 25
-Z = 10
+K = 25  # number of steps per load phase
+Z = 2  # number of cycles
 load, unload = np.linspace(0.0, 1.0, num=K + 1), np.linspace(1.0, 0.0, num=K + 1)
 cycle = np.concatenate((load, unload, -load, -unload))
 cycles = np.concatenate([cycle] * Z)
@@ -248,6 +248,7 @@ for step, factor in enumerate(dedup(cycles)):
     # Assert convergence of nonlinear solver
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
+    # Post-process data
     V = dolfiny.expression.assemble(1.0, dx)
     E_avg.append(dolfiny.expression.assemble(E[0, 0], dx) / V)
     S_avg.append(dolfiny.expression.assemble(S[0, 0], dx) / V)
@@ -258,6 +259,7 @@ for step, factor in enumerate(dedup(cycles)):
     dλ_f_avg = dolfiny.expression.assemble(dλ * f(S, h, B), dx) / V
     print(f"(dλ *  f)_avg = {dλ_f_avg:4.3e}")
     Pvol_avg = dolfiny.expression.assemble(ufl.sqrt(ufl.tr(P)**2), dx) / V
+    print(f"( tr(P) )_avg = {Pvol_avg:4.3e}")
 
     # Write output
     ofile.write_function(u, step)
@@ -265,12 +267,15 @@ for step, factor in enumerate(dedup(cycles)):
     ofile.write_function(h, step)
     ofile.write_function(B, step)
 
+    # Store stress state
     dolfiny.interpolation.interpolate(S, S0)
 
+    # Store primal states
     for source, target in zip([u, P, h, B], [u0, P0, h0, B0]):
         with source.vector.localForm() as locs, target.vector.localForm() as loct:
             locs.copy(loct)
 
+    # Basic consistency checks
     assert dλdf_avg < 1.e-5, "|| dλ*df || != 0.0"
     assert dλ_f_avg < 1.e-5, "|| dλ*df || != 0.0"
     assert Pvol_avg < 1.e-5, "|| tr(P) || != 0.0"
