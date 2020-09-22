@@ -23,7 +23,7 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 dx, dy, dz = 1.0, 0.1, 0.1
-nx, ny, nz = 20, 2, 2
+nx, ny, nz = 4, 2, 2
 
 # Create the regular mesh of an annulus with given dimensions
 gmsh_model, tdim = mg.mesh_din50154_gmshapi(name, dx, dy, dz, nx, ny, nz, px=1.0, py=1.0, pz=1.0, do_quads=False)
@@ -53,12 +53,12 @@ surface_right = interfaces_keys["surface_right"]
 
 # Solid: material parameters
 mu = dolfinx.Constant(mesh, 100)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.Constant(mesh, 10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+la = dolfinx.Constant(mesh, 0.0)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
 Sy = dolfinx.Constant(mesh, 0.3)  # initial yield stress
-bh = dolfinx.Constant(mesh, 20)  # isotropic hardening: saturation rate   [-]
+bh = dolfinx.Constant(mesh, 20.)  # isotropic hardening: saturation rate   [-]
 qh = dolfinx.Constant(mesh, 0.1)  # isotropic hardening: saturation value [GPa]
-bb = dolfinx.Constant(mesh, 20)  # kinematic hardening: saturation rate   [-]
-qb = dolfinx.Constant(mesh, 0.2)  # kinematic hardening: saturation value [GPa] includes factor 2/3
+bb = dolfinx.Constant(mesh, 200)  # kinematic hardening: saturation rate   [-]
+qb = dolfinx.Constant(mesh, 0.1)  # kinematic hardening: saturation value [GPa] (includes factor 2/3)
 
 # Solid: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
@@ -188,8 +188,8 @@ opts = PETSc.Options(name)
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-12
-opts["snes_rtol"] = 1.0e-09
+opts["snes_atol"] = 1.0e-08
+opts["snes_rtol"] = 1.0e-06
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
