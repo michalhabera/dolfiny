@@ -149,6 +149,39 @@ m, δm = [u], [δu]
 #     """
 #     return ufl.Max(f, 0)
 
+def eigenstate(A):
+    """Eigenvalues and eigenvectors of 3x3 (symmetric) tensor (https://doi.org/10.1145%2F355578.366316)"""
+    # determine eigenvalues
+    eps = 1.0e-10
+    q = ufl.tr(A) / 3.0
+    p1 = A[0, 1] ** 2 + A[0, 2] ** 2 + A[1, 2] ** 2
+    p2 = (A[0, 0] - q) ** 2 + (A[1, 1] - q) ** 2 + (A[2, 2] - q) ** 2 + 2 * p1
+    p = ufl.sqrt(p2 / 6)
+    B = (1 / p) * (A - q * ufl.Identity(3))
+    r = ufl.det(B) / 2
+    r = ufl.Max(ufl.Min(r, 1.0), -1.0)
+    phi = ufl.acos(r) / 3.0
+    eig0 = ufl.conditional(p1 < eps, A[0, 0], q + 2 * p * ufl.cos(phi))
+    eig2 = ufl.conditional(p1 < eps, A[1, 1], q + 2 * p * ufl.cos(phi + (2 * np.pi / 3)))
+    eig1 = ufl.conditional(p1 < eps, A[2, 2], 3 * q - eig0 - eig2)  # since trace(A) = eig1 + eig2 + eig3
+    # determine eigenvectors
+    cd = A[1, 2] * A[2, 1] - A[1, 1] * A[2, 2]
+    ca = A[1, 2] * A[2, 0] - A[1, 0] * A[2, 2]
+    cb = A[1, 0] * A[2, 1] - A[1, 1] * A[2, 0]
+    d0 = cd + A[1, 1] * eig0 + A[2, 2] * eig0 - eig0**2  # TODO: check pathologies
+    d1 = cd + A[1, 1] * eig1 + A[2, 2] * eig1 - eig1**2
+    d2 = cd + A[1, 1] * eig2 + A[2, 2] * eig2 - eig2**2
+    vec0 = ufl.as_vector([1, -(ca + A[1, 0] * eig0) / d0, -(cb + A[2, 0] * eig0) / d0])
+    vec1 = ufl.as_vector([1, -(ca + A[1, 0] * eig1) / d1, -(cb + A[2, 0] * eig1) / d1])
+    vec2 = ufl.as_vector([1, -(ca + A[1, 0] * eig2) / d2, -(cb + A[2, 0] * eig2) / d2])
+    vec0 /= ufl.sqrt(ufl.dot(vec0, vec0))
+    vec1 /= ufl.sqrt(ufl.dot(vec1, vec1))
+    vec2 /= ufl.sqrt(ufl.dot(vec2, vec2))
+    return \
+        ufl.as_vector([eig0, eig1, eig2]), \
+        ufl.as_matrix([[vec0[0], vec0[1], vec0[2]], [vec1[0], vec1[1], vec1[2]], [vec2[0], vec2[1], vec2[2]]])
+
+
 def eig(A):
     """Eigenvalues of 3x3 tensor"""
     eps = 1.0e-10
@@ -227,8 +260,13 @@ e = ufl.as_vector([(z**2 - 1) / 2 for z in l])  # for post-processing
 # # Plastic multiplier (J2 plasticity, closed-form solution for return-map)
 # dλ = ppos(f(S, h, B))
 
+# Variation of direction of principal strain
+_, N = eigenstate(F.T * F)
+δN = dolfiny.expression.derivative(N, m, δm)
+lpδNN = sum([l[a] * p[a] * ufl.dot(δN[a, :], N[a, :]) for a in range(3)])
+
 # Weak form (as one-form)
-F = + ufl.inner(δl, p) * dx - ufl.inner(δu, t0) * ds(surface_right)
+F = + ufl.inner(δl, p) * dx + lpδNN * dx - ufl.inner(δu, t0) * ds(surface_right)
 # F = + ufl.inner(δF, P) * dx - ufl.inner(δu, t0) * ds(surface_right)
 
 # Overall form (as list of forms)
