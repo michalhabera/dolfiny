@@ -150,36 +150,50 @@ m, δm = [u], [δu]
 #     return ufl.Max(f, 0)
 
 def eigenstate(A):
-    """Eigenvalues and eigenvectors of 3x3 (symmetric) tensor (https://doi.org/10.1145%2F355578.366316)"""
-    # determine eigenvalues
+    """Eigenvalues and eigenprojectors of 3x3 (real-valued) tensor A.
+
+       Note: The matrix A must not have complex eigenvalues!
+
+       Spectral decomposition: A = sum_{a=0}^{2} λ_a * E_a
+    """
+    I, Z = ufl.Identity(3), ufl.zero((3, 3))
+    #
+    # --- determine eigenvalues
+    #
     eps = 1.0e-10
     q = ufl.tr(A) / 3.0
-    p1 = A[0, 1] ** 2 + A[0, 2] ** 2 + A[1, 2] ** 2
-    p2 = (A[0, 0] - q) ** 2 + (A[1, 1] - q) ** 2 + (A[2, 2] - q) ** 2 + 2 * p1
-    p = ufl.sqrt(p2 / 6)
-    B = (1 / p) * (A - q * ufl.Identity(3))
-    r = ufl.det(B) / 2
+    B = A - q * I
+    s = A[0, 1] ** 2 + A[0, 2] ** 2 + A[1, 2] ** 2 + A[1, 0] ** 2 + A[2, 0] ** 2 + A[2, 1] ** 2  # is A diagonal?
+    p = ufl.tr(B * B)
+    p = ufl.sqrt(p / 6)
+    r = (1 / p) ** 3 * ufl.det(B) / 2
     r = ufl.Max(ufl.Min(r, 1.0), -1.0)
-    phi = ufl.acos(r) / 3.0
-    eig0 = ufl.conditional(p1 < eps, A[0, 0], q + 2 * p * ufl.cos(phi))
-    eig2 = ufl.conditional(p1 < eps, A[1, 1], q + 2 * p * ufl.cos(phi + (2 * np.pi / 3)))
-    eig1 = ufl.conditional(p1 < eps, A[2, 2], 3 * q - eig0 - eig2)  # since trace(A) = eig1 + eig2 + eig3
-    # determine eigenvectors
-    cd = A[1, 2] * A[2, 1] - A[1, 1] * A[2, 2]
-    ca = A[1, 2] * A[2, 0] - A[1, 0] * A[2, 2]
-    cb = A[1, 0] * A[2, 1] - A[1, 1] * A[2, 0]
-    d0 = cd + A[1, 1] * eig0 + A[2, 2] * eig0 - eig0**2  # TODO: check pathologies
-    d1 = cd + A[1, 1] * eig1 + A[2, 2] * eig1 - eig1**2
-    d2 = cd + A[1, 1] * eig2 + A[2, 2] * eig2 - eig2**2
-    vec0 = ufl.as_vector([1, -(ca + A[1, 0] * eig0) / d0, -(cb + A[2, 0] * eig0) / d0])
-    vec1 = ufl.as_vector([1, -(ca + A[1, 0] * eig1) / d1, -(cb + A[2, 0] * eig1) / d1])
-    vec2 = ufl.as_vector([1, -(ca + A[1, 0] * eig2) / d2, -(cb + A[2, 0] * eig2) / d2])
-    vec0 /= ufl.sqrt(ufl.dot(vec0, vec0))
-    vec1 /= ufl.sqrt(ufl.dot(vec1, vec1))
-    vec2 /= ufl.sqrt(ufl.dot(vec2, vec2))
-    return \
-        ufl.as_vector([eig0, eig1, eig2]), \
-        ufl.as_matrix([[vec0[0], vec0[1], vec0[2]], [vec1[0], vec1[1], vec1[2]], [vec2[0], vec2[1], vec2[2]]])
+    phi = ufl.asin(r) / 3.0
+    # sorted eigenvalues: λ0 <= λ1 <= λ2, except for diagonal input A
+    λ0 = ufl.conditional(s < eps, A[0, 0], q - 2 * p * ufl.cos(phi + np.pi / 6))  # low
+    λ2 = ufl.conditional(s < eps, A[1, 1], q + 2 * p * ufl.cos(phi - np.pi / 6))  # high
+    λ1 = ufl.conditional(s < eps, A[2, 2], q - 2 * p * ufl.sin(phi))  # middle
+    #
+    # --- determine eigenprojectors E0, E1, E2
+    #
+    # identify λ-multiplicity: p = 0: MMM, r = 1: MMH, r = -1: LMM, otherwise: LMH
+    is_MMM, is_MMH, is_LMM = p < eps, ufl.sqrt((r - 1)**2) < eps, ufl.sqrt((r + 1)**2) < eps
+    # prepare projectors depending on λ-multiplicity
+    E0_MMM, E1_MMM, E2_MMM = I, Z, Z
+    E0_MMH, E1_MMH, E2_MMH = Z, (A - λ2 * I) / (λ1 - λ2), (A - λ1 * I) / (λ2 - λ1)
+    E0_LMM, E1_LMM, E2_LMM = (A - λ1 * I) / (λ0 - λ1), (A - λ0 * I) / (λ1 - λ0), Z
+    # E0_LMH, E1_LMH, E2_LMH = ufl.cofac(A - λ0 * I) / (λ1 - λ0) / (λ2 - λ0), \
+    #                          ufl.cofac(A - λ1 * I) / (λ2 - λ1) / (λ0 - λ1), \
+    #                          ufl.cofac(A - λ2 * I) / (λ0 - λ2) / (λ1 - λ2)  # only for symmetric A
+    E0_LMH, E1_LMH, E2_LMH = (A - λ1 * I) * (A - λ2 * I) / (λ0 - λ1) / (λ0 - λ2), \
+                             (A - λ2 * I) * (A - λ0 * I) / (λ1 - λ2) / (λ1 - λ0), \
+                             (A - λ0 * I) * (A - λ1 * I) / (λ2 - λ0) / (λ2 - λ1)
+    # sorted projectors
+    E0 = ufl.conditional(is_MMM, E0_MMM, ufl.conditional(is_MMH, E0_MMH, ufl.conditional(is_LMM, E0_LMM, E0_LMH)))
+    E1 = ufl.conditional(is_MMM, E1_MMM, ufl.conditional(is_MMH, E1_MMH, ufl.conditional(is_LMM, E1_LMM, E1_LMH)))
+    E2 = ufl.conditional(is_MMM, E2_MMM, ufl.conditional(is_MMH, E2_MMH, ufl.conditional(is_LMM, E2_LMM, E2_LMH)))
+    #
+    return [λ0, λ1, λ2], [E0, E1, E2]
 
 
 def eig(A):
@@ -197,6 +211,54 @@ def eig(A):
     eig2 = ufl.conditional(p1 < eps, A[1, 1], q + 2 * p * ufl.cos(phi + (2 * np.pi / 3)))
     eig1 = ufl.conditional(p1 < eps, A[2, 2], 3 * q - eig0 - eig2)  # since trace(A) = eig1 + eig2 + eig3
     return eig0, eig1, eig2
+
+
+# # Test ufl eigenstate
+# # A_ = np.array([[1.0, 0.0, 0],[ 0.0, 1.0, 0.0], [ 0, 0.0, 1.0]])  # MMM
+# # A_ = np.array([[3.0, 0.0, 0.0],[ 0.0, 3.0, 0.0], [ 0.0, 0.0, 5.0]])  # MMH
+# # A_ = np.array([[2.0, 0.0, 0.0],[ 0.0, 5.0, 0.0], [ 0.0, 0.0, 5.0]])  # LMM
+# # A_ = np.array([[5.0, 2.0, 0.0],[ 2.0, 1.0, 3.0], [ 0.0, 3.0, 6.0]])  # LMH, symmetric
+# A_ = np.array([[5.0, 2.0, 0.0], [2.0, 5.0, 0.0], [-3.0, 4.0, 6.0]])  # LMH, non-symmetric but real eigenvalues
+# # A_ = np.random.rand(3, 3)
+
+# A = ufl.as_matrix(dolfinx.Constant(mesh, A_))
+# [e0, e1, e2], [E0, E1, E2] = eigenstate(A)
+
+# A_u = dolfiny.expression.assemble(A, dx) / dolfiny.expression.assemble(1.0, dx)
+# A_s = dolfiny.expression.assemble(e0 * E0 + e1 * E1 + e2 * E2, dx) / dolfiny.expression.assemble(1.0, dx)
+# print(A_u)
+# print(A_s)
+# assert np.isclose(A_u, A_).all(), "Wrong matrix from UFL!"
+# assert np.isclose(A_s, A_).all(), "Wrong spectral decomposition!"
+# print(f"e0 = {dolfiny.expression.assemble(e0, dx) / dolfiny.expression.assemble(1.0, dx):5.3e}")
+# print(f"e1 = {dolfiny.expression.assemble(e1, dx) / dolfiny.expression.assemble(1.0, dx):5.3e}")
+# print(f"e2 = {dolfiny.expression.assemble(e2, dx) / dolfiny.expression.assemble(1.0, dx):5.3e}")
+# print(f"E0 = \n{dolfiny.expression.assemble(E0, dx) / dolfiny.expression.assemble(1.0, dx)}")
+# print(f"E1 = \n{dolfiny.expression.assemble(E1, dx) / dolfiny.expression.assemble(1.0, dx)}")
+# print(f"E2 = \n{dolfiny.expression.assemble(E2, dx) / dolfiny.expression.assemble(1.0, dx)}")
+
+
+# for k in range(1000):
+#     if k % 100 == 0: print(k)
+#     A_ = np.random.rand(3, 3)
+#     # A_ = A_.T * A_
+#     A.value = A_
+#     A_s = dolfiny.expression.assemble(e0*E0+e1*E1+e2*E2, dx) / dolfiny.expression.assemble(1.0, dx)
+#     eigs_, eigv_ = np.linalg.eig(A_)
+#     eigs_ = np.sort(eigs_)
+
+#     e0_ = dolfiny.expression.assemble(e0, dx) / dolfiny.expression.assemble(1.0, dx)
+#     e1_ = dolfiny.expression.assemble(e1, dx) / dolfiny.expression.assemble(1.0, dx)
+#     e2_ = dolfiny.expression.assemble(e2, dx) / dolfiny.expression.assemble(1.0, dx)
+#     eigs_s = np.array([e0_, e1_, e2_])
+
+#     if np.iscomplex(eigs_).any(): continue
+#     # print(eigs_s, eigs_)
+
+#     assert np.isclose(eigs_s, eigs_).all(), "Wrong eigenvalues!"
+#     assert np.isclose(A_s, A_).all(), "Wrong spectral decomposition!"
+
+# exit()
 
 
 def W(F):
@@ -234,6 +296,9 @@ def dWdl(l):  # noqa: E741
 I = ufl.Identity(u.geometric_dimension())  # noqa: E741
 F = I + ufl.grad(u)  # deformation gradient as function of displacement
 
+# Spectral decomposition, Cauchy-Green
+eigenvalues, eigenprojectors = eigenstate(F.T * F)
+
 # Natural stress, from strain energy function
 P = dWdF(F)  # PK-I
 S = dWdF(F) * 2 * ufl.inv(F.T + F)  # PK-II
@@ -242,7 +307,7 @@ S = dWdF(F) * 2 * ufl.inv(F.T + F)  # PK-II
 E = 1 / 2 * (F.T * F - I)  # for post-processing
 
 # Principal stretches
-l = ufl.as_vector([ufl.sqrt(z) for z in eig(F.T * F)])  # noqa: E741
+l = ufl.as_vector([ufl.sqrt(z) for z in eigenvalues])  # noqa: E741
 
 # Principal stress, from strain energy function
 p = dWdl(l)  # PK-I
@@ -251,23 +316,28 @@ s = ufl.as_vector([z / v for z, v in zip(dWdl(l), l)])  # PK-II
 # Principal strains
 e = ufl.as_vector([(z**2 - 1) / 2 for z in l])  # for post-processing
 
-# Variation of principal strain
+# Variation of principal stretch
 δl = dolfiny.expression.derivative(l, m, δm)
 
-# Variation of natural strain
+# Variation of deformation gradient
 δF = dolfiny.expression.derivative(F, m, δm)
 
 # # Plastic multiplier (J2 plasticity, closed-form solution for return-map)
 # dλ = ppos(f(S, h, B))
 
-# Variation of direction of principal strain
-_, N = eigenstate(F.T * F)
-δN = dolfiny.expression.derivative(N, m, δm)
-lpδNN = sum([l[a] * p[a] * ufl.dot(δN[a, :], N[a, :]) for a in range(3)])
-
+# Variation of direction of principal stretch
+# N = eigenprojectors
+# δN = dolfiny.expression.derivative(N, m, δm)
+# lpδNN = sum([l[a] * p[a] * ufl.inner(δN[a], N[a]) for a in range(3)])
+factor = ufl.inner(eigenprojectors[0], eigenprojectors[1])
 # Weak form (as one-form)
-F = + ufl.inner(δl, p) * dx + lpδNN * dx - ufl.inner(δu, t0) * ds(surface_right)
-# F = + ufl.inner(δF, P) * dx - ufl.inner(δu, t0) * ds(surface_right)
+# F = + ufl.inner(δl, p) * dx - ufl.inner(δu, t0) * ds(surface_right)
+F = + ufl.inner(δF, P) * dx - ufl.inner(δu, t0) * ds(surface_right)  # + ufl.inner(δu, factor * u) * dx
+# L = sum([l_a * E_a for l_a, E_a in zip(l, eigenprojectors)])
+# δL = dolfiny.expression.derivative(L, m, δm)
+# P = sum([p_a * E_a for p_a, E_a in zip(p, eigenprojectors)])
+# δL = sum([l_a * E_a for l_a, E_a in zip(δl, eigenprojectors)])
+# F = ufl.inner(δL, P) * dx
 
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
@@ -360,6 +430,9 @@ for step, factor in enumerate(dedup(cycles)):
     # print(f"(dλ *  f)_avg = {dλ_f_avg:4.3e}")
     # Pvol_avg = dolfiny.expression.assemble(ufl.sqrt(ufl.tr(P)**2), dx) / V
     # print(f"( tr(P) )_avg = {Pvol_avg:4.3e}")
+
+    factor_avg = dolfiny.expression.assemble(factor, dx) / V
+    print(f"(factor)_avg = {factor_avg:4.3e}")
 
     # Write output
     ofile.write_function(u, step)
