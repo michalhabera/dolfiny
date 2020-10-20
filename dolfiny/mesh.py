@@ -178,7 +178,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         cells = numpy.empty((0, cells_shape[1]))
         points = numpy.empty((0, pts_shape[1]))
 
-    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(cellname, pts_shape[1]))
+    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(cell_types[0], pts_shape[1]))
     mts = {}
 
     # Get physical groups (dimension, tag)

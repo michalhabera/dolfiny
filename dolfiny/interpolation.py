@@ -170,4 +170,4 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
 
         for j in range(dofs_per_block):
             for k in range(value_size):
-                b[dofmap[i * b_size + j * value_size + subel_map[k]]] = b_local[dofs_per_block * k + j]
+                b[dofmap[i * b_size + j * value_size + subel_map[k]]] = b_local[value_size * j + k]
