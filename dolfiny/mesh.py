@@ -130,6 +130,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
 
         try:
             cellname = gmsh_cellname[cell_types[0]]
+            celltype = cell_types[0]
         except KeyError:
             raise RuntimeError(f"Gmsh cell code {cell_types[0]:d} not supported.")
 
@@ -172,13 +173,13 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         logger.info(f"Constructing mesh for tdim: {tdim:d}, gdim: {points.shape[1]:d}")
         logger.info(f"Number of elements: {cells.shape[0]:d}")
 
-        cells_shape, pts_shape, cellname = comm.bcast([cells.shape, points.shape, cellname], root=0)
+        cells_shape, pts_shape, celltype = comm.bcast([cells.shape, points.shape, celltype], root=0)
     else:
-        cells_shape, pts_shape, cellname = comm.bcast([None, None, None], root=0)
+        cells_shape, pts_shape, celltype = comm.bcast([None, None, None], root=0)
         cells = numpy.empty((0, cells_shape[1]))
         points = numpy.empty((0, pts_shape[1]))
 
-    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(cell_types[0], pts_shape[1]))
+    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(celltype, pts_shape[1]))
     mts = {}
 
     # Get physical groups (dimension, tag)
