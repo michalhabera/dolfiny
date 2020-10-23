@@ -8,6 +8,7 @@ import numba.core.typing.cffi_utils as cffi_support
 import ufl
 from numba.typed import List
 from petsc4py import PETSc
+from mpi4py import MPI
 
 # Load ffi import-time, needed to be binded
 # into numba compiled code for interpolation
@@ -15,7 +16,7 @@ ffi = cffi.FFI()
 
 
 class CompiledExpression:
-    def __init__(self, expr, target_el):
+    def __init__(self, expr, target_el, comm=MPI.COMM_WORLD):
         self.expr = expr
         self.target_el = target_el
 
@@ -46,7 +47,7 @@ class CompiledExpression:
 
         nodes = np.asarray(nodes)
 
-        module = dolfinx.jit.ffcx_jit((expr, nodes))
+        module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))
         self.module = module
 
 
