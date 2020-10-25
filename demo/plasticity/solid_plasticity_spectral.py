@@ -23,7 +23,7 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 dx, dy, dz = 1.0, 0.1, 0.1
-nx, ny, nz = 20, 4, 4
+nx, ny, nz = 2, 2, 2
 
 # Create the regular mesh of an annulus with given dimensions
 gmsh_model, tdim = mg.mesh_din50154_gmshapi(name, dx, dy, dz, nx, ny, nz, px=1.0, py=1.0, pz=1.0, do_quads=False)
@@ -167,20 +167,25 @@ def eigenstate(A):
     p = ufl.sqrt(j / 6)
     b = ufl.det(B)
     d = (1 / p) ** 3 * b / 2
-    d = ufl.conditional(j < eps, ufl.sign(b), d)
+    # d = ufl.conditional(j < eps, ufl.sign(b), d)
     r = ufl.Max(ufl.Min(d, 1), -1)
     phi = ufl.asin(r) / 3
+    phi = ufl.conditional(j < eps, ufl.asin(ufl.sign(b)) / 3, phi)
     # sorted eigenvalues: λ0 <= λ1 <= λ2, except for diagonal input A
     s = A[0, 1] ** 2 + A[0, 2] ** 2 + A[1, 2] ** 2 + A[1, 0] ** 2 + A[2, 0] ** 2 + A[2, 1] ** 2  # is A diagonal?
-    # minA = ufl.Min(ufl.Min(A[0, 0], A[1, 1]), A[2, 2])
-    # maxA = ufl.Max(ufl.Max(A[0, 0], A[1, 1]), A[2, 2])
-    # midA = 3 * q - minA - maxA
-    minA = A[0, 0]
-    midA = A[1, 1]
-    maxA = A[2, 2]
+    minA = ufl.Min(ufl.Min(A[0, 0], A[1, 1]), A[2, 2])
+    maxA = ufl.Max(ufl.Max(A[0, 0], A[1, 1]), A[2, 2])
+    midA = 3 * q - minA - maxA
+    # minA = A[0, 0]
+    # midA = A[1, 1]
+    # maxA = A[2, 2]
     λ0 = ufl.conditional(s < eps, minA, q - 2 * p * ufl.cos(phi + np.pi / 6))  # low
     λ2 = ufl.conditional(s < eps, maxA, q + 2 * p * ufl.cos(phi - np.pi / 6))  # high
     λ1 = ufl.conditional(s < eps, midA, q - 2 * p * ufl.sin(phi))  # middle
+    #
+    # λ0 = q - 2 * p * ufl.cos(phi + np.pi / 6)  # low
+    # λ2 = q + 2 * p * ufl.cos(phi - np.pi / 6)  # high
+    # λ1 = q - 2 * p * ufl.sin(phi)  # middle
     #
     # --- determine eigenprojectors E0, E1, E2
     #
@@ -358,8 +363,8 @@ F = + ufl.inner(δl, p) * dx - ufl.inner(δu, t0) * ds(surface_right)
 # L = sum([l_a * E_a for l_a, E_a in zip(l, eigenprojectors)])
 # δL = dolfiny.expression.derivative(L, m, δm)
 # P = sum([p_a * E_a for p_a, E_a in zip(p, eigenprojectors)])
-# δL = sum([l_a * E_a for l_a, E_a in zip(δl, eigenprojectors)])
 # F = ufl.inner(δL, P) * dx
+F._signature = "whatever"
 
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
@@ -396,6 +401,8 @@ problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 surface_left_dofs_U = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_left)
 surface_right_dofs_U = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_right)
+domain_dofs_Uy = dolfiny.mesh.locate_dofs_topological(Uf.sub(1), subdomains, 1)
+domain_dofs_Uz = dolfiny.mesh.locate_dofs_topological(Uf.sub(2), subdomains, 1)
 
 u_prescribed = dolfinx.Function(Uf)
 
@@ -429,6 +436,8 @@ for step, factor in enumerate(dedup(cycles)):
     problem.bcs = [
         dolfinx.fem.DirichletBC(u_prescribed, surface_left_dofs_U),  # disp left (clamped, u=0)
         dolfinx.fem.DirichletBC(u_prescribed, surface_right_dofs_U),  # disp right (clamped, u=u_bar)
+        dolfinx.fem.DirichletBC(u_prescribed, domain_dofs_Uy),  # disp right (clamped, u=u_bar)
+        dolfinx.fem.DirichletBC(u_prescribed, domain_dofs_Uz),  # disp right (clamped, u=u_bar)
     ]
 
     # Solve nonlinear problem
