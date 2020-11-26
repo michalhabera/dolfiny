@@ -104,7 +104,7 @@ def test_coupled_poisson():
     assert problem.snes.getIterationNumber() == 1
 
     # Evaluate the solution -0.5*x*(x-1) at x=0.5
-    bb_tree = dolfinx.cpp.geometry.BoundingBoxTree(mesh, mesh.topology.dim)
+    bb_tree = dolfinx.cpp.geometry.BoundingBoxTree(mesh, mesh.topology.dim, padding=0)
     p = numpy.array([0.5, 0.5, 0.0], dtype=numpy.float64)
 
     cell_candidates = dolfinx.cpp.geometry.compute_collisions_point(bb_tree, p)
