@@ -14,6 +14,7 @@ import dolfiny.function
 import dolfiny.snesblockproblem
 
 import mesh_din50154_gmshapi as mg
+import mat3invariants as mi
 
 import numpy as np
 
@@ -23,7 +24,7 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 dx, dy, dz = 1.0, 0.1, 0.1
-nx, ny, nz = 2, 2, 2
+nx, ny, nz = 4, 2, 2
 
 # Create the regular mesh of an annulus with given dimensions
 gmsh_model, tdim = mg.mesh_din50154_gmshapi(name, dx, dy, dz, nx, ny, nz, px=1.0, py=1.0, pz=1.0, do_quads=False)
@@ -53,12 +54,12 @@ surface_right = interfaces_keys["surface_right"]
 
 # Solid: material parameters
 mu = dolfinx.Constant(mesh, 100)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.Constant(mesh, 0)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
-# Sy = dolfinx.Constant(mesh, 0.3)  # initial yield stress
-# bh = dolfinx.Constant(mesh, 20.)  # isotropic hardening: saturation rate   [-]
-# qh = dolfinx.Constant(mesh, 0.1)  # isotropic hardening: saturation value [GPa]
-# bb = dolfinx.Constant(mesh, 200)  # kinematic hardening: saturation rate   [-]
-# qb = dolfinx.Constant(mesh, 0.1)  # kinematic hardening: saturation value [GPa] (includes factor 2/3)
+la = dolfinx.Constant(mesh, 10.)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+Sy = dolfinx.Constant(mesh, 0.3)  # initial yield stress
+bh = dolfinx.Constant(mesh, 20.)  # isotropic hardening: saturation rate   [-]
+qh = dolfinx.Constant(mesh, 0.1)  # isotropic hardening: saturation value [GPa]
+bb = dolfinx.Constant(mesh, 200)  # kinematic hardening: saturation rate   [-]
+qb = dolfinx.Constant(mesh, 0.1)  # kinematic hardening: saturation value [GPa] (includes factor 2/3)
 
 # Solid: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
@@ -66,305 +67,146 @@ t0 = μ * dolfinx.Constant(mesh, [0.0, 0.0, 0.0])  # [GPa]
 u_bar = lambda x: μ.value * np.array([0.01 * x[0] / 1.0, 0.0 * x[1], 0.0 * x[2]])  # noqa: E731 [m]
 
 # Define integration measures
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 3})
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 3})
+dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
+ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 4})
 
 # Function spaces
 Ue = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
-# Pe = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
-# He = ufl.FiniteElement("DG", mesh.ufl_cell(), 1)
-# Be = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
+Pe = ufl.TensorElement("DG", mesh.ufl_cell(), 1)
+He = ufl.FiniteElement("DG", mesh.ufl_cell(), 1)
+Be = ufl.VectorElement("DG", mesh.ufl_cell(), 1)
 
 Uf = dolfinx.FunctionSpace(mesh, Ue)
-# Pf = dolfinx.FunctionSpace(mesh, Pe)
-# Hf = dolfinx.FunctionSpace(mesh, He)
-# Bf = dolfinx.FunctionSpace(mesh, Be)
+Pf = dolfinx.FunctionSpace(mesh, Pe)
+Hf = dolfinx.FunctionSpace(mesh, He)
+Bf = dolfinx.FunctionSpace(mesh, Be)
 
 # Define functions
 u = dolfinx.Function(Uf, name="u")
-# P = dolfinx.Function(Pf, name="P")
-# h = dolfinx.Function(Hf, name="h")
-# B = dolfinx.Function(Bf, name="B")
+P = dolfinx.Function(Pf, name="P")
+h = dolfinx.Function(Hf, name="h")
+B = dolfinx.Function(Bf, name="B")
 
-# u0 = dolfinx.Function(Uf, name="u0")
-# P0 = dolfinx.Function(Pf, name="P0")
-# h0 = dolfinx.Function(Hf, name="h0")
-# B0 = dolfinx.Function(Bf, name="B0")
-# S0 = dolfinx.Function(Bf, name="S0")
+u0 = dolfinx.Function(Uf, name="u0")
+P0 = dolfinx.Function(Pf, name="P0")
+h0 = dolfinx.Function(Hf, name="h0")
+B0 = dolfinx.Function(Bf, name="B0")
+S0 = dolfinx.Function(Bf, name="S0")
 
 δu = ufl.TestFunction(Uf)
-# δP = ufl.TestFunction(Pf)
-# δh = ufl.TestFunction(Hf)
-# δB = ufl.TestFunction(Bf)
+δP = ufl.TestFunction(Pf)
+δh = ufl.TestFunction(Hf)
+δB = ufl.TestFunction(Bf)
 
 # Define state and rate as (ordered) list of functions
 # m, δm = [u, P, h, B], [δu, δP, δh, δB]
 m, δm = [u], [δu]
+# m, δm = [u, P], [δu, δP]
 
-# def rJ2(A):
-#     J2 = 1 / 2 * ufl.inner(A, A)
-#     rJ2 = ufl.sqrt(J2)
-#     return ufl.conditional(rJ2 < 1.0e-12, 0.0, rJ2)
-
-
-# def f(S, h, B):
-#     """
-#     Yield function
-#     """
-#     f = ufl.sqrt(3) * rJ2(ufl.dev(S) - ufl.dev(B)) - (Sy + h)
-#     return f
+def rJ2(A):
+    J2 = 1 / 2 * ufl.inner(A, A)
+    rJ2 = ufl.sqrt(J2)
+    return ufl.conditional(rJ2 < 1.0e-12, 0.0, rJ2)
 
 
-# def df(S, h, B):
-#     """
-#     Total differential of yield function
-#     """
-#     varS = ufl.variable(S)
-#     varh = ufl.variable(h)
-#     varB = ufl.variable(B)
-#     f_ = f(varS, varh, varB)
-#     return ufl.inner(ufl.diff(f_, varS), (S - S0)) \
-#         + ufl.inner(ufl.diff(f_, varh), (h - h0)) \
-#         + ufl.inner(ufl.diff(f_, varB), (B - B0))
-
-
-# def g(S, h, B):
-#     """
-#     Plastic potential
-#     """
-#     return f(S, h, B)
-
-
-# def dgdS(S, h, B):
-#     """
-#     Derivative of plastic potential wrt stress: dg / dS
-#     """
-#     varS = ufl.variable(S)
-#     return ufl.diff(g(varS, h, B), varS)
-
-
-# def ppos(f):
-#     """
-#     Macaulay bracket
-#     """
-#     return ufl.Max(f, 0)
-
-def eigenstate(A):
-    """Eigenvalues and eigenprojectors of 3x3 (real-valued) tensor A.
-
-       Note: The matrix A must not have complex eigenvalues!
-
-       Spectral decomposition: A = sum_{a=0}^{2} λ_a * E_a
+def f(s, h, B):
     """
-    I, Z = ufl.Identity(3), ufl.zero((3, 3))
-    eps = 1.0e-10
-    #
-    # --- determine eigenvalues
-    #
-    q = ufl.tr(A) / 3
-    B = A - q * I
-    j = ufl.inner(B, B)  # = 2 * J2(B) >= 0
-    p = ufl.sqrt(j / 6)
-    b = ufl.det(B)
-    d = (1 / p) ** 3 * b / 2
-    # d = ufl.conditional(j < eps, ufl.sign(b), d)
-    r = ufl.Max(ufl.Min(d, 1), -1)
-    phi = ufl.asin(r) / 3
-    phi = ufl.conditional(j < eps, ufl.asin(ufl.sign(b)) / 3, phi)
-    # sorted eigenvalues: λ0 <= λ1 <= λ2, except for diagonal input A
-    s = A[0, 1] ** 2 + A[0, 2] ** 2 + A[1, 2] ** 2 + A[1, 0] ** 2 + A[2, 0] ** 2 + A[2, 1] ** 2  # is A diagonal?
-    minA = ufl.Min(ufl.Min(A[0, 0], A[1, 1]), A[2, 2])
-    maxA = ufl.Max(ufl.Max(A[0, 0], A[1, 1]), A[2, 2])
-    midA = 3 * q - minA - maxA
-    # minA = A[0, 0]
-    # midA = A[1, 1]
-    # maxA = A[2, 2]
-    λ0 = ufl.conditional(s < eps, minA, q - 2 * p * ufl.cos(phi + np.pi / 6))  # low
-    λ2 = ufl.conditional(s < eps, maxA, q + 2 * p * ufl.cos(phi - np.pi / 6))  # high
-    λ1 = ufl.conditional(s < eps, midA, q - 2 * p * ufl.sin(phi))  # middle
-    #
-    # λ0 = q - 2 * p * ufl.cos(phi + np.pi / 6)  # low
-    # λ2 = q + 2 * p * ufl.cos(phi - np.pi / 6)  # high
-    # λ1 = q - 2 * p * ufl.sin(phi)  # middle
-    #
-    # --- determine eigenprojectors E0, E1, E2
-    #
-    # identify λ-multiplicity: j = 0: MMM, r = 1: MMH, r = -1: LMM, otherwise: LMH
-    is_MMM, is_MMH, is_LMM = j < eps, ufl.sqrt((r - 1)**2) < eps, ufl.sqrt((r + 1)**2) < eps
-    # prepare projectors depending on λ-multiplicity
-    E0_MMM, E1_MMM, E2_MMM = I, Z, Z
-    E0_MMH, E1_MMH, E2_MMH = Z, (A - λ2 * I) / (λ1 - λ2), (A - λ1 * I) / (λ2 - λ1)
-    E0_LMM, E1_LMM, E2_LMM = (A - λ1 * I) / (λ0 - λ1), (A - λ0 * I) / (λ1 - λ0), Z
-    # E0_LMH, E1_LMH, E2_LMH = ufl.cofac(A - λ0 * I) / (λ1 - λ0) / (λ2 - λ0), \
-    #                          ufl.cofac(A - λ1 * I) / (λ2 - λ1) / (λ0 - λ1), \
-    #                          ufl.cofac(A - λ2 * I) / (λ0 - λ2) / (λ1 - λ2)  # only for symmetric A
-    E0_LMH, E1_LMH, E2_LMH = (A - λ1 * I) * (A - λ2 * I) / (λ0 - λ1) / (λ0 - λ2), \
-                             (A - λ2 * I) * (A - λ0 * I) / (λ1 - λ2) / (λ1 - λ0), \
-                             (A - λ0 * I) * (A - λ1 * I) / (λ2 - λ0) / (λ2 - λ1)
-    # sorted projectors
-    E0 = ufl.conditional(is_MMM, E0_MMM, ufl.conditional(is_MMH, E0_MMH, ufl.conditional(is_LMM, E0_LMM, E0_LMH)))
-    E1 = ufl.conditional(is_MMM, E1_MMM, ufl.conditional(is_MMH, E1_MMH, ufl.conditional(is_LMM, E1_LMM, E1_LMH)))
-    E2 = ufl.conditional(is_MMM, E2_MMM, ufl.conditional(is_MMH, E2_MMH, ufl.conditional(is_LMM, E2_LMM, E2_LMH)))
-    #
-    return [λ0, λ1, λ2], [E0, E1, E2]
+    Yield function
+    """
+    # TODO: adapt to principal space
+    # f = ufl.sqrt(3) * rJ2(ufl.dev(ufl.diag(s)) - ufl.dev(ufl.diag(B))) - (Sy + h)
+
+    f = (s[0] - s[1])**2 + (s[1] - s[2])**2 + (s[2] - s[0])**2 - 2 * (Sy)**2
+    return f
 
 
-def eig(A):
-    """Eigenvalues of 3x3 tensor"""
-    eps = 1.0e-10
-    q = ufl.tr(A) / 3.0
-    p1 = A[0, 1] ** 2 + A[0, 2] ** 2 + A[1, 2] ** 2
-    p2 = (A[0, 0] - q) ** 2 + (A[1, 1] - q) ** 2 + (A[2, 2] - q) ** 2 + 2 * p1
-    p = ufl.sqrt(p2 / 6)
-    B = (1 / p) * (A - q * ufl.Identity(3))
-    r = ufl.det(B) / 2
-    r = ufl.Max(ufl.Min(r, 1.0), -1.0)
-    phi = ufl.acos(r) / 3.0
-    eig0 = ufl.conditional(p1 < eps, A[0, 0], q + 2 * p * ufl.cos(phi))
-    eig2 = ufl.conditional(p1 < eps, A[1, 1], q + 2 * p * ufl.cos(phi + (2 * np.pi / 3)))
-    eig1 = ufl.conditional(p1 < eps, A[2, 2], 3 * q - eig0 - eig2)  # since trace(A) = eig1 + eig2 + eig3
-    return eig0, eig1, eig2
+def df(S, h, B):
+    """
+    Total differential of yield function
+    """
+    varS = ufl.variable(S)
+    varh = ufl.variable(h)
+    varB = ufl.variable(B)
+    f_ = f(varS, varh, varB)
+    return ufl.inner(ufl.diff(f_, varS), (S - S0)) #\
+        # + ufl.inner(ufl.diff(f_, varh), (h - h0)) \
+        # + ufl.inner(ufl.diff(f_, varB), (B - B0))
 
 
-# # Test ufl eigenstate
-# # A_ = np.array([[2.0, 0.0, 0],[ 0.0, 2.0, 0.0], [ 0, 0.0, 2.0]])  # MMM
-# # A_ = np.array([[3.0, 0.0, 0.0],[ 0.0, 3.0, 0.0], [ 0.0, 0.0, 5.0]])  # MMH
-# # A_ = np.array([[2.0, 0.0, 0.0],[ 0.0, 5.0, 0.0], [ 0.0, 0.0, 5.0]])  # LMM
-# A_ = np.array([[2.0, 0.0, 0.0],[ 0.0, 1.0, 0.0], [ 0.0, 0.0, 5.0]])  # LMH
-# # A_ = np.array([[5.0, 2.0, 0.0],[ 2.0, 1.0, 3.0], [ 0.0, 3.0, 6.0]])  # LMH, symmetric
-# # A_ = np.array([[5.0, 2.0, 0.0], [2.0, 5.0, 0.0], [-3.0, 4.0, 6.0]])  # LMH, non-symmetric but real eigenvalues
-# # A_ = np.random.rand(3, 3)
-
-# A = ufl.as_matrix(dolfinx.Constant(mesh, A_))
-# [e0, e1, e2], [E0, E1, E2] = eigenstate(A)
-
-# V = dolfiny.expression.assemble(1.0, dx)
-# A_u = dolfiny.expression.assemble(A, dx) / V
-# A_s = dolfiny.expression.assemble(e0 * E0 + e1 * E1 + e2 * E2, dx) / V
-# print(A_u)
-# print(A_s)
-# assert np.isclose(A_u, A_).all(), "Wrong matrix from UFL!"
-# assert np.isclose(A_s, A_).all(), "Wrong spectral decomposition!"
-# print(f"e0 = {dolfiny.expression.assemble(e0, dx) / V:5.3e}")
-# print(f"e1 = {dolfiny.expression.assemble(e1, dx) / V:5.3e}")
-# print(f"e2 = {dolfiny.expression.assemble(e2, dx) / V:5.3e}")
-# print(f"E0 = \n{dolfiny.expression.assemble(E0, dx) / V}")
-# print(f"E1 = \n{dolfiny.expression.assemble(E1, dx) / V}")
-# print(f"E2 = \n{dolfiny.expression.assemble(E2, dx) / V}")
-
-# print(f"E0:E0 = \n{dolfiny.expression.assemble(ufl.inner(E0, E0), dx) / V}")
-# print(f"E1:E1 = \n{dolfiny.expression.assemble(ufl.inner(E1, E1), dx) / V}")
-# print(f"E2:E2 = \n{dolfiny.expression.assemble(ufl.inner(E2, E2), dx) / V}")
-# print(f"E0:E1 = \n{dolfiny.expression.assemble(ufl.inner(E0, E1), dx) / V}")
-# print(f"E0:E2 = \n{dolfiny.expression.assemble(ufl.inner(E0, E2), dx) / V}")
-# print(f"E1:E2 = \n{dolfiny.expression.assemble(ufl.inner(E1, E2), dx) / V}")
-
-# exit()
-# for k in range(1000):
-#     if k % 100 == 0: print(k)
-#     A_ = np.random.rand(3, 3)
-#     # A_ = A_.T * A_
-#     A.value = A_
-#     A_s = dolfiny.expression.assemble(e0*E0+e1*E1+e2*E2, dx) / dolfiny.expression.assemble(1.0, dx)
-#     eigs_, eigv_ = np.linalg.eig(A_)
-#     eigs_ = np.sort(eigs_)
-
-#     e0_ = dolfiny.expression.assemble(e0, dx) / dolfiny.expression.assemble(1.0, dx)
-#     e1_ = dolfiny.expression.assemble(e1, dx) / dolfiny.expression.assemble(1.0, dx)
-#     e2_ = dolfiny.expression.assemble(e2, dx) / dolfiny.expression.assemble(1.0, dx)
-#     eigs_s = np.array([e0_, e1_, e2_])
-
-#     if np.iscomplex(eigs_).any(): continue
-#     # print(eigs_s, eigs_)
-
-#     assert np.isclose(eigs_s, eigs_).all(), "Wrong eigenvalues!"
-#     assert np.isclose(A_s, A_).all(), "Wrong spectral decomposition!"
-
-# exit()
+def g(S, h, B):
+    """
+    Plastic potential
+    """
+    return f(S, h, B)
 
 
-def W(F):
-    # some helpers
-    J = ufl.det(F)
-    I = ufl.Identity(3)  # noqa: E741
-    # multiplicative split: F = F_vol * F_iso
-    F_vol = J**(1 / 3) * I
-    F_iso = J**(-1 / 3) * F
-    # additive split: E = E_vol + E_iso (as a result of the multiplicative F split)
-    E_vol = 1 / 2 * (F_vol.T * F_vol - I)
-    E_iso = 1 / 2 * (F_iso.T * F_iso - I) * J**(2 / 3)
+def dgdS(S, h, B):
+    """
+    Derivative of plastic potential wrt stress: dg / dS
+    """
+    varS = ufl.variable(S)
+    return ufl.diff(g(varS, h, B), varS)
+
+
+def ppos(f):
+    """
+    Macaulay bracket
+    """
+    return ufl.Max(f, 0)
+
+
+def W(E):
+    # additive split
+    E_vol = ufl.tr(E) / 3 * ufl.Identity(3)
+    E_iso = ufl.dev(E)
     # SVK strain energy
     W = 0.5 * (3 * la + 2 * mu) * ufl.inner(E_vol, E_vol) + (mu) * ufl.inner(E_iso, E_iso)
+    # fix W in the limit: stretch -> 0
+    J = ufl.sqrt(ufl.det(2 * E + ufl.Identity(3)))
+    W = W - 1.e-10 * ufl.ln(J)
+    #
     return W
 
 
-def dWdF(F):
-    # variable
-    F = ufl.variable(F)
-    # PK-I stress (as tensor)
-    return ufl.diff(W(F), F)
-
-
-def dWdl(l):  # noqa: E741
-    # variable
-    l = ufl.variable(l)  # noqa: E741
-    # deformation gradient, spectral
-    F = ufl.diag(l)
-    # principal PK-I stress (as vector)
-    return ufl.diff(W(F), l)
-
-
 # Configuration gradient
-I = ufl.Identity(u.geometric_dimension())  # noqa: E741
-F = I + ufl.grad(u)  # deformation gradient as function of displacement
+# I = ufl.Identity(u.geometric_dimension())  # noqa: E741
+# F = I + ufl.grad(u)  # deformation gradient as function of displacement
 
-# Spectral decomposition, Cauchy-Green
-C = F.T * F
-# C = I + ufl.grad(u).T + ufl.grad(u)
-eigenvalues, eigenprojectors = eigenstate(C)
-# eigenvalues = eig(C)
+# Strain measures
+# E = E(u), total strain
+# E = 1 / 2 * (F.T * F - I)
+E = 1 / 2 * (ufl.grad(u) + ufl.grad(u).T)
 
-# Natural stress, from strain energy function
-P = dWdF(F)  # PK-I
-S = dWdF(F) * 2 * ufl.inv(F.T + F)  # PK-II
-
-# Natural strain
-E = 1 / 2 * (C - I)  # for post-processing
-
-# Principal stretches
-l = ufl.as_vector([ufl.sqrt(z) for z in eigenvalues])  # noqa: E741
-
-# Principal stress, from strain energy function
-p = dWdl(l)  # PK-I
-s = ufl.as_vector([z / v for z, v in zip(dWdl(l), l)])  # PK-II
+# Spectral decomposition, Green-Lagrange strain
+λ_of_E, E_of_E = mi.eigenstate(E)
 
 # Principal strains
-e = ufl.as_vector([(z**2 - 1) / 2 for z in l])  # for post-processing
+e = ufl.as_vector([v for v in λ_of_E])
+e = ufl.variable(e)
 
-# Variation of principal stretch
-δl = dolfiny.expression.derivative(l, m, δm)
+# e_el = e #- P
+# e_el = ufl.variable(e_el)
 
-# Variation of deformation gradient
-δF = dolfiny.expression.derivative(F, m, δm)
-δE = dolfiny.expression.derivative(E, m, δm)
+# Principal stresses, from strain energy function
+s = ufl.diff(W(ufl.diag(e)), e)  # PK-II
+# s = 2 * mu * e #+ la * (e_el[0] + e_el[1] + e_el[2]) / 3 * ufl.as_vector([1,1,1])
 
-# # Plastic multiplier (J2 plasticity, closed-form solution for return-map)
-# dλ = ppos(f(S, h, B))
+# Variation of principal strain
+# δe = dolfiny.expression.derivative(e, u, δu)
+δe = ufl.derivative(e, u, δu)
 
-# Variation of direction of principal stretch
-# N = eigenprojectors
-# δN = dolfiny.expression.derivative(N, m, δm)
-# lpδNN = sum([l[a] * p[a] * ufl.inner(δN[a], N[a]) for a in range(3)])
+# Plastic multiplier (J2 plasticity, closed-form solution for return-map)
+dλ = ppos(f(s, h, B))
 
 # Weak form (as one-form)
-F = + ufl.inner(δl, p) * dx - ufl.inner(δu, t0) * ds(surface_right)
-# F = + ufl.inner(δF, P) * dx - ufl.inner(δu, t0) * ds(surface_right)
-# F = + ufl.inner(δE, S) * dx - ufl.inner(δu, t0) * ds(surface_right)
-# L = sum([l_a * E_a for l_a, E_a in zip(l, eigenprojectors)])
-# δL = dolfiny.expression.derivative(L, m, δm)
-# P = sum([p_a * E_a for p_a, E_a in zip(p, eigenprojectors)])
-# F = ufl.inner(δL, P) * dx
-F._signature = "whatever"
+# F = + ufl.inner(δe, s) * dx \
+#     + ufl.inner(δP, (P - P0) - 0*dλ * dgdS(s, h, B)) * dx \
+#     + ufl.inner(δh, (h - h0) - 0*dλ * bh * (qh - h)) * dx \
+#     + ufl.inner(δB, (B - B0) - 0*dλ * bb * (qb * dgdS(s, h, B) - B)) * dx \
+#     - ufl.inner(δu, t0) * ds(surface_right)
+
+# F = + ufl.inner(δe, s) * dx + ufl.inner(δP, P) * dx
+F = ufl.dot(δe, s) * dx #+ ufl.inner(δP, P) * dx
 
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
@@ -401,17 +243,17 @@ problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 surface_left_dofs_U = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_left)
 surface_right_dofs_U = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_right)
-domain_dofs_Uy = dolfiny.mesh.locate_dofs_topological(Uf.sub(1), subdomains, 1)
-domain_dofs_Uz = dolfiny.mesh.locate_dofs_topological(Uf.sub(2), subdomains, 1)
 
 u_prescribed = dolfinx.Function(Uf)
 
+# Reconstruct -- convenience
+# E = e[0] * E_of_E[0] + e[1] * E_of_E[1] + e[2] * E_of_E[2]  # reconstruct strain tensor
+# S = s[0] * E_of_E[0] + s[1] * E_of_E[1] + s[2] * E_of_E[2]  # reconstruct stress tensor
+
+
 E_avg = []
 S_avg = []
-e_avg = []
-s_avg = []
-
-l_avg = []
+P_avg = []
 
 # Set up load steps
 K = 5  # number of steps per load phase
@@ -419,7 +261,7 @@ Z = 1  # number of cycles
 load, unload = np.linspace(0.0, 1.0, num=K + 1), np.linspace(1.0, 0.0, num=K + 1)
 cycle = np.concatenate((load, unload, -load, -unload))
 cycles = np.concatenate([cycle] * Z)
-cycles = np.array([1.0])
+
 dedup = lambda a: np.r_[a[np.nonzero(np.diff(a))[0]], a[-1]]  # noqa: E731
 
 # Process load steps
@@ -436,24 +278,19 @@ for step, factor in enumerate(dedup(cycles)):
     problem.bcs = [
         dolfinx.fem.DirichletBC(u_prescribed, surface_left_dofs_U),  # disp left (clamped, u=0)
         dolfinx.fem.DirichletBC(u_prescribed, surface_right_dofs_U),  # disp right (clamped, u=u_bar)
-        dolfinx.fem.DirichletBC(u_prescribed, domain_dofs_Uy),  # disp right (clamped, u=u_bar)
-        dolfinx.fem.DirichletBC(u_prescribed, domain_dofs_Uz),  # disp right (clamped, u=u_bar)
     ]
 
     # Solve nonlinear problem
     problem.solve()
-    print(problem.snes.getConvergedReason())
+
     # Assert convergence of nonlinear solver
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
     # Post-process data
-    V = dolfiny.expression.assemble(1.0, dx)
-    e_avg.append(dolfiny.expression.assemble(e, dx) / V)
-    s_avg.append(dolfiny.expression.assemble(s, dx) / V)
-    E_avg.append(dolfiny.expression.assemble(E[0, 0], dx) / V)
-    S_avg.append(dolfiny.expression.assemble(S[0, 0], dx) / V)
-
-    l_avg.append(dolfiny.expression.assemble(l, dx) / V)
+    # V = dolfiny.expression.assemble(1.0, dx)
+    # E_avg.append(dolfiny.expression.assemble(E[0, 0], dx) / V)
+    # S_avg.append(dolfiny.expression.assemble(S[0, 0], dx) / V)
+    # P_avg.append(dolfiny.expression.assemble(P[0, 0], dx) / V)
 
     # dλdf_avg = dolfiny.expression.assemble(dλ * df(S, h, B), dx) / V
     # print(f"(dλ * df)_avg = {dλdf_avg:4.3e}")
@@ -462,13 +299,6 @@ for step, factor in enumerate(dedup(cycles)):
     # Pvol_avg = dolfiny.expression.assemble(ufl.sqrt(ufl.tr(P)**2), dx) / V
     # print(f"( tr(P) )_avg = {Pvol_avg:4.3e}")
 
-    print(f"(e0)_avg = \n{dolfiny.expression.assemble(eigenvalues[0], dx) / V}")
-    print(f"(e1)_avg = \n{dolfiny.expression.assemble(eigenvalues[1], dx) / V}")
-    print(f"(e2)_avg = \n{dolfiny.expression.assemble(eigenvalues[2], dx) / V}")
-    print(f"(E0)_avg = \n{dolfiny.expression.assemble(eigenprojectors[0], dx) / V}")
-    print(f"(E1)_avg = \n{dolfiny.expression.assemble(eigenprojectors[1], dx) / V}")
-    print(f"(E2)_avg = \n{dolfiny.expression.assemble(eigenprojectors[2], dx) / V}")
-
     # Write output
     ofile.write_function(u, step)
     # ofile.write_function(P, step)
@@ -476,12 +306,12 @@ for step, factor in enumerate(dedup(cycles)):
     # ofile.write_function(B, step)
 
     # # Store stress state
-    # dolfiny.interpolation.interpolate(S, S0)
+    dolfiny.interpolation.interpolate(s, S0)
 
-    # # Store primal states
-    # for source, target in zip([u, P, h, B], [u0, P0, h0, B0]):
-    #     with source.vector.localForm() as locs, target.vector.localForm() as loct:
-    #         locs.copy(loct)
+    # Store primal states
+    for source, target in zip([u, P, h, B], [u0, P0, h0, B0]):
+        with source.vector.localForm() as locs, target.vector.localForm() as loct:
+            locs.copy(loct)
 
     # # Basic consistency checks
     # assert dλdf_avg < 1.e-5, "|| dλ*df || != 0.0"
@@ -503,16 +333,15 @@ fig.tight_layout()
 
 E_avg = np.array(E_avg) * 100.0  # strain in percent
 S_avg = np.array(S_avg)
-e_avg = np.array(e_avg) * 100.0  # strain in percent
-s_avg = np.array(s_avg)
 
-print(np.array(l_avg))
+print("E = ", np.array(E_avg))
+print("S = ", np.array(S_avg))
 
 # stress-strain curve
-ax1.plot(E_avg, S_avg, color='tab:red', linestyle='-', linewidth=1.0, markersize=6.0, marker='h', label=r'$S_{00}-E_{00}$')  # noqa: E501
-ax1.plot(e_avg[:, 0], s_avg[:, 0], color='tab:blue', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$s_1-e_1$ curve')  # noqa: E501
-ax1.plot(e_avg[:, 1], s_avg[:, 1], color='tab:green', linestyle='-', linewidth=1.0, markersize=4.0, marker='o', label=r'$s_2-e_2$ curve')  # noqa: E501
-ax1.plot(e_avg[:, 2], s_avg[:, 2], color='tab:orange', linestyle='-', linewidth=1.0, markersize=4.0, marker='x', label=r'$s_3-e_3$ curve')  # noqa: E501
+ax1.plot(E_avg, S_avg, color='tab:red', linestyle='-', linewidth=1.0, markersize=4.0, marker='h', label=r'$S_{00}-E_{00}$')  # noqa: E501
+# ax1.plot(e_avg[:, 0], s_avg[:, 0], color='tab:blue', linestyle='-', linewidth=1.0, markersize=4.0, marker='d', label=r'$s_1-e_1$ curve')  # noqa: E501
+# ax1.plot(e_avg[:, 1], s_avg[:, 1], color='tab:green', linestyle='-', linewidth=1.0, markersize=4.0, marker='o', label=r'$s_2-e_2$ curve')  # noqa: E501
+# ax1.plot(e_avg[:, 2], s_avg[:, 2], color='tab:orange', linestyle='-', linewidth=1.0, markersize=4.0, marker='x', label=r'$s_3-e_3$ curve')  # noqa: E501
 
 ax1.legend(loc='lower right')
 fig.savefig(f"{name}.pdf")
