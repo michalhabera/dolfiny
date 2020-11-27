@@ -148,8 +148,13 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     # dofmap of the actual element (these are different for symmetric spaces)
     b_local = np.zeros(b_size_knl, dtype=PETSc.ScalarType)
 
-    # Number of collocated dofs for a point
-    dofs_per_block = int(b_size_knl / value_size)
+    # Number of dofs of the corresponding scalar space
+    # E.g. for TDG1 it is 4
+    scalar_space_dim = int(b_size_knl / value_size)
+
+    # Value size which takes into account symmetry
+    # E.g. for TDG1 it is 6
+    value_size_sym = len(np.unique(subel_map))
 
     for i, cell in enumerate(geom_pos[:-1]):
         num_vertices = geom_pos[i + 1] - geom_pos[i]
@@ -169,6 +174,6 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
         kernel(ffi.from_buffer(b_local), ffi.from_buffer(coeffs),
                ffi.from_buffer(const_vector), ffi.from_buffer(coordinate_dofs))
 
-        for j in range(dofs_per_block):
+        for j in range(scalar_space_dim):
             for k in range(value_size):
-                b[dofmap[i * b_size + j * value_size + subel_map[k]]] = b_local[value_size * j + k]
+                b[dofmap[i * b_size + value_size_sym * j + subel_map[k]]] = b_local[value_size * j + k]
