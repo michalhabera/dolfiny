@@ -1,4 +1,5 @@
 import time
+import pytest
 
 from dolfinx.generation import UnitCubeMesh, UnitSquareMesh
 from mpi4py import MPI
@@ -16,55 +17,36 @@ DG1 = FunctionSpace(mesh, ("DG", 1))
 CG1 = FunctionSpace(mesh, ("CG", 1))
 TCG1 = TensorFunctionSpace(mesh, ("CG", 1))
 TDG0 = TensorFunctionSpace(mesh, ("DG", 0))
-TDG0s = TensorFunctionSpace(mesh, ("DG", 0), symmetry=True)
+TDG1s = TensorFunctionSpace(mesh, ("DG", 1), symmetry=True)
+TDG2s = TensorFunctionSpace(mesh, ("DG", 2), symmetry=True)
 
 CG2 = FunctionSpace(mesh, ("CG", 2))
 VCG1 = FunctionSpace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
 
+f = Function(CG1)
+f.vector.set(1.0)
+f.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
-def test_expr():
-    f = Function(CG1)
-    f.vector.set(1.0)
-    f.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+x = ufl.SpatialCoordinate(mesh)
+expr1 = f * ufl.grad(ufl.grad(ufl.sinh(x[0]) + x[1] ** 3))
 
-    x = ufl.SpatialCoordinate(mesh)
-    expr1 = ufl.grad(ufl.grad(ufl.sinh(x[0]) + x[1] ** 3))
+
+@pytest.mark.parametrize("V", [TCG1, TDG0, TDG1s, TDG2s])
+def test_expr(V):
 
     # Interpolate
-    h_interp = Function(TCG1)
+    h_interp = Function(V)
     interpolation.interpolate(expr1, h_interp)
 
-    h_project = Function(TCG1)
+    # Project
+    h_project = Function(V)
     projection.project(expr1, h_project)
 
+    # Compare
     h_project.vector.axpy(-1.0, h_interp.vector)
     h_project.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
-    assert h_project.vector.norm() < 0.1
-
-    expr2 = h_interp
-    h_interp2 = Function(TDG0)
-    interpolation.interpolate(expr2, h_interp2)
-
-    h_project2 = Function(TDG0)
-    projection.project(expr2, h_project2)
-
-    h_project2.vector.axpy(-1.0, h_interp2.vector)
-    h_project2.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-
-    assert h_project2.vector.norm() < 0.1
-
-    expr3 = h_interp
-    h_interp3 = Function(TDG0s)
-    interpolation.interpolate(expr3, h_interp3)
-
-    h_project3 = Function(TDG0s)
-    projection.project(expr3, h_project3)
-
-    h_project3.vector.axpy(-1.0, h_interp3.vector)
-    h_project3.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-
-    assert h_project3.vector.norm() < 0.1
+    assert h_project.vector.norm() < 0.15
 
 
 def test_diff():
