@@ -16,7 +16,7 @@ DG1 = FunctionSpace(mesh, ("DG", 1))
 CG1 = FunctionSpace(mesh, ("CG", 1))
 TCG1 = TensorFunctionSpace(mesh, ("CG", 1))
 TDG0 = TensorFunctionSpace(mesh, ("DG", 0))
-TDG0s = TensorFunctionSpace(mesh, ("DG", 1), symmetry=True)
+TDG1s = TensorFunctionSpace(mesh, ("DG", 1), symmetry=True)
 
 CG2 = FunctionSpace(mesh, ("CG", 2))
 VCG1 = FunctionSpace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
