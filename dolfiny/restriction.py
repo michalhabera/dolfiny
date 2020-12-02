@@ -37,7 +37,7 @@ class Restriction():
 
         for i, space in enumerate(function_spaces):
 
-            bs = space.dofmap.index_map.block_size
+            bs = space.dofmap.index_map_bs
 
             size_local = space.dofmap.index_map.size_local
             num_ghosts = space.dofmap.index_map.num_ghosts
