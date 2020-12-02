@@ -18,9 +18,13 @@ def extract_blocks(form, test_functions: typing.List[ufl.Argument],
     Returns
     -------
     Splitted UFL form in the order determined by the passed test and trial functions.
-    If no `trial_functions` are provided returns a list, othwerwise returns list of lists.
+    If no `trial_functions` are provided returns a list, otherwise returns list of lists.
 
     """
+    # Check for distinct test functions
+    if len(test_functions) != len(set(test_functions)):
+        raise RuntimeError("Duplicate test functions detected. Create TestFunction(s) from separate FunctionSpace(s)!")
+
     # Prepare empty block matrices list
     if trial_functions is not None:
         blocks = [[None for i in range(len(test_functions))] for j in range(len(trial_functions))]
