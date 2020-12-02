@@ -77,9 +77,9 @@ def test_coupled_poisson():
     bcdofsU1 = dolfinx.fem.locate_dofs_geometrical(U1, lambda x: numpy.isclose(x[0], 1.0))
     bcs = [dolfinx.fem.DirichletBC(u0_bc, bcdofsU0), dolfinx.fem.DirichletBC(u1_bc, bcdofsU1)]
 
-    rdofsU0 = dolfinx.fem.locate_dofs_topological(U0, mesh.topology.dim, left_half, remote=False)[:, 0]
-    rdofsU1 = dolfinx.fem.locate_dofs_topological(U1, mesh.topology.dim, right_half, remote=False)[:, 0]
-    rdofsL = dolfinx.fem.locate_dofs_topological(L, mesh.topology.dim - 1, interface_facets, remote=False)[:, 0]
+    rdofsU0 = dolfinx.fem.locate_dofs_topological(U0, mesh.topology.dim, left_half, remote=False)
+    rdofsU1 = dolfinx.fem.locate_dofs_topological(U1, mesh.topology.dim, right_half, remote=False)
+    rdofsL = dolfinx.fem.locate_dofs_topological(L, mesh.topology.dim - 1, interface_facets, remote=False)
 
     r = dolfiny.restriction.Restriction([U0, U1, L], [rdofsU0, rdofsU1, rdofsL])
 
@@ -177,10 +177,10 @@ def test_sloped_stokes():
     bcs.append(dolfinx.fem.DirichletBC(u_bc_top, bcdofstopV))
 
     r_facets = numpy.where(boundaries.values == 1)[0]
-    rdofsL = dolfinx.fem.locate_dofs_topological(L, 1, boundaries.indices[r_facets])[:, 0]
+    rdofsL = dolfinx.fem.locate_dofs_topological(L, 1, boundaries.indices[r_facets])
 
-    Vsize = V.dofmap.index_map.block_size * (V.dofmap.index_map.size_local)
-    Psize = P.dofmap.index_map.block_size * (P.dofmap.index_map.size_local)
+    Vsize = V.dofmap.index_map_bs * (V.dofmap.index_map.size_local)
+    Psize = P.dofmap.index_map_bs * (P.dofmap.index_map.size_local)
 
     rdofsV = numpy.arange(Vsize, dtype=numpy.int32)
     rdofsP = numpy.arange(Psize, dtype=numpy.int32)
@@ -309,10 +309,10 @@ def test_pipes_stokes():
     bcs.append(dolfinx.fem.DirichletBC(u_up, updofsV))
     bcs.append(dolfinx.fem.DirichletBC(p_bc, bcdofsP))
 
-    lagrangedofsL = dolfiny.mesh.locate_dofs_topological(L, mt1, keys1["bottom"])[:, 0]
+    lagrangedofsL = dolfiny.mesh.locate_dofs_topological(L, mt1, keys1["bottom"])
 
-    Vsize = V.dofmap.index_map.block_size * V.dofmap.index_map.size_local
-    Psize = P.dofmap.index_map.block_size * P.dofmap.index_map.size_local
+    Vsize = V.dofmap.index_map_bs * V.dofmap.index_map.size_local
+    Psize = P.dofmap.index_map_bs * P.dofmap.index_map.size_local
 
     rdofsV = numpy.arange(Vsize, dtype=numpy.int32)
     rdofsP = numpy.arange(Psize, dtype=numpy.int32)
