@@ -111,7 +111,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         for unused_node in unused_nodes:
             unused_nodes_indices.append(numpy.where(node_tags == unused_node)[0])
 
-        unused_nodes_indices = numpy.asarray(unused_nodes_indices)
+        unused_nodes_indices = numpy.asarray(unused_nodes_indices, dtype=numpy.uint64)
 
         # Every node has 3 components in gmsh
         dim = 3
