@@ -68,15 +68,11 @@ qb = dolfinx.Constant(mesh, 0.1)  # kinematic hardening: saturation value [GPa] 
 u_bar = lambda x: μ.value * np.array([l0 * 0.01 * np.sign(x[0]), 0.0 * x[1], 0.0 * x[2]])  # noqa: E731 [m]
 
 # Define integration measures
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
-
 quad_degree = p
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": quad_degree})
 
 # Function spaces
 Ve = ufl.VectorElement("CG", mesh.ufl_cell(), p)
-# Te = ufl.TensorElement("DG", mesh.ufl_cell(), p - 1, symmetry=True)
-# Se = ufl.FiniteElement("DG", mesh.ufl_cell(), p - 1)
 Te = ufl.TensorElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default", symmetry=True)
 Se = ufl.FiniteElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default")
 
@@ -118,9 +114,11 @@ I = ufl.Identity(u.geometric_dimension())  # noqa: E741
 F = I + ufl.grad(u)  # deformation gradient as function of displacement
 
 # Strain measures
-E = 1 / 2 * (F.T * F - I)  # E = E(F), total strain
+E = 1 / 2 * (F.T * F - I)  # E = E(F), total Green-Lagrange strain
 E_el = E - P  # E_el = E(F) - P, elastic strain
-S = 2 * mu * E_el + la * ufl.tr(E_el) * I  # S = S(E_el), St.Venant-Kirchhoff
+
+# Stress
+S = 2 * mu * E_el + la * ufl.tr(E_el) * I  # S = S(E_el), PK2, St.Venant-Kirchhoff
 
 # Wrap variable around expression (for diff)
 S, B, h = ufl.variable(S), ufl.variable(B), ufl.variable(h)
