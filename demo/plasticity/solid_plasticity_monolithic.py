@@ -13,7 +13,7 @@ import dolfiny.odeint
 import dolfiny.function
 import dolfiny.snesblockproblem
 
-import mesh_din50154_gmshapi as mg
+import mesh_iso6892_gmshapi as mg
 
 import numpy as np
 
@@ -22,14 +22,16 @@ name = "solid_plasticity_monolithic"
 comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
-dx, dy, dz = 1.0, 0.1, 0.1
-nx, ny, nz = 4, 2, 2
+l0, d0 = 0.10, 0.02  # [m]
+nr = 5
+# Geometry and physics ansatz order
+o, p = 1, 1
 
 # Create the regular mesh of an annulus with given dimensions
-gmsh_model, tdim = mg.mesh_din50154_gmshapi(name, dx, dy, dz, nx, ny, nz, px=1.0, py=1.0, pz=1.0, do_quads=False)
+gmsh_model, tdim = mg.mesh_iso6892_gmshapi(name, l0, d0, nr, order=o)
 
-# # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
-# mg.mesh_din50154_gmshapi(name, dx, dy, dz, nx, ny, nz, do_quads=False, msh_file=f"{name}.msh")
+# Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
+# mg.mesh_iso6892_gmshapi(name, l0, d0, nr, order=o, msh_file=f"{name}.msh")
 # gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
 
 # Get mesh and meshtags
@@ -48,106 +50,67 @@ subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
 interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
 
 # Define shorthands for labelled tags
-surface_left = interfaces_keys["surface_left"]
-surface_right = interfaces_keys["surface_right"]
+domain_gauge = subdomains_keys["domain_gauge"]
+surface_1 = interfaces_keys["surface_plane_left"]
+surface_2 = interfaces_keys["surface_plane_right"]
 
 # Solid: material parameters
 mu = dolfinx.Constant(mesh, 100)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.Constant(mesh, 0.0)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
-Sy = dolfinx.Constant(mesh, 0.3)  # initial yield stress
-bh = dolfinx.Constant(mesh, 20.)  # isotropic hardening: saturation rate   [-]
+la = dolfinx.Constant(mesh, 10.)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+Sy = dolfinx.Constant(mesh, 0.3)  # initial yield stress [GPa]
+bh = dolfinx.Constant(mesh, 20.)  # isotropic hardening: saturation rate  [-]
 qh = dolfinx.Constant(mesh, 0.1)  # isotropic hardening: saturation value [GPa]
-bb = dolfinx.Constant(mesh, 200)  # kinematic hardening: saturation rate   [-]
+bb = dolfinx.Constant(mesh, 250)  # kinematic hardening: saturation rate  [-]
 qb = dolfinx.Constant(mesh, 0.1)  # kinematic hardening: saturation value [GPa] (includes factor 2/3)
 
 # Solid: load parameters
 μ = dolfinx.Constant(mesh, 1.0)  # load factor
-t0 = μ * dolfinx.Constant(mesh, [0.0, 0.0, 0.0])  # [GPa]
-u_bar = lambda x: μ.value * np.array([0.01 * x[0] / 1.0, 0.0 * x[1], 0.0 * x[2]])  # noqa: E731 [m]
+u_bar = lambda x: μ.value * np.array([l0 * 0.01 * np.sign(x[0]), 0.0 * x[1], 0.0 * x[2]])  # noqa: E731 [m]
 
 # Define integration measures
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 4})
+dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
+
+quad_degree = p
+dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": quad_degree})
 
 # Function spaces
-Ue = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
-Pe = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
-He = ufl.FiniteElement("DG", mesh.ufl_cell(), 1)
-Be = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
+Ve = ufl.VectorElement("CG", mesh.ufl_cell(), p)
+# Te = ufl.TensorElement("DG", mesh.ufl_cell(), p - 1, symmetry=True)
+# Se = ufl.FiniteElement("DG", mesh.ufl_cell(), p - 1)
+Te = ufl.TensorElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default", symmetry=True)
+Se = ufl.FiniteElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default")
 
-Uf = dolfinx.FunctionSpace(mesh, Ue)
-Pf = dolfinx.FunctionSpace(mesh, Pe)
-Hf = dolfinx.FunctionSpace(mesh, He)
-Bf = dolfinx.FunctionSpace(mesh, Be)
+Vf = dolfinx.FunctionSpace(mesh, Ve)
+Tf = dolfinx.FunctionSpace(mesh, Te)
+Sf = dolfinx.FunctionSpace(mesh, Se)
 
 # Define functions
-u = dolfinx.Function(Uf, name="u")
-P = dolfinx.Function(Pf, name="P")
-h = dolfinx.Function(Hf, name="h")
-B = dolfinx.Function(Bf, name="B")
+u = dolfinx.Function(Vf, name="u")  # displacement
+P = dolfinx.Function(Tf, name="P")  # plastic strain
+h = dolfinx.Function(Sf, name="h")  # isotropic hardening
+B = dolfinx.Function(Tf, name="B")  # kinematic hardening
 
-u0 = dolfinx.Function(Uf, name="u0")
-P0 = dolfinx.Function(Pf, name="P0")
-h0 = dolfinx.Function(Hf, name="h0")
-B0 = dolfinx.Function(Bf, name="B0")
-S0 = dolfinx.Function(Bf, name="S0")
+u0 = dolfinx.Function(Vf, name="u0")
+P0 = dolfinx.Function(Tf, name="P0")
+h0 = dolfinx.Function(Sf, name="h0")
+B0 = dolfinx.Function(Tf, name="B0")
 
-δu = ufl.TestFunction(Uf)
-δP = ufl.TestFunction(Pf)
-δh = ufl.TestFunction(Hf)
-δB = ufl.TestFunction(Bf)
+S0 = dolfinx.Function(Tf, name="S0")
 
-# Define state and rate as (ordered) list of functions
+δu = ufl.TestFunction(Vf)
+δP = ufl.TestFunction(Tf)
+δh = ufl.TestFunction(Sf)
+δB = ufl.TestFunction(dolfinx.FunctionSpace(mesh, Te))  # to be distinct from δP
+
+# Define state and variation of state as (ordered) list of functions
 m, δm = [u, P, h, B], [δu, δP, δh, δB]
 
 
 def rJ2(A):
+    """Square root of J2 invariant of tensor A"""
     J2 = 1 / 2 * ufl.inner(A, A)
     rJ2 = ufl.sqrt(J2)
     return ufl.conditional(rJ2 < 1.0e-12, 0.0, rJ2)
-
-
-def f(S, h, B):
-    """
-    Yield function
-    """
-    f = ufl.sqrt(3) * rJ2(ufl.dev(S) - ufl.dev(B)) - (Sy + h)
-    return f
-
-
-def df(S, h, B):
-    """
-    Total differential of yield function
-    """
-    varS = ufl.variable(S)
-    varh = ufl.variable(h)
-    varB = ufl.variable(B)
-    f_ = f(varS, varh, varB)
-    return ufl.inner(ufl.diff(f_, varS), (S - S0)) \
-        + ufl.inner(ufl.diff(f_, varh), (h - h0)) \
-        + ufl.inner(ufl.diff(f_, varB), (B - B0))
-
-
-def g(S, h, B):
-    """
-    Plastic potential
-    """
-    return f(S, h, B)
-
-
-def dgdS(S, h, B):
-    """
-    Derivative of plastic potential wrt stress: dg / dS
-    """
-    varS = ufl.variable(S)
-    return ufl.diff(g(varS, h, B), varS)
-
-
-def ppos(f):
-    """
-    Macaulay bracket
-    """
-    return ufl.Max(f, 0)
 
 
 # Configuration gradient
@@ -155,25 +118,41 @@ I = ufl.Identity(u.geometric_dimension())  # noqa: E741
 F = I + ufl.grad(u)  # deformation gradient as function of displacement
 
 # Strain measures
-# E = E(u), total strain
-E = 1 / 2 * (ufl.grad(u) + ufl.grad(u).T)
-# E_el = E(u) - P, elastic strain
-E_el = E - P
-# S = S(E_el), Saint-Venant-Kirchhoff
-S = 2 * mu * E_el + la * ufl.tr(E_el) * I
+E = 1 / 2 * (F.T * F - I)  # E = E(F), total strain
+E_el = E - P  # E_el = E(F) - P, elastic strain
+S = 2 * mu * E_el + la * ufl.tr(E_el) * I  # S = S(E_el), St.Venant-Kirchhoff
+
+# Wrap variable around expression (for diff)
+S, B, h = ufl.variable(S), ufl.variable(B), ufl.variable(h)
+
+# Yield function
+f = ufl.sqrt(3) * rJ2(ufl.dev(S) - ufl.dev(B)) - (Sy + h)
+
+# Plastic potential
+g = f
+
+# Total differential of yield function
+df = + ufl.inner(ufl.diff(f, S), S - S0) \
+     + ufl.inner(ufl.diff(f, h), h - h0) \
+     + ufl.inner(ufl.diff(f, B), B - B0)
+
+# Derivative of plastic potential wrt stress
+dgdS = ufl.diff(g, S)
+
+# Unwrap expression from variable
+S, B, h = S.expression(), B.expression(), h.expression()
 
 # Variation of Green-Lagrange strain
 δE = dolfiny.expression.derivative(E, m, δm)
 
-# Plastic multiplier (J2 plasticity, closed-form solution for return-map)
-dλ = ppos(f(S, h, B))
+# Plastic multiplier (J2 plasticity: closed-form solution for return-map)
+dλ = ufl.Max(f, 0)  # ppos = MacAuley bracket
 
 # Weak form (as one-form)
 F = + ufl.inner(δE, S) * dx \
-    + ufl.inner(δP, (P - P0) - dλ * dgdS(S, h, B)) * dx \
-    + ufl.inner(δh, (h - h0) - dλ * bh * (qh - h)) * dx \
-    + ufl.inner(δB, (B - B0) - dλ * bb * (qb * dgdS(S, h, B) - B)) * dx \
-    - ufl.inner(δu, t0) * ds(surface_right)
+    + ufl.inner(δP, (P - P0) - dλ * dgdS) * dx \
+    + ufl.inner(δh, (h - h0) - dλ * bh * (qh * 1.00 - h)) * dx \
+    + ufl.inner(δB, (B - B0) - dλ * bb * (qb * dgdS - B)) * dx
 
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
@@ -188,30 +167,21 @@ opts = PETSc.Options(name)
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-08
-opts["snes_rtol"] = 1.0e-06
+opts["snes_atol"] = 1.0e-12
+opts["snes_rtol"] = 1.0e-09
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
-
 opts["pc_factor_mat_solver_type"] = "mumps"
-# opts["pc_factor_mat_solver_type"] = "superlu_dist"
-# opts["pc_factor_mat_solver_type"] = "umfpack"
-
-opts_global = PETSc.Options()
-opts_global["mat_mumps_icntl_7"] = 6
-opts_global["mat_mumps_icntl_14"] = 1500
-opts_global["mat_superlu_dist_rowperm"] = "norowperm"
-opts_global["mat_superlu_dist_fact"] = "samepattern_samerowperm"
 
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
-surface_left_dofs_U = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_left)
-surface_right_dofs_U = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_right)
+surface_1_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surface_1)
+surface_2_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surface_2)
 
-u_prescribed = dolfinx.Function(Uf)
+u_prescribed = dolfinx.Function(Vf)
 
 E_avg = []
 S_avg = []
@@ -224,22 +194,21 @@ load, unload = np.linspace(0.0, 1.0, num=K + 1), np.linspace(1.0, 0.0, num=K + 1
 cycle = np.concatenate((load, unload, -load, -unload))
 cycles = np.concatenate([cycle] * Z)
 
-dedup = lambda a: np.r_[a[np.nonzero(np.diff(a))[0]], a[-1]]  # noqa: E731
-
 # Process load steps
-for step, factor in enumerate(dedup(cycles)):
+for step, factor in enumerate(cycles):
 
     # Set current time
     μ.value = factor
 
     dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")
 
+    # Update values for given boundary displacement
     u_prescribed.interpolate(u_bar)
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(u_prescribed, surface_left_dofs_U),  # disp left (clamped, u=0)
-        dolfinx.fem.DirichletBC(u_prescribed, surface_right_dofs_U),  # disp right (clamped, u=u_bar)
+        dolfinx.fem.DirichletBC(u_prescribed, surface_1_dofs_Vf),  # disp left
+        dolfinx.fem.DirichletBC(u_prescribed, surface_2_dofs_Vf),  # disp right
     ]
 
     # Solve nonlinear problem
@@ -249,26 +218,35 @@ for step, factor in enumerate(dedup(cycles)):
     assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
 
     # Post-process data
-    V = dolfiny.expression.assemble(1.0, dx)
-    E_avg.append(dolfiny.expression.assemble(E[0, 0], dx) / V)
-    S_avg.append(dolfiny.expression.assemble(S[0, 0], dx) / V)
-    P_avg.append(dolfiny.expression.assemble(P[0, 0], dx) / V)
+    dxg = dx(domain_gauge)
+    V = dolfiny.expression.assemble(1.0, dxg)
+    E_avg.append(dolfiny.expression.assemble(E[0, 0], dxg) / V)
+    S_avg.append(dolfiny.expression.assemble(S[0, 0], dxg) / V)
+    P_avg.append(dolfiny.expression.assemble(P[0, 0], dxg) / V)
+    dolfiny.utils.pprint(f"(E_00)_avg = {E_avg[-1]:4.3e}")
+    dolfiny.utils.pprint(f"(S_00)_avg = {S_avg[-1]:4.3e}")
+    dolfiny.utils.pprint(f"(P_00)_avg = {P_avg[-1]:4.3e}")
 
-    dλdf_avg = dolfiny.expression.assemble(dλ * df(S, h, B), dx) / V
-    print(f"(dλ * df)_avg = {dλdf_avg:4.3e}")
-    dλ_f_avg = dolfiny.expression.assemble(dλ * f(S, h, B), dx) / V
-    print(f"(dλ *  f)_avg = {dλ_f_avg:4.3e}")
-    Pvol_avg = dolfiny.expression.assemble(ufl.sqrt(ufl.tr(P)**2), dx) / V
-    print(f"( tr(P) )_avg = {Pvol_avg:4.3e}")
+    dλdf_avg = dolfiny.expression.assemble(dλ * df, dxg) / V
+    dolfiny.utils.pprint(f"(dλ * df)_avg = {dλdf_avg:4.3e}")
+    dλ_f_avg = dolfiny.expression.assemble(dλ * f, dxg) / V
+    dolfiny.utils.pprint(f"(dλ *  f)_avg = {dλ_f_avg:4.3e}")
+    Pvol_avg = dolfiny.expression.assemble(ufl.sqrt(ufl.tr(P)**2), dxg) / V
+    dolfiny.utils.pprint(f"( tr(P) )_avg = {Pvol_avg:4.3e}")
+
+    # 2nd order tetrahedron
+    mesh.geometry.cmap.non_affine_atol = 1.0e-8
+    mesh.geometry.cmap.non_affine_max_its = 20
 
     # Write output
     ofile.write_function(u, step)
-    ofile.write_function(P, step)
-    ofile.write_function(h, step)
-    ofile.write_function(B, step)
+    # ofile.write_function(P, step)
+    # ofile.write_function(h, step)
+    # ofile.write_function(B, step)
 
     # Store stress state
     dolfiny.interpolation.interpolate(S, S0)
+    # ofile.write_function(S0, step)
 
     # Store primal states
     for source, target in zip([u, P, h, B], [u0, P0, h0, B0]):
@@ -276,9 +254,9 @@ for step, factor in enumerate(dedup(cycles)):
             locs.copy(loct)
 
     # Basic consistency checks
-    assert dλdf_avg < 1.e-5, "|| dλ*df || != 0.0"
-    assert dλ_f_avg < 1.e-5, "|| dλ*df || != 0.0"
-    assert Pvol_avg < 1.e-5, "|| tr(P) || != 0.0"
+    # assert dλdf_avg < 1.e-5, "|| dλ*df || != 0.0"
+    # assert dλ_f_avg < 1.e-5, "|| dλ*df || != 0.0"
+    # assert Pvol_avg < 1.e-5, "|| tr(P) || != 0.0"
 
 ofile.close()
 
