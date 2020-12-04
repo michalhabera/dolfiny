@@ -86,6 +86,10 @@ demos:
       - cd vsolid 
       - mpirun -n 2 python3 duffing.py
       - cd ..
+      # Run plasticity demos (parallel)
+      - cd plasticity 
+      - mpirun -n 8 python3 solid_plasticity_monolithic.py
+      - cd ..
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
