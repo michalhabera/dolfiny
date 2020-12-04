@@ -9,8 +9,10 @@ import ufl
 import dolfiny.io
 import dolfiny.mesh
 import dolfiny.utils
-import dolfiny.odeint
 import dolfiny.function
+import dolfiny.expression
+import dolfiny.projection
+import dolfiny.interpolation
 import dolfiny.snesblockproblem
 
 import mesh_iso6892_gmshapi as mg
@@ -27,10 +29,10 @@ nr = 5
 # Geometry and physics ansatz order
 o, p = 1, 1
 
-# Create the regular mesh of an annulus with given dimensions
+# Create the regular mesh of specimen with given dimensions
 gmsh_model, tdim = mg.mesh_iso6892_gmshapi(name, l0, d0, nr, order=o)
 
-# Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
+# Create the regular mesh of specimen with given dimensions and save as msh, then read into gmsh model
 # mg.mesh_iso6892_gmshapi(name, l0, d0, nr, order=o, msh_file=f"{name}.msh")
 # gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
 
@@ -92,6 +94,13 @@ h0 = dolfinx.Function(Sf, name="h0")
 B0 = dolfinx.Function(Tf, name="B0")
 
 S0 = dolfinx.Function(Tf, name="S0")
+
+u_ = dolfinx.Function(Vf, name="u_")  # boundary displacement
+
+Po = dolfinx.Function(dolfinx.TensorFunctionSpace(mesh, ('DG', 0)), name="P")  # for output
+Bo = dolfinx.Function(dolfinx.TensorFunctionSpace(mesh, ('DG', 0)), name="B")
+So = dolfinx.Function(dolfinx.TensorFunctionSpace(mesh, ('DG', 0)), name="S")
+ho = dolfinx.Function(dolfinx.FunctionSpace(mesh, ('DG', 0)), name="h")
 
 δu = ufl.TestFunction(Vf)
 δP = ufl.TestFunction(Tf)
@@ -179,11 +188,8 @@ problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
 surface_1_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surface_1)
 surface_2_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surface_2)
 
-u_prescribed = dolfinx.Function(Vf)
-
-E_avg = []
-S_avg = []
-P_avg = []
+# Book-keeping of results
+results = {'E': [], 'S': [], 'P': [], 'μ': []}
 
 # Set up load steps
 K = 25  # number of steps per load phase
@@ -201,12 +207,12 @@ for step, factor in enumerate(cycles):
     dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")
 
     # Update values for given boundary displacement
-    u_prescribed.interpolate(u_bar)
+    u_.interpolate(u_bar)
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(u_prescribed, surface_1_dofs_Vf),  # disp left
-        dolfinx.fem.DirichletBC(u_prescribed, surface_2_dofs_Vf),  # disp right
+        dolfinx.fem.DirichletBC(u_, surface_1_dofs_Vf),  # disp left
+        dolfinx.fem.DirichletBC(u_, surface_2_dofs_Vf),  # disp right
     ]
 
     # Solve nonlinear problem
@@ -218,43 +224,40 @@ for step, factor in enumerate(cycles):
     # Post-process data
     dxg = dx(domain_gauge)
     V = dolfiny.expression.assemble(1.0, dxg)
-    E_avg.append(dolfiny.expression.assemble(E[0, 0], dxg) / V)
-    S_avg.append(dolfiny.expression.assemble(S[0, 0], dxg) / V)
-    P_avg.append(dolfiny.expression.assemble(P[0, 0], dxg) / V)
-    dolfiny.utils.pprint(f"(E_00)_avg = {E_avg[-1]:4.3e}")
-    dolfiny.utils.pprint(f"(S_00)_avg = {S_avg[-1]:4.3e}")
-    dolfiny.utils.pprint(f"(P_00)_avg = {P_avg[-1]:4.3e}")
+    n = ufl.as_vector([1, 0, 0])
+    results['E'].append(dolfiny.expression.assemble(ufl.dot(E * n, n), dxg) / V)
+    results['S'].append(dolfiny.expression.assemble(ufl.dot(S * n, n), dxg) / V)
+    results['P'].append(dolfiny.expression.assemble(ufl.dot(P * n, n), dxg) / V)
+    results['μ'].append(factor)
 
-    dλdf_avg = dolfiny.expression.assemble(dλ * df, dxg) / V
-    dolfiny.utils.pprint(f"(dλ * df)_avg = {dλdf_avg:4.3e}")
-    dλ_f_avg = dolfiny.expression.assemble(dλ * f, dxg) / V
-    dolfiny.utils.pprint(f"(dλ *  f)_avg = {dλ_f_avg:4.3e}")
-    Pvol_avg = dolfiny.expression.assemble(ufl.sqrt(ufl.tr(P)**2), dxg) / V
-    dolfiny.utils.pprint(f"( tr(P) )_avg = {Pvol_avg:4.3e}")
+    # Basic consistency checks
+    assert dolfiny.expression.assemble(dλ * df, dxg) / V < 1.e-03, "|| dλ*df || != 0.0"
+    assert dolfiny.expression.assemble(dλ * f, dxg) / V < 1.e-06, "|| dλ*df || != 0.0"
 
-    # 2nd order tetrahedron
-    mesh.geometry.cmap.non_affine_atol = 1.0e-8
-    mesh.geometry.cmap.non_affine_max_its = 20
+    # Fix: 2nd order tetrahedron
+    # mesh.geometry.cmap.non_affine_atol = 1.0e-8
+    # mesh.geometry.cmap.non_affine_max_its = 20
 
     # Write output
     ofile.write_function(u, step)
-    # ofile.write_function(P, step)
-    # ofile.write_function(h, step)
-    # ofile.write_function(B, step)
+
+    # Project and write output
+    dolfiny.projection.project(P, Po)
+    dolfiny.projection.project(B, Bo)
+    dolfiny.projection.project(S, So)
+    dolfiny.projection.project(h, ho)
+    ofile.write_function(Po, step)
+    ofile.write_function(Bo, step)
+    ofile.write_function(So, step)
+    ofile.write_function(ho, step)
 
     # Store stress state
     dolfiny.interpolation.interpolate(S, S0)
-    # ofile.write_function(S0, step)
 
     # Store primal states
     for source, target in zip([u, P, h, B], [u0, P0, h0, B0]):
         with source.vector.localForm() as locs, target.vector.localForm() as loct:
             locs.copy(loct)
-
-    # Basic consistency checks
-    # assert dλdf_avg < 1.e-5, "|| dλ*df || != 0.0"
-    # assert dλ_f_avg < 1.e-5, "|| dλ*df || != 0.0"
-    # assert Pvol_avg < 1.e-5, "|| tr(P) || != 0.0"
 
 ofile.close()
 
@@ -264,18 +267,17 @@ import matplotlib.pyplot
 
 fig, ax1 = matplotlib.pyplot.subplots()
 ax1.set_title("Rate-independent plasticity: $J_2$, monolithic formulation, 3D", fontsize=12)
-ax1.set_xlabel(r'volume-averaged strain $\frac{1}{V}\int E_{00} dV$ [%]', fontsize=12)
-ax1.set_ylabel(r'volume-averaged stress $\frac{1}{V}\int S_{00} dV$ [GPa]', fontsize=12)
+ax1.set_xlabel(r'volume-averaged strain $\frac{1}{V}\int n^T E n \, dV$ [-]', fontsize=12)
+ax1.set_ylabel(r'volume-averaged stress $\frac{1}{V}\int n^T S n \, dV$ [GPa]', fontsize=12)
 ax1.grid(linewidth=0.25)
 fig.tight_layout()
 
-E_avg = np.array(E_avg) * 100.0  # strain in percent
-S_avg = np.array(S_avg)
-P_avg = np.array(P_avg)
+E = np.array(results['E'])
+S = np.array(results['S'])
 
 # stress-strain curve
-ax1.plot(E_avg, S_avg, color='tab:blue', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$S-E$ curve')
-# ax1.plot(E_avg, P_avg, color='tab:orange', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$P-E$')
+ax1.plot(E, S, color='tab:blue', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$S-E$ curve')
 
 ax1.legend(loc='lower right')
+ax1.ticklabel_format(style='sci', scilimits=(-2, -2), axis='x')
 fig.savefig(f"{name}.pdf")
