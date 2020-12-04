@@ -53,8 +53,8 @@ interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
 
 # Define shorthands for labelled tags
 domain_gauge = subdomains_keys["domain_gauge"]
-surface_1 = interfaces_keys["surface_plane_left"]
-surface_2 = interfaces_keys["surface_plane_right"]
+surface_1 = interfaces_keys["surface_grip_left"]
+surface_2 = interfaces_keys["surface_grip_right"]
 
 # Solid: material parameters
 mu = dolfinx.Constant(mesh, 100)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
