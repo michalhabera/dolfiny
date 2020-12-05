@@ -409,13 +409,15 @@ class ODEInt2():
             self.dt.value = dt
 
         # Set time
-        self.t.value += self.alpha_f.value * self.dt.value
+        self.t.value += self.dt.value
 
         # Store states (set initial values for next time step)
         dolfiny.odeint._copy_entries(self.x1, self.x0)
         dolfiny.odeint._copy_entries(self.x1t, self.x0t)
         dolfiny.odeint._copy_entries(self.x1tt, self.x0tt)
         dolfiny.odeint._copy_entries(self.x1tt_aux, self.x0tt_aux)
+
+        return self.t, self.dt
 
     def update(self):
         """Set rate x1t, rate2 x1tt and auxiliary rate2 x1tt_aux once x1 has been computed."""
@@ -450,7 +452,7 @@ class ODEInt2():
         if isinstance(self.x1tt, list):
             x1tt_aux = []
             for x1i, x0i, x0ti, x0tti_aux in zip(self.x1, self.x0, self.x0t, self.x0tt_aux):
-                x1tt_aux.append(self._derivative_dt_aux(x1i, x0i, x0ti, x0tti_aux))
+                x1tt_aux.append(self._derivative_dt2_aux(x1i, x0i, x0ti, x0tti_aux))
         else:
             x1tt_aux = self._derivative_dt2_aux(self.x1, self.x0, self.x0t, self.x0tt_aux)
 
@@ -466,7 +468,7 @@ class ODEInt2():
         if isinstance(self.x1tt, list):
             x1tt = []
             for x1tti_aux, x0tti_aux, x0tti in zip(self.x1tt_aux, self.x0tt_aux, self.x0tt):
-                x1t.append(self._derivative_dt2(x1tti_aux, x0tti_aux, x0tti))
+                x1tt.append(self._derivative_dt2(x1tti_aux, x0tti_aux, x0tti))
         else:
             x1tt = self._derivative_dt2(self.x1tt_aux, self.x0tt_aux, self.x0tt)
 
