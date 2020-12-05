@@ -28,10 +28,10 @@ N = 8 * 4  # number of nodes
 p = 2  # physics: polynomial order
 q = 2  # geometry: polynomial order
 
-# Create the regular mesh of an annulus with given dimensions
+# Create the regular mesh of a curve with given dimensions
 gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="f_arc", L=L, nL=N, order=q)
 
-# # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
+# # Create the regular mesh of a curve with given dimensions and save as msh, then read into gmsh model
 # mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=q, msh_file=f"{name}.msh")
 # gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
 
@@ -100,22 +100,25 @@ Ue = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
 We = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
 Re = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
 
-U = dolfinx.FunctionSpace(mesh, Ue)
-W = dolfinx.FunctionSpace(mesh, We)
-R = dolfinx.FunctionSpace(mesh, Re)
+Uf = dolfinx.FunctionSpace(mesh, Ue)
+Wf = dolfinx.FunctionSpace(mesh, We)
+Rf = dolfinx.FunctionSpace(mesh, Re)
 
 # Define functions
-u = dolfinx.Function(U, name='u')
-w = dolfinx.Function(W, name='w')
-r = dolfinx.Function(R, name='r')
+u = dolfinx.Function(Uf, name='u')
+w = dolfinx.Function(Wf, name='w')
+r = dolfinx.Function(Rf, name='r')
 
-δu = ufl.TestFunction(U)
-δw = ufl.TestFunction(W)
-δr = ufl.TestFunction(R)
+u_ = dolfinx.Function(Uf, name='u_')  # boundary conditions
+w_ = dolfinx.Function(Wf, name='w_')
+r_ = dolfinx.Function(Rf, name='r_')
+
+δu = ufl.TestFunction(Uf)
+δw = ufl.TestFunction(Wf)
+δr = ufl.TestFunction(Rf)
 
 # Define state as (ordered) list of functions
-m = [u, w, r]
-δm = [δu, δw, δr]
+m, δm = [u, w, r], [δu, δw, δr]
 
 # GEOMETRY -------------------------------------------------------------------
 # Coordinates of undeformed configuration
@@ -227,21 +230,17 @@ opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
-opts_global = PETSc.Options()
-opts_global["mat_mumps_icntl_14"] = 500
-opts_global["mat_mumps_icntl_24"] = 1
+# opts_global = PETSc.Options()
+# opts_global["mat_mumps_icntl_14"] = 500
+# opts_global["mat_mumps_icntl_24"] = 1
 
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="beam")
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
-beg_dofs_U = dolfiny.mesh.locate_dofs_topological(U, interfaces, beg)
-beg_dofs_W = dolfiny.mesh.locate_dofs_topological(W, interfaces, beg)
-beg_dofs_R = dolfiny.mesh.locate_dofs_topological(R, interfaces, beg)
-
-u_beg = dolfinx.Function(U)
-w_beg = dolfinx.Function(W)
-r_beg = dolfinx.Function(R)
+beg_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, beg)
+beg_dofs_Wf = dolfiny.mesh.locate_dofs_topological(Wf, interfaces, beg)
+beg_dofs_Rf = dolfiny.mesh.locate_dofs_topological(Rf, interfaces, beg)
 
 # Create custom plotter (via matplotlib)
 plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{*}$)')
@@ -258,9 +257,9 @@ for factor in np.linspace(0, 1, num=20 + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(u_beg, beg_dofs_U),  # u beg
-        dolfinx.fem.DirichletBC(w_beg, beg_dofs_W),  # w beg
-        dolfinx.fem.DirichletBC(r_beg, beg_dofs_R),  # r beg
+        dolfinx.fem.DirichletBC(u_, beg_dofs_Uf),  # u beg
+        dolfinx.fem.DirichletBC(w_, beg_dofs_Wf),  # w beg
+        dolfinx.fem.DirichletBC(r_, beg_dofs_Rf),  # r beg
     ]
 
     dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")
