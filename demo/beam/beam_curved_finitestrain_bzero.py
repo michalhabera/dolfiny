@@ -240,10 +240,6 @@ opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
-# opts_global = PETSc.Options()
-# opts_global["mat_mumps_icntl_14"] = 500
-# opts_global["mat_mumps_icntl_24"] = 1
-
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="beam")
 
