@@ -71,20 +71,23 @@ demos:
       - pip3 install .
       - cd demo
       # Run bingham demos (parallel)
-      - cd bingham 
+      - cd bingham
       - mpirun -n 2 python3 bingham_block.py
       - mpirun -n 2 python3 bingham_lm_block.py
       - cd ..
       # Run beam demos (parallel and serial)
-      - cd beam 
+      - cd beam
       - mpirun -n 2 python3 beam_curved_finitestrain_bstar.py
       - mpirun -n 1 python3 beam_curved_finitestrain_bstar.py
       - mpirun -n 2 python3 beam_curved_finitestrain_bzero.py
       - mpirun -n 1 python3 beam_curved_finitestrain_bzero.py
       - cd ..
       # Run vsolid demos (parallel)
-      - cd vsolid 
+      - cd vsolid
       - mpirun -n 2 python3 duffing.py
+      - mpirun -n 4 python3 solid_disp_tda.py
+      - mpirun -n 4 python3 solid_dispstress_tda.py
+      - mpirun -n 4 python3 solid_velostress_tda.py
       - cd ..
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
