@@ -29,10 +29,10 @@ nr = 5
 # Geometry and physics ansatz order
 o, p = 1, 1
 
-# Create the regular mesh of specimen with given dimensions
+# Create the mesh of the specimen with given dimensions
 gmsh_model, tdim = mg.mesh_iso6892_gmshapi(name, l0, d0, nr, order=o)
 
-# Create the regular mesh of specimen with given dimensions and save as msh, then read into gmsh model
+# Create the mesh of the specimen with given dimensions and save as msh, then read into gmsh model
 # mg.mesh_iso6892_gmshapi(name, l0, d0, nr, order=o, msh_file=f"{name}.msh")
 # gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
 
