@@ -1,6 +1,6 @@
 FROM dolfinx/dev-env
 
-ARG DOLFINY_BUILD_TYPE=Release
+ARG DOLFINY_BUILD_TYPE=Developer
 
 ENV PETSC_ARCH=linux-gnu-real-32 
 
