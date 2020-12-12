@@ -111,10 +111,12 @@ def interpolate_cached(compiled_expression, target_func):
     if len(constants) > 0:
         constants_vector = np.hstack([c.value.flatten() for c in constants])
 
-    # Num DOFs of the target element
     value_size = int(np.product(compiled_expression.expr.ufl_shape))
-    b_size_knl = compiled_expression.fiat_element.space_dimension() * value_size
-    b_size = target_func.function_space.element.space_dimension()
+    fiat_space_dim = compiled_expression.fiat_element.space_dimension()
+    space_dim = target_func.function_space.element.space_dimension()
+
+    dofmap_bs = target_func.function_space.dofmap.bs
+    element_bs = target_func.function_space.dofmap.dof_layout.block_size()
 
     # Prepare mapping of subelements into the parent finite element
     # This mapping stores also how dofs are collapsed when symmetry to a TensorElement
@@ -130,13 +132,14 @@ def interpolate_cached(compiled_expression, target_func):
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
                             coeffs_vectors, coeffs_dofmaps, constants_vector, reference_geometry,
-                            local_coeffs_sizes, local_coeffs_size, gdim, b_size_knl, b_size, value_size, subel_map)
+                            local_coeffs_sizes, local_coeffs_size, gdim, fiat_space_dim, space_dim,
+                            value_size, subel_map, dofmap_bs, element_bs)
 
 
 @numba.njit
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
                         const_vector, reference_geometry, local_coeffs_sizes, local_coeffs_size,
-                        gdim, b_size_knl, b_size, value_size, subel_map):
+                        gdim, fiat_space_dim, space_dim, value_size, subel_map, dofmap_bs, element_bs):
     geom_dofmap, geom_pos, geom = mesh
 
     # Coord dofs have shape (num_geometry_dofs, gdim)
@@ -146,15 +149,7 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     # Allocate space for local element tensor
     # This has the size which generated code expects, not the local
     # dofmap of the actual element (these are different for symmetric spaces)
-    b_local = np.zeros(b_size_knl, dtype=PETSc.ScalarType)
-
-    # Number of dofs of the corresponding scalar space
-    # E.g. for TDG1 it is 4
-    scalar_space_dim = int(b_size_knl / value_size)
-
-    # Value size which takes into account symmetry
-    # E.g. for TDG1 it is 6
-    value_size_sym = len(np.unique(subel_map))
+    b_local = np.zeros(fiat_space_dim * value_size, dtype=PETSc.ScalarType)
 
     for i, cell in enumerate(geom_pos[:-1]):
         num_vertices = geom_pos[i + 1] - geom_pos[i]
@@ -174,6 +169,6 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
         kernel(ffi.from_buffer(b_local), ffi.from_buffer(coeffs),
                ffi.from_buffer(const_vector), ffi.from_buffer(coordinate_dofs))
 
-        for j in range(scalar_space_dim):
+        for j in range(fiat_space_dim):
             for k in range(value_size):
-                b[dofmap[i * b_size + value_size_sym * j + subel_map[k]]] = b_local[value_size * j + k]
+                b[dofmap_bs * dofmap[i * fiat_space_dim + j] + subel_map[k]] = b_local[value_size * j + k]
