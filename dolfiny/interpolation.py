@@ -96,14 +96,15 @@ def interpolate_cached(compiled_expression, target_func):
     coeffs = ufl.algorithms.analysis.extract_coefficients(compiled_expression.expr)
     coeffs_dofmaps = List.empty_list(numba.types.Array(numba.typeof(dofmap[0]), 1, "C", readonly=True))
     coeffs_vectors = List.empty_list(numba.types.Array(numba.typeof(PETSc.ScalarType()), 1, "C", readonly=True))
+    coeffs_bs = List.empty_list(numba.types.int_)
 
     for i in range(num_coeffs):
         coeffs_dofmaps.append(coeffs[cpos[i]].function_space.dofmap.list.array)
         coeffs_vectors.append(np.asarray(coeffs[cpos[i]].vector))
+        coeffs_bs.append(coeffs[cpos[i]].function_space.dofmap.bs)
 
-    local_coeffs_sizes = np.asarray([coeff.function_space.element.space_dimension()
-                                     for coeff in coeffs], dtype=np.int)
-    local_coeffs_size = np.sum(local_coeffs_sizes, dtype=np.int)
+    coeffs_sizes = np.asarray([coeff.function_space.element.space_dimension()
+                               for coeff in coeffs], dtype=np.int)
 
     # Prepare and pack constants
     constants = ufl.algorithms.analysis.extract_constants(compiled_expression.expr)
@@ -131,20 +132,20 @@ def interpolate_cached(compiled_expression, target_func):
     with target_func.vector.localForm() as b:
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
-                            coeffs_vectors, coeffs_dofmaps, constants_vector, reference_geometry,
-                            local_coeffs_sizes, local_coeffs_size, gdim, fiat_space_dim, space_dim,
+                            coeffs_vectors, coeffs_dofmaps, coeffs_bs, constants_vector, reference_geometry,
+                            coeffs_sizes, gdim, fiat_space_dim, space_dim,
                             value_size, subel_map, dofmap_bs, element_bs)
 
 
-@numba.njit
-def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
-                        const_vector, reference_geometry, local_coeffs_sizes, local_coeffs_size,
-                        gdim, fiat_space_dim, space_dim, value_size, subel_map, dofmap_bs, element_bs):
+@numba.njit(parallel=True)
+def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps, coeffs_bs,
+                        const_vector, reference_geometry, coeffs_sizes, gdim, fiat_space_dim,
+                        space_dim, value_size, subel_map, dofmap_bs, element_bs):
     geom_dofmap, geom_pos, geom = mesh
 
     # Coord dofs have shape (num_geometry_dofs, gdim)
     coordinate_dofs = np.zeros((geom_pos[1], gdim))
-    coeffs = np.zeros(local_coeffs_size, dtype=PETSc.ScalarType)
+    coeffs = np.zeros(np.sum(coeffs_sizes), dtype=PETSc.ScalarType)
 
     # Allocate space for local element tensor
     # This has the size which generated code expects, not the local
@@ -152,19 +153,20 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     b_local = np.zeros(fiat_space_dim * value_size, dtype=PETSc.ScalarType)
 
     for i, cell in enumerate(geom_pos[:-1]):
-        num_vertices = geom_pos[i + 1] - geom_pos[i]
-        c = geom_dofmap[cell:cell + num_vertices]
         for j in range(geom_pos[1]):
+            c = geom_dofmap[cell + j]
             for k in range(gdim):
-                coordinate_dofs[j, k] = geom[c[j], k]
+                coordinate_dofs[j, k] = geom[c, k]
         b_local.fill(0.0)
 
         offset = 0
         for j in range(len(coeffs_vectors)):
-            local_dofsize = local_coeffs_sizes[j]
-            coeffs[offset:offset + local_dofsize] = coeffs_vectors[j][coeffs_dofmaps[j]
-                                                                      [i * local_dofsize:local_dofsize * (i + 1)]]
-            offset += local_dofsize
+            bs = coeffs_bs[j]
+            local_dofsize = coeffs_sizes[j] // bs
+            for k in range(local_dofsize):
+                for m in range(bs):
+                    coeffs[bs * k + m + offset] = coeffs_vectors[j][bs * coeffs_dofmaps[j][local_dofsize * i + k] + m]
+            offset += coeffs_sizes[j]
 
         kernel(ffi.from_buffer(b_local), ffi.from_buffer(coeffs),
                ffi.from_buffer(const_vector), ffi.from_buffer(coordinate_dofs))
