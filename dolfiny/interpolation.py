@@ -137,7 +137,7 @@ def interpolate_cached(compiled_expression, target_func):
                             value_size, subel_map, dofmap_bs, element_bs)
 
 
-@numba.njit(parallel=True)
+@numba.njit(fastmath=True)
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps, coeffs_bs,
                         const_vector, reference_geometry, coeffs_sizes, gdim, fiat_space_dim,
                         space_dim, value_size, subel_map, dofmap_bs, element_bs):
