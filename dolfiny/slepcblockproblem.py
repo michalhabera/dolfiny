@@ -43,8 +43,8 @@ class SLEPcBlockProblem():
         self.ur = []
         self.ui = []
         for func in u:
-            self.ur.append(dolfinx.function.Function(func.function_space, name=func.name))
-            self.ui.append(dolfinx.function.Function(func.function_space, name=func.name))
+            self.ur.append(dolfinx.Function(func.function_space, name=func.name))
+            self.ui.append(dolfinx.Function(func.function_space, name=func.name))
 
         # Prepare tangent form M0 which has terms involving lambda
         self.M0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]

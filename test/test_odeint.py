@@ -2,7 +2,7 @@ from mpi4py import MPI
 
 import dolfinx
 from dolfinx.generation import UnitIntervalMesh
-from dolfinx.function import Function, FunctionSpace
+from dolfinx import Function, FunctionSpace
 
 import ufl
 import numpy
