@@ -1,4 +1,5 @@
 import typing
+import numpy
 
 import dolfinx
 from petsc4py import PETSc
@@ -93,3 +94,9 @@ def vec_to_functions(x, u: typing.List[dolfinx.Function]):
             u[i].vector.array[:] = x.array_r[offset:offset + size_local]
             offset += size_local
             u[i].vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
+
+
+def unroll_dofs(dofs, block_size):
+    """Unroll blocked dofs."""
+    arr = block_size * numpy.repeat(dofs, block_size).reshape(-1, block_size) + numpy.arange(block_size)
+    return arr.flatten().astype(dofs.dtype)

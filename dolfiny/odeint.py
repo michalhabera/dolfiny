@@ -86,28 +86,28 @@ class ODEInt():
         if isinstance(self.x1, list):
             self.x0 = []
             for x1i in self.x1:
-                self.x0.append(dolfinx.function.Function(x1i.function_space))
+                self.x0.append(dolfinx.Function(x1i.function_space))
         else:
-            self.x0 = dolfinx.function.Function(self.x1.function_space)
+            self.x0 = dolfinx.Function(self.x1.function_space)
 
         # Set rate of state x0t
         if isinstance(self.x1t, list):
             self.x0t = []
             for x1ti in self.x1t:
-                self.x0t.append(dolfinx.function.Function(x1ti.function_space))
+                self.x0t.append(dolfinx.Function(x1ti.function_space))
         else:
-            self.x0t = dolfinx.function.Function(self.x1t.function_space)
+            self.x0t = dolfinx.Function(self.x1t.function_space)
 
         # Set *auxiliary* rate of state x1t_aux and x0t_aux
         if isinstance(self.x1t, list):
             self.x1t_aux = []
             self.x0t_aux = []
             for x1ti in self.x1t:
-                self.x1t_aux.append(dolfinx.function.Function(x1ti.function_space))
-                self.x0t_aux.append(dolfinx.function.Function(x1ti.function_space))
+                self.x1t_aux.append(dolfinx.Function(x1ti.function_space))
+                self.x0t_aux.append(dolfinx.Function(x1ti.function_space))
         else:
-            self.x1t_aux = dolfinx.function.Function(self.x1t.function_space)
-            self.x0t_aux = dolfinx.function.Function(self.x1t.function_space)
+            self.x1t_aux = dolfinx.Function(self.x1t.function_space)
+            self.x0t_aux = dolfinx.Function(self.x1t.function_space)
 
         # Initialise values of auxiliary state
         dolfiny.odeint._copy_entries(self.x1t, self.x1t_aux)
@@ -306,36 +306,36 @@ class ODEInt2():
         if isinstance(self.x1, list):
             self.x0 = []
             for x1i in self.x1:
-                self.x0.append(dolfinx.function.Function(x1i.function_space))
+                self.x0.append(dolfinx.Function(x1i.function_space))
         else:
-            self.x0 = dolfinx.function.Function(self.x1.function_space)
+            self.x0 = dolfinx.Function(self.x1.function_space)
 
         # Set rate of state x0t
         if isinstance(self.x1t, list):
             self.x0t = []
             for x1ti in self.x1t:
-                self.x0t.append(dolfinx.function.Function(x1ti.function_space))
+                self.x0t.append(dolfinx.Function(x1ti.function_space))
         else:
-            self.x0t = dolfinx.function.Function(self.x1t.function_space)
+            self.x0t = dolfinx.Function(self.x1t.function_space)
 
         # Set rate of rate of state x0tt
         if isinstance(self.x1tt, list):
             self.x0tt = []
             for x1tti in self.x1tt:
-                self.x0tt.append(dolfinx.function.Function(x1tti.function_space))
+                self.x0tt.append(dolfinx.Function(x1tti.function_space))
         else:
-            self.x0tt = dolfinx.function.Function(self.x1tt.function_space)
+            self.x0tt = dolfinx.Function(self.x1tt.function_space)
 
         # Set *auxiliary* of rate of rate of state x1tt_aux and x0tt_aux
         if isinstance(self.x1tt, list):
             self.x1tt_aux = []
             self.x0tt_aux = []
             for x1tti in self.x1tt:
-                self.x1tt_aux.append(dolfinx.function.Function(x1tti.function_space))
-                self.x0tt_aux.append(dolfinx.function.Function(x1tti.function_space))
+                self.x1tt_aux.append(dolfinx.Function(x1tti.function_space))
+                self.x0tt_aux.append(dolfinx.Function(x1tti.function_space))
         else:
-            self.x1tt_aux = dolfinx.function.Function(self.x1tt.function_space)
-            self.x0tt_aux = dolfinx.function.Function(self.x1tt.function_space)
+            self.x1tt_aux = dolfinx.Function(self.x1tt.function_space)
+            self.x0tt_aux = dolfinx.Function(self.x1tt.function_space)
 
         # Initialise values of auxiliary state
         dolfiny.odeint._copy_entries(self.x1tt, self.x1tt_aux)

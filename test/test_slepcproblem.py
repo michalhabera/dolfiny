@@ -4,7 +4,7 @@ import dolfiny.slepcblockproblem
 import dolfiny.la
 
 import ufl
-from dolfinx.function import Function, FunctionSpace, VectorFunctionSpace
+from dolfinx import Function, FunctionSpace, VectorFunctionSpace
 from dolfinx.generation import UnitCubeMesh
 from dolfinx.io import XDMFFile
 from mpi4py import MPI

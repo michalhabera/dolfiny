@@ -122,6 +122,7 @@ p_scalar_i = dolfinx.Function(P)
 
 # Set up restriction
 rdofsV = dolfiny.mesh.locate_dofs_topological(V, subdomains, domain)
+rdofsV = dolfiny.function.unroll_dofs(rdofsV, V.dofmap.bs)
 rdofsP = dolfiny.mesh.locate_dofs_topological(P, subdomains, domain)
 rdofsN = dolfiny.mesh.locate_dofs_topological(N, interfaces, ring_inner)
 rdofsT = dolfiny.mesh.locate_dofs_topological(T, interfaces, ring_inner)

@@ -23,12 +23,12 @@ TDG2s = TensorFunctionSpace(mesh, ("DG", 2), symmetry=True)
 CG2 = FunctionSpace(mesh, ("CG", 2))
 VCG1 = FunctionSpace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
 
-f = Function(CG1)
+f = Function(TCG1)
 f.vector.set(1.0)
 f.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
 x = ufl.SpatialCoordinate(mesh)
-expr1 = f * ufl.grad(ufl.grad(ufl.sinh(x[0]) + x[1] ** 3))
+expr1 = f[0, 0] * ufl.grad(ufl.grad(ufl.sinh(x[0]) + x[1] ** 3))
 
 
 @pytest.mark.parametrize("V", [TCG1, TDG0, TDG1s, TDG2s])

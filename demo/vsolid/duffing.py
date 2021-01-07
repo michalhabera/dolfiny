@@ -9,7 +9,6 @@ import ufl
 import numpy
 
 import dolfiny.odeint
-import dolfiny.function
 import dolfiny.snesblockproblem
 
 
@@ -43,16 +42,16 @@ def _st(u, v):
     return (a + 3 * b * u**2) * v  # rate of constitutive law
 
 
-V = dolfinx.function.FunctionSpace(mesh, ("DG", 0))
-S = dolfinx.function.FunctionSpace(mesh, ("DG", 0))
+V = dolfinx.FunctionSpace(mesh, ("DG", 0))
+S = dolfinx.FunctionSpace(mesh, ("DG", 0))
 
-v = dolfinx.function.Function(V, name="v")
-s = dolfinx.function.Function(S, name="s")
-vt = dolfinx.function.Function(V, name="vt")
-st = dolfinx.function.Function(S, name="st")
+v = dolfinx.Function(V, name="v")
+s = dolfinx.Function(S, name="s")
+vt = dolfinx.Function(V, name="vt")
+st = dolfinx.Function(S, name="st")
 
-u = dolfinx.function.Function(V, name="u")
-d = dolfinx.function.Function(V, name="d")  # dummy
+u = dolfinx.Function(V, name="u")
+d = dolfinx.Function(V, name="d")  # dummy
 
 δv = ufl.TestFunction(V)
 δs = ufl.TestFunction(S)
