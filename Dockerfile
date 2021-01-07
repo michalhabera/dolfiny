@@ -12,7 +12,7 @@ RUN pip3 install git+https://github.com/FEniCS/fiat.git --upgrade \
     && \
 	 rm -rf /usr/local/include/dolfin /usr/local/include/dolfin.h
 
-RUN git clone --branch michalhabera-patch-3 https://github.com/FEniCS/dolfinx.git \
+RUN git clone --branch master https://github.com/FEniCS/dolfinx.git \
     && \
 	 cd dolfinx \
     && \
