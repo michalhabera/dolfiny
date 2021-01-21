@@ -2,7 +2,7 @@ import numpy as np
 
 import cffi
 import dolfinx
-import ffcx.fiatinterface
+import ffcx.basix_interface
 import numba
 import numba.core.typing.cffi_utils as cffi_support
 import ufl
@@ -35,17 +35,12 @@ class CompiledExpression:
             target_el = sub_elements[0]
 
         # Identify points at which to evaluate the expression
-        self.fiat_element = ffcx.fiatinterface.create_element(target_el)
+        self.basix_element = ffcx.basix_interface.create_basix_element(target_el)
 
-        if not all(x == "affine" for x in self.fiat_element.mapping()):
+        if not all(x == "affine" for x in self.basix_element.dof_mappings):
             raise NotImplementedError("Only affine mapped function spaces supported")
 
-        nodes = []
-        for dual in self.fiat_element.dual_basis():
-            pts, = dual.pt_dict.keys()
-            nodes.append(pts)
-
-        nodes = np.asarray(nodes)
+        nodes = self.basix_element.points
 
         module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))
         self.module = module
@@ -73,7 +68,7 @@ def interpolate_cached(compiled_expression, target_func):
     cffi_support.register_type(ffi.typeof('float _Complex'),
                                numba.types.complex64)
 
-    reference_geometry = np.asarray(compiled_expression.fiat_element.ref_el.get_vertices())
+    reference_geometry = compiled_expression.basix_element.reference_geometry
 
     # Unpack mesh and dofmap data
     mesh = target_func.function_space.mesh
@@ -113,7 +108,7 @@ def interpolate_cached(compiled_expression, target_func):
         constants_vector = np.hstack([c.value.flatten() for c in constants])
 
     value_size = int(np.product(compiled_expression.expr.ufl_shape))
-    fiat_space_dim = compiled_expression.fiat_element.space_dimension()
+    basix_space_dim = compiled_expression.basix_element.dim
     space_dim = target_func.function_space.element.space_dimension()
 
     dofmap_bs = target_func.function_space.dofmap.bs
@@ -133,7 +128,7 @@ def interpolate_cached(compiled_expression, target_func):
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
                             coeffs_vectors, coeffs_dofmaps, coeffs_bs, constants_vector, reference_geometry,
-                            coeffs_sizes, gdim, fiat_space_dim, space_dim,
+                            coeffs_sizes, gdim, basix_space_dim, space_dim,
                             value_size, subel_map, dofmap_bs, element_bs)
 
 

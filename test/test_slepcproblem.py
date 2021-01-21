@@ -16,7 +16,7 @@ def test_neohooke():
     V = VectorFunctionSpace(mesh, ("P", 1))
     P = FunctionSpace(mesh, ("P", 1))
 
-    L = FunctionSpace(mesh, ("R", 0))
+    L = FunctionSpace(mesh, ("DG", 0))
 
     u = Function(V, name="u")
     v = ufl.TestFunction(V)
