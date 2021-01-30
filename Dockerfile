@@ -26,4 +26,6 @@ RUN cd dolfinx/python \
     && \
     pip3 -v install . --user
 
+RUN pip3 install matplotlib
+
 ENV PYTHONDONTWRITEBYTECODE 1
