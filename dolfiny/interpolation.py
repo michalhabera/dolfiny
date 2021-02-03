@@ -37,7 +37,7 @@ class CompiledExpression:
         # Identify points at which to evaluate the expression
         self.basix_element = ffcx.basix_interface.create_basix_element(target_el)
 
-        if not all(x == "affine" for x in self.basix_element.dof_mappings):
+        if not all(x == "identity" for x in self.basix_element.dof_mappings):
             raise NotImplementedError("Only affine mapped function spaces supported")
 
         nodes = self.basix_element.points
