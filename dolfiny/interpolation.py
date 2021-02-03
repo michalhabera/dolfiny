@@ -99,7 +99,7 @@ def interpolate_cached(compiled_expression, target_func):
         coeffs_bs.append(coeffs[cpos[i]].function_space.dofmap.bs)
 
     coeffs_sizes = np.asarray([coeff.function_space.element.space_dimension()
-                               for coeff in coeffs], dtype=np.int)
+                               for coeff in coeffs], dtype=np.int_)
 
     # Prepare and pack constants
     constants = ufl.algorithms.analysis.extract_constants(compiled_expression.expr)
