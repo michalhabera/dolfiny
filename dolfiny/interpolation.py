@@ -3,6 +3,7 @@ import numpy as np
 import cffi
 import dolfinx
 import ffcx.basix_interface
+import basix
 import numba
 import numba.core.typing.cffi_utils as cffi_support
 import ufl
@@ -37,7 +38,7 @@ class CompiledExpression:
         # Identify points at which to evaluate the expression
         self.basix_element = ffcx.basix_interface.create_basix_element(target_el)
 
-        if not all(x == "identity" for x in self.basix_element.dof_mappings):
+        if not self.basix_element.element.mapping_type == basix.MappingType.identity:
             raise NotImplementedError("Only affine mapped function spaces supported")
 
         nodes = self.basix_element.points
