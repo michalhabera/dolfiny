@@ -1,5 +1,4 @@
 from dolfinx.fem import assemble_vector, apply_lifting, set_bc, assemble_matrix
-from dolfinx.la import solve
 import ufl
 from petsc4py import PETSc
 
@@ -23,4 +22,7 @@ def project(v, target_func, bcs=[]):
     b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
     set_bc(b, bcs)
 
-    solve(A, target_func.vector, b)
+    # Solve linear system
+    solver = PETSc.KSP().create(A.getComm())
+    solver.setOperators(A)
+    solver.solve(b, target_func.vector)
