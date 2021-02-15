@@ -229,8 +229,8 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             mt_cells_shape, pgdim = comm.bcast([_mt_cells.shape, pgdim], root=0)
         else:
             mt_cells_shape, pgdim = comm.bcast([None, None], root=0)
-            _mt_cells = numpy.empty((0, mt_cells_shape[1]))
-            _mt_values = numpy.empty((0, ))
+            _mt_cells = numpy.empty((0, mt_cells_shape[1]), dtype=numpy.int64)
+            _mt_values = numpy.empty((0, ), dtype=numpy.int32)
 
         local_entities, local_values = extract_local_entities(mesh, pgdim, _mt_cells, _mt_values)
 
