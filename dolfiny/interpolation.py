@@ -38,7 +38,16 @@ class CompiledExpression:
         # Identify points at which to evaluate the expression
         self.basix_element = ffcx.basix_interface.create_basix_element(target_el)
 
-        if not self.basix_element.element.mapping_type == basix.MappingType.identity:
+        if type(self.basix_element) == ffcx.basix_interface.BasixElement:
+            mapping_types = [self.basix_element.element.mapping_type]
+        elif type(self.basix_element) == ffcx.basix_interface.BlockedElement:
+            mapping_types = [self.basix_element.sub_element.element.mapping_type]
+        elif type(self.basix_element) == ffcx.basix_interface.MixedElement:
+            mapping_types = [e.element.mapping_type for e in self.basix_element.sub_elements]
+        else:
+            raise NotImplementedError("Unsupported element type")
+
+        if not all(x == basix.MappingType.identity for x in mapping_types):
             raise NotImplementedError("Only affine mapped function spaces supported")
 
         nodes = self.basix_element.points
