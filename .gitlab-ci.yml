@@ -1,16 +1,19 @@
 stages:
    - lint
-   - build
+   - image
    - test
+   - demo
    - release
 
 default:
    tags:
       - docker
+      - euler
 
 variables:
-   CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:dev-$CI_COMMIT_REF_SLUG
-   CONTAINER_RELEASE_IMAGE: $CI_REGISTRY_IMAGE:latest
+   CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:master
+   CONTAINER_MASTER_IMAGE: $CI_REGISTRY_IMAGE:master
+   CONTAINER_LATEST_IMAGE: $CI_REGISTRY_IMAGE:latest
 
 # jobs
 
@@ -20,92 +23,122 @@ flake8:
    script:
       - flake8 --verbose .
 
-docker_image:
+container image:
+   stage: image
    image: docker:latest
-   stage: build
+   variables:
+      DOCKER_BUILDKIT: 1
    script:
       - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-      - docker build --no-cache --pull --build-arg DOLFINY_BUILD_TYPE=Release -t $CONTAINER_TEST_IMAGE .
-      - docker push $CONTAINER_TEST_IMAGE
+      - docker build --build-arg BUILDKIT_INLINE_CACHE=1
+                     --build-arg DOLFINY_BUILD_TYPE=Release
+                     --cache-from $CONTAINER_COMMIT_IMAGE
+                     --cache-from $CONTAINER_MASTER_IMAGE
+                     --tag $CONTAINER_COMMIT_IMAGE
+                     --pull
+                     .
+      - docker push $CONTAINER_COMMIT_IMAGE
+      - echo CONTAINER_COMMIT_IMAGE="${CONTAINER_COMMIT_IMAGE}" >> build.env
+   rules:
+      - if: ($CI_PIPELINE_SOURCE == "schedule")
+      - changes: 
+         - Dockerfile
+        variables:
+           CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+        when: always
+      - exists: 
+         - Dockerfile
+        when: manual
+        allow_failure: true
+   artifacts:
+      reports:
+        dotenv: build.env
 
-pytest:
-   image: $CONTAINER_TEST_IMAGE
-   stage: test
+container release:
+   stage: release
+   image: docker:latest
    script:
-      # Install dolfin-y package
+      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+      - docker pull $CONTAINER_COMMIT_IMAGE
+      - docker tag $CONTAINER_COMMIT_IMAGE $CONTAINER_LATEST_IMAGE
+      - docker push $CONTAINER_LATEST_IMAGE
+   rules:
+      - if: ($CI_COMMIT_BRANCH == "master")
+
+.test_template:
+   stage: test
+   image: $CONTAINER_COMMIT_IMAGE
+   rules:
+      - if: ($CI_RUN_TEST_CONVERGENCE == "yes")
+        variables:
+           DOLFINY_PYTEST_SELECT: -m 'convergence'
+      - if: ($CI_RUN_TEST_CONVERGENCE != "yes")
+        variables:
+           DOLFINY_PYTEST_SELECT: -m 'not convergence'
+   before_script:
       - pip3 install .
-      # Run Python unit tests (parallel)
-      - mpirun -n 2 python3 -u -m pytest -m 'not convergence' -vsx test/.
-      # Run Python unit tests (serial)
-      - python3 -m pytest -m 'not convergence' -vsx test/.
+      - cd test
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
-         - test_*.*
+         - test/test_*.*
       expire_in: 1 week
 
-convergence:
-   image: $CONTAINER_TEST_IMAGE
-   stage: test
-   only:
-      refs:
-        - master
-      variables:
-        - $CI_RUN_TEST_CONVERGENCE == "yes"
+test/serial:
+   extends: .test_template
    script:
-      # Install dolfin-y package
-      - pip3 install .
-      # Run Python unit tests (parallel)
-      - mpirun -n 2 python3 -u -m pytest -m 'convergence' -vsx test/.
-   artifacts:
-      name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
-      paths:
-         - test_*.*
-      expire_in: 1 week
+      - python3 -u -m pytest -n 8 -o "addopts=$DOLFINY_PYTEST_SELECT" -vsx .
 
-demos:
-   image: $CONTAINER_TEST_IMAGE
-   stage: test
+test/parallel:
+   extends: .test_template
    script:
-      # Install dolfin-y package
+      - mpirun -n 2 python3 -u -m pytest -o "addopts=$DOLFINY_PYTEST_SELECT" -vsx .
+
+.demo_template:
+   stage: demo
+   image: $CONTAINER_COMMIT_IMAGE
+   before_script:
       - pip3 install .
       - cd demo
-      # Run bingham demos (parallel)
-      - cd bingham
-      - mpirun -n 2 python3 bingham_block.py
-      - mpirun -n 2 python3 bingham_lm_block.py
-      - cd ..
-      # Run beam demos (parallel and serial)
-      - cd beam
-      - mpirun -n 2 python3 beam_curved_finitestrain_bstar.py
-      - mpirun -n 1 python3 beam_curved_finitestrain_bstar.py
-      - mpirun -n 2 python3 beam_curved_finitestrain_bzero.py
-      - mpirun -n 1 python3 beam_curved_finitestrain_bzero.py
-      - cd ..
-      # Run vsolid demos (parallel)
-      - cd vsolid
-      - mpirun -n 2 python3 duffing.py
-      - mpirun -n 4 python3 solid_disp_tda.py
-      - mpirun -n 4 python3 solid_dispstress_tda.py
-      - mpirun -n 4 python3 solid_velostress_tda.py
-      - cd ..
-      # Run plasticity demos (parallel)
-      - cd plasticity 
-      - echo "skipping..."  # mpirun -n 8 python3 solid_plasticity_monolithic.py
-      - cd ..
+   rules:
+      - if: ($CI_PIPELINE_SOURCE == "merge_request_event")
+      - if: ($CI_PIPELINE_SOURCE == "schedule")
+      - if: ($CI_COMMIT_BRANCH)
+        changes:
+           - demo/*/*
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
          - demo/*/*
       expire_in: 1 week
 
-docker_latest:
-   image: docker:latest
-   stage: release
+demo/bingham:
+   extends: .demo_template
    script:
-      - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-      - docker pull $CONTAINER_TEST_IMAGE
-      - docker tag $CONTAINER_TEST_IMAGE $CONTAINER_RELEASE_IMAGE
-      - docker push $CONTAINER_RELEASE_IMAGE
-   only:
-      - master
+      - cd bingham
+      - mpirun -n 2 python3 bingham_block.py
+      - mpirun -n 2 python3 bingham_lm_block.py
+
+demo/beam:
+   extends: .demo_template
+   script:
+      - cd beam
+      - mpirun -n 2 python3 beam_curved_finitestrain_bstar.py
+      - mpirun -n 1 python3 beam_curved_finitestrain_bstar.py
+      - mpirun -n 2 python3 beam_curved_finitestrain_bzero.py
+      - mpirun -n 1 python3 beam_curved_finitestrain_bzero.py
+
+demo/vsolid:
+   extends: .demo_template
+   script:
+      - cd vsolid
+      - mpirun -n 2 python3 duffing.py
+      - mpirun -n 4 python3 solid_disp_tda.py
+      - mpirun -n 4 python3 solid_dispstress_tda.py
+      - mpirun -n 4 python3 solid_velostress_tda.py
+
+demo/plasticity:
+   extends: .demo_template
+   script:
+      - cd plasticity 
+      - echo "skipping..."  # mpirun -n 8 python3 solid_plasticity_monolithic.py
