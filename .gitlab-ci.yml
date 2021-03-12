@@ -68,31 +68,44 @@ container release:
 .test_template:
    stage: test
    image: $CONTAINER_COMMIT_IMAGE
-   rules:
-      - if: ($CI_RUN_TEST_CONVERGENCE == "yes")
-        variables:
-           DOLFINY_PYTEST_SELECT: -m 'convergence'
-      - if: ($CI_RUN_TEST_CONVERGENCE != "yes")
-        variables:
-           DOLFINY_PYTEST_SELECT: -m 'not convergence'
    before_script:
       - pip3 install .
       - cd test
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
-         - test/test_*.*
+         - test/*/*.json
+         - test/*/*.pdf
       expire_in: 1 week
 
-test/serial:
+test/unit/serial:
    extends: .test_template
    script:
-      - python3 -u -m pytest -n 8 -o "addopts=$DOLFINY_PYTEST_SELECT" -vsx .
+      - cd unit
+      - python3 -u -m pytest -n 8 -vsx .
 
-test/parallel:
+test/unit/parallel:
    extends: .test_template
    script:
-      - mpirun -n 2 python3 -u -m pytest -o "addopts=$DOLFINY_PYTEST_SELECT" -vsx .
+      - cd unit
+      - mpirun -n 2 python3 -u -m pytest -vsx .
+
+test/convergence:
+   extends: .test_template
+   script:
+      - cd convergence
+      - python3 -u -m pytest -n 8 -m 'convergence' -vsx .
+      - python3 -u -m pytest -n 8 -m 'postprocess' -vsx .
+   rules:
+      - if: ($CI_RUN_TEST_CONVERGENCE == "yes")
+      - if: ($CI_COMMIT_BRANCH)
+        changes:
+         - test/convergence/*.py
+        when: always
+      - exists: 
+         - test/convergence/*.py
+        when: manual
+        allow_failure: true
 
 .demo_template:
    stage: demo

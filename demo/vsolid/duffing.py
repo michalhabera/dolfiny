@@ -141,8 +141,8 @@ for ts in range(1, nT + 1):
 # Compare with reference solution
 import sys
 sys.path.append("../../test")
-from test_odeint import ode_2nd_nonlinear_closed
-from test_odeint import ode_2nd_nonlinear_odeint
+from standalone_odeint import ode_2nd_nonlinear_closed
+from standalone_odeint import ode_2nd_nonlinear_odeint
 
 u_c, v_c, a_c = u_, v_, vt_
 u_e, v_e, a_e = ode_2nd_nonlinear_closed(a, b, u_0, nT=nT, dt=dt.value)
