@@ -23,9 +23,8 @@ def pytest_runtest_teardown(item):
 
 
 def pytest_configure(config):
-    config.addinivalue_line(
-        "markers", "convergence: mark as convergence test (time-consuming)"
-    )
+    config.addinivalue_line("markers", "convergence: mark as convergence test")
+    config.addinivalue_line("markers", "postprocess: mark as postprocess step")
 
 
 @pytest.fixture(scope="module")
