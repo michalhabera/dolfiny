@@ -1,4 +1,5 @@
 import numpy as np
+import logging
 
 import cffi
 import dolfinx
@@ -7,6 +8,7 @@ import basix
 import numba
 import numba.core.typing.cffi_utils as cffi_support
 import ufl
+import dolfiny.expression
 from numba.typed import List
 from petsc4py import PETSc
 from mpi4py import MPI
@@ -57,7 +59,53 @@ class CompiledExpression:
 
 
 def interpolate(expr, target_func):
-    """Compile-interpolate UFL expression.
+    """Interpolate UFL expression.
+
+    Note
+    ----
+    This method decides if interpolation is possible purely as linear combination
+    of some underlying PETSc vectors. In such case this approach is chose.
+    
+    """
+
+    logger = logging.getLogger("dolfiny")
+
+    linear_comb = []
+    try:
+        dolfiny.expression.extract_linear_combination(expr, linear_comb)
+    except:
+        linear_comb = []
+        pass
+    
+    if (len(linear_comb) > 0 and all([func.function_space == linear_comb[0][0].function_space for func, _ in linear_comb])
+            and target_func.function_space == linear_comb[0][0].function_space):
+
+        logger.info("Interpolating linear combination of vectors")
+
+        # If FunctionSpace of all donor and target functions are the same
+        linear_comb_acc = {}
+
+        # Accumulate all repeated occurences of the same function
+        for func, scalar in linear_comb:
+            if func in linear_comb_acc:
+                linear_comb_acc[func] += scalar
+            else:
+                linear_comb_acc[func] = scalar
+
+        for func, scalar in linear_comb_acc.items():
+            with target_func.vector.localForm() as target_local, func.vector.localForm() as func_local:
+                target_local.axpy(scalar, func_local)
+    else:
+        compiled_expression = CompiledExpression(expr, target_func.function_space.ufl_element())
+        interpolate_compiled(compiled_expression, target_func)
+
+
+def interpolate_compiled(compiled_expression, target_func):
+    """Compiled interpolation
+
+    Interpolates UFL expression into target function using FFCx
+    code generation and compilation.
+
 
     Note
     ----
@@ -65,11 +113,6 @@ def interpolate(expr, target_func):
     lagrange/discontinuous lagrange of arbitrary order.
 
     """
-    compiled_expression = CompiledExpression(expr, target_func.function_space.ufl_element())
-    interpolate_cached(compiled_expression, target_func)
-
-
-def interpolate_cached(compiled_expression, target_func):
     kernel = compiled_expression.module.tabulate_expression
 
     # Register complex types

@@ -1,5 +1,6 @@
 import time
 import pytest
+import numpy
 
 from dolfinx.generation import UnitCubeMesh, UnitSquareMesh
 from mpi4py import MPI
@@ -86,3 +87,37 @@ def test_perf():
     t0 = time.time()
     interpolation.interpolate(u1, u2)
     print("Hot", time.time() - t0)
+
+
+def test_linear_combination():
+    N = 100
+    mesh = UnitSquareMesh(MPI.COMM_WORLD, N, N)
+
+    P1 = FunctionSpace(mesh, ("P", 1))
+
+    u1 = Function(P1)
+    u2 = Function(P1)
+    u3 = Function(P1)
+
+    f = Function(P1)
+    g = Function(P1)
+
+    with u1.vector.localForm() as local:
+        local.set(1.0)
+    with u2.vector.localForm() as local:
+        local.set(2.0)
+    with u3.vector.localForm() as local:
+        local.set(3.0)
+
+    expr = 2.0 * (3.0 * u1 + u2) - u3 / 3.0 + 4.0 * (u1 + u3)
+
+    t0 = time.time()
+    interpolation.interpolate(expr, f)
+    print(f"Linear combination {time.time() - t0}")
+
+    t0 = time.time()
+    compiled_expression = interpolation.CompiledExpression(expr, g.function_space.ufl_element())
+    interpolation.interpolate_compiled(compiled_expression, g)
+    print(f"Compiled interpolation {time.time() - t0}")
+
+    assert numpy.isclose((g.vector - f.vector).norm(), 0.0)
