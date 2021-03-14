@@ -65,7 +65,7 @@ def interpolate(expr, target_func):
     ----
     This method decides if interpolation is possible purely as linear combination
     of some underlying PETSc vectors. In such case this approach is chose.
-    
+
     """
 
     logger = logging.getLogger("dolfiny")
@@ -73,11 +73,12 @@ def interpolate(expr, target_func):
     linear_comb = []
     try:
         dolfiny.expression.extract_linear_combination(expr, linear_comb)
-    except:
+    except RuntimeError:
         linear_comb = []
         pass
-    
-    if (len(linear_comb) > 0 and all([func.function_space == linear_comb[0][0].function_space for func, _ in linear_comb])
+
+    if (len(linear_comb) > 0
+        and all([func.function_space == linear_comb[0][0].function_space for func, _ in linear_comb])
             and target_func.function_space == linear_comb[0][0].function_space):
 
         logger.info("Interpolating linear combination of vectors")

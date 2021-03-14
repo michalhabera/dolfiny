@@ -164,8 +164,8 @@ def assemble(e, dx):
 def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
     """Extract linear combination from UFL expression.
 
-    Assumes the expression could be equivalently written as :math:`\sum_i c_i u_i`
-    where :math:`c_i` are known scalar coefficients and :math:`u_i` are dolfinx Functions.
+    Assumes the expression could be equivalently written as ``\\sum_i c_i u_i``
+    where ``c_i`` are known scalar coefficients and ``u_i`` are dolfinx Functions.
     If this assumption fails, raises a RuntimeError.
 
     Returns
@@ -177,7 +177,7 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
     Returned summands are not uniquely accumulated, i.e. could return (u, 1.0) and (u, 2.0).
 
     """
-    from ufl.classes import ComponentTensor, Sum, Product, Division, ScalarValue
+    from ufl.classes import Sum, Product, Division, ScalarValue
 
     if isinstance(e, dolfinx.Function):
         linear_comb.append((e, scalar_weight))
