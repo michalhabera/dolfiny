@@ -82,7 +82,7 @@ def interpolate(expr, target_func):
         and all([func.function_space == linear_comb[0][0].function_space for func, _ in linear_comb])
             and target_func.function_space == linear_comb[0][0].function_space):
 
-        logger.warn(f"Interpolating linear combination of vectors for {expr_float}")
+        logger.info(f"Interpolating linear combination of vectors for {expr_float}")
 
         # If FunctionSpace of all donor and target functions are the same
         linear_comb_acc = {}
