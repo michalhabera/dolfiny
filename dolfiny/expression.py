@@ -1,5 +1,7 @@
 import ufl
 import dolfinx
+from ufl.corealg.multifunction import MultiFunction
+from ufl.algorithms.map_integrands import map_integrand_dags
 
 
 def evaluate(e, u, u0):
@@ -171,14 +173,15 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
     Returns
     -------
     Tuples (u_i, c_i) which represent summands in the above sum.
+    Returned summands are not uniquely accumulated, i.e. could return (u, 1.0) and (u, 2.0).
 
     Note
     ----
-    Returned summands are not uniquely accumulated, i.e. could return (u, 1.0) and (u, 2.0).
+    Constant nodes (dolfinx.Constant) are not handled. So the expression which has the above
+    form where ``c_i`` could contain Constant must have first these nodes numerically evaluated.
 
     """
     from ufl.classes import Sum, Product, Division, ScalarValue
-
     if isinstance(e, dolfinx.Function):
         linear_comb.append((e, scalar_weight))
     elif isinstance(e, (Product, Division)):
@@ -208,3 +211,18 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
         raise RuntimeError(f"Expression type {type(e)} not handled")
 
     return linear_comb
+
+
+class ConstantEvaluator(MultiFunction):
+    expr = MultiFunction.reuse_if_untouched
+
+    def constant(self, a):
+        if a.value.shape == ():
+            return float(a.value)
+        else:
+            return ufl.as_tensor(a.value)
+
+
+def evaluate_constants(expr):
+    """Transform Constant nodes into numeric UFL nodes"""
+    return map_integrand_dags(ConstantEvaluator(), expr)

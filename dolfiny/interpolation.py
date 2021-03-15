@@ -72,7 +72,8 @@ def interpolate(expr, target_func):
 
     linear_comb = []
     try:
-        dolfiny.expression.extract_linear_combination(expr, linear_comb)
+        expr_float = dolfiny.expression.evaluate_constants(expr)
+        dolfiny.expression.extract_linear_combination(expr_float, linear_comb)
     except RuntimeError:
         linear_comb = []
         pass
@@ -81,7 +82,7 @@ def interpolate(expr, target_func):
         and all([func.function_space == linear_comb[0][0].function_space for func, _ in linear_comb])
             and target_func.function_space == linear_comb[0][0].function_space):
 
-        logger.info("Interpolating linear combination of vectors")
+        logger.warn(f"Interpolating linear combination of vectors for {expr_float}")
 
         # If FunctionSpace of all donor and target functions are the same
         linear_comb_acc = {}
@@ -92,6 +93,9 @@ def interpolate(expr, target_func):
                 linear_comb_acc[func] += scalar
             else:
                 linear_comb_acc[func] = scalar
+
+        with target_func.vector.localForm() as target_local:
+            target_local.set(0.0)
 
         for func, scalar in linear_comb_acc.items():
             with target_func.vector.localForm() as target_local, func.vector.localForm() as func_local:

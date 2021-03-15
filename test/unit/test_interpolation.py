@@ -5,7 +5,7 @@ import numpy
 from dolfinx.generation import UnitCubeMesh, UnitSquareMesh
 from mpi4py import MPI
 import ufl
-from dolfinx import Function, FunctionSpace, TensorFunctionSpace
+from dolfinx import Function, FunctionSpace, TensorFunctionSpace, Constant
 from dolfiny import interpolation, projection
 from petsc4py import PETSc
 
@@ -109,7 +109,10 @@ def test_linear_combination():
     with u3.vector.localForm() as local:
         local.set(3.0)
 
-    expr = 2.0 * (3.0 * u1 + u2) - u3 / 3.0 + 4.0 * (u1 + u3)
+    c1 = Constant(mesh, 3.14)
+    c2 = Constant(mesh, 0.1)
+
+    expr = (c1 + c2) * (2.0 * (3.0 * u1 + u2) - u3 / 3.0 + 4 * (u1 + c2 * u3))
 
     t0 = time.time()
     interpolation.interpolate(expr, f)
