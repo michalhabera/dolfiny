@@ -15,7 +15,7 @@ RUN pip3 install git+https://github.com/FEniCS/ufl.git@$UFL_GIT_COMMIT \
     && \
     pip3 install git+https://github.com/FEniCS/ffcx.git@$FFCX_GIT_COMMIT
 
-RUN git clone --branch master https://github.com/FEniCS/dolfinx.git \
+RUN git clone --branch main https://github.com/FEniCS/dolfinx.git \
     && \
     cd dolfinx \
     && \
