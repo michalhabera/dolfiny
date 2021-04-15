@@ -3,15 +3,21 @@ FROM dolfinx/dev-env
 ARG DOLFINY_BUILD_TYPE=Release
 
 ARG UFL_GIT_COMMIT=d60cd09
-ARG BASIX_GIT_COMMIT=a702f51
-ARG FFCX_GIT_COMMIT=bd29ed3
-ARG DOLFINX_GIT_COMMIT=146860e
+ARG BASIX_GIT_COMMIT=27d2170
+ARG FFCX_GIT_COMMIT=30e67b3
+ARG DOLFINX_GIT_COMMIT=471e95f
 
 ENV PYTHONDONTWRITEBYTECODE=1
 
-RUN pip3 install git+https://github.com/FEniCS/ufl.git@$UFL_GIT_COMMIT \
+RUN git clone --branch main https://github.com/FEniCS/basix.git \
+        && cd basix \
+        && git checkout $BASIX_GIT_COMMIT \
+        && cmake -G Ninja -DCMAKE_BUILD_TYPE=$DOLFINY_BUILD_TYPE -B build -S . \
+        && cmake --build build \
+        && cmake --install build \
+        && python3 -m pip install ./python \
     && \
-    pip3 install git+https://github.com/FEniCS/basix.git@$BASIX_GIT_COMMIT \
+    pip3 install git+https://github.com/FEniCS/ufl.git@$UFL_GIT_COMMIT \
     && \
     pip3 install git+https://github.com/FEniCS/ffcx.git@$FFCX_GIT_COMMIT
 
