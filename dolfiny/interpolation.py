@@ -3,7 +3,7 @@ import logging
 
 import cffi
 import dolfinx
-import ffcx.basix_interface
+import ffcx.element_interface
 import basix
 import numba
 import numba.core.typing.cffi_utils as cffi_support
@@ -38,13 +38,13 @@ class CompiledExpression:
             target_el = sub_elements[0]
 
         # Identify points at which to evaluate the expression
-        self.basix_element = ffcx.basix_interface.create_basix_element(target_el)
+        self.basix_element = ffcx.element_interface.create_element(target_el)
 
-        if type(self.basix_element) == ffcx.basix_interface.BasixElement:
+        if type(self.basix_element) == ffcx.element_interface.BasixElement:
             mapping_types = [self.basix_element.element.mapping_type]
-        elif type(self.basix_element) == ffcx.basix_interface.BlockedElement:
+        elif type(self.basix_element) == ffcx.element_interface.BlockedElement:
             mapping_types = [self.basix_element.sub_element.element.mapping_type]
-        elif type(self.basix_element) == ffcx.basix_interface.MixedElement:
+        elif type(self.basix_element) == ffcx.element_interface.MixedElement:
             mapping_types = [e.element.mapping_type for e in self.basix_element.sub_elements]
         else:
             raise NotImplementedError("Unsupported element type")
