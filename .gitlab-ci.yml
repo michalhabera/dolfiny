@@ -74,8 +74,7 @@ container release:
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
-         - test/*/*.json
-         - test/*/*.pdf
+         - test/*/*
       expire_in: 1 week
 
 test/unit/serial:

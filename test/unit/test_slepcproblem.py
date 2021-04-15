@@ -52,8 +52,8 @@ def test_neohooke():
     # opts["eps_non_hermitian"] = True
     opts["eps_tol"] = 1.0e-14
     opts["eps_max_it"] = 1000
-    opts["eps_error_relative"] = "::ascii_info_detail"
-    opts["eps_monitor"] = "::ascii_info_detail"
+    opts["eps_error_relative"] = "ascii::ascii_info_detail"
+    opts["eps_monitor"] = "ascii"
 
     slepcp = dolfiny.slepcblockproblem.SLEPcBlockProblem([F0, F1], [u, p], lmbda0, prefix="neohooke")
     slepcp.solve()
