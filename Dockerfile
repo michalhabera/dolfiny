@@ -28,6 +28,6 @@ RUN git clone --branch main https://github.com/FEniCS/dolfinx.git \
         && cmake -G Ninja -DCMAKE_BUILD_TYPE=$DOLFINY_BUILD_TYPE -B build -S ./cpp/ \
         && cmake --build build \
         && cmake --install build \
-        && python3 -m pip install ./python \
+        && python3 -m pip install ./python
 
 RUN pip3 install matplotlib
