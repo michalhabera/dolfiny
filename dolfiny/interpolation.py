@@ -38,21 +38,23 @@ class CompiledExpression:
             target_el = sub_elements[0]
 
         # Identify points at which to evaluate the expression
-        self.basix_element = ffcx.element_interface.create_element(target_el)
+        self.ffcx_element = ffcx.element_interface.create_element(target_el)
 
-        if type(self.basix_element) == ffcx.element_interface.BasixElement:
-            mapping_types = [self.basix_element.element.mapping_type]
-        elif type(self.basix_element) == ffcx.element_interface.BlockedElement:
-            mapping_types = [self.basix_element.sub_element.element.mapping_type]
-        elif type(self.basix_element) == ffcx.element_interface.MixedElement:
-            mapping_types = [e.element.mapping_type for e in self.basix_element.sub_elements]
+        if isinstance(self.ffcx_element, ffcx.element_interface.BlockedElement):
+            mapping_types = [self.ffcx_element.sub_element.element.mapping_type]
+        elif isinstance(self.ffcx_element, ffcx.element_interface.MixedElement):
+            mapping_types = [e.element.mapping_type for e in self.ffcx_element.sub_elements]
+        elif isinstance(self.ffcx_element, ffcx.element_interface.BasixElement):
+            mapping_types = [self.ffcx_element.element.mapping_type]
+        elif isinstance(self.ffcx_element, ffcx.element_interface.QuadratureElement):
+            mapping_types = [basix.MappingType.identity]
         else:
             raise NotImplementedError("Unsupported element type")
 
         if not all(x == basix.MappingType.identity for x in mapping_types):
             raise NotImplementedError("Only affine mapped function spaces supported")
 
-        nodes = self.basix_element.points
+        nodes = self.ffcx_element.points
 
         module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))
         self.module = module
@@ -126,8 +128,6 @@ def interpolate_compiled(compiled_expression, target_func):
     cffi_support.register_type(ffi.typeof('float _Complex'),
                                numba.types.complex64)
 
-    reference_geometry = compiled_expression.basix_element.reference_geometry
-
     # Unpack mesh and dofmap data
     mesh = target_func.function_space.mesh
     geom_dofmap = mesh.geometry.dofmap.array
@@ -166,7 +166,7 @@ def interpolate_compiled(compiled_expression, target_func):
         constants_vector = np.hstack([c.value.flatten() for c in constants])
 
     value_size = int(np.product(compiled_expression.expr.ufl_shape))
-    basix_space_dim = compiled_expression.basix_element.dim
+    basix_space_dim = compiled_expression.ffcx_element.dim
     space_dim = target_func.function_space.element.space_dimension()
 
     dofmap_bs = target_func.function_space.dofmap.bs
@@ -185,14 +185,14 @@ def interpolate_compiled(compiled_expression, target_func):
     with target_func.vector.localForm() as b:
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
-                            coeffs_vectors, coeffs_dofmaps, coeffs_bs, constants_vector, reference_geometry,
+                            coeffs_vectors, coeffs_dofmaps, coeffs_bs, constants_vector,
                             coeffs_sizes, gdim, basix_space_dim, space_dim,
                             value_size, subel_map, dofmap_bs, element_bs)
 
 
 @numba.njit(fastmath=True)
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps, coeffs_bs,
-                        const_vector, reference_geometry, coeffs_sizes, gdim, fiat_space_dim,
+                        const_vector, coeffs_sizes, gdim, fiat_space_dim,
                         space_dim, value_size, subel_map, dofmap_bs, element_bs):
     geom_dofmap, geom_pos, geom = mesh
 
