@@ -32,14 +32,17 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
         l0 = gmsh.model.geo.addLine(p0, p1)
 
         # Create sectors by revolving the cross-sectional line
-        s0 = gmsh.model.geo.revolve([1, l0], px, py, pz, ax, ay, az,
+        s0 = gmsh.model.geo.revolve([(1, l0)], px, py, pz, ax, ay, az,
                                     angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
-        s1 = gmsh.model.geo.revolve(s0[0], px, py, pz, ax, ay, az,
+        s1 = gmsh.model.geo.revolve([s0[0]], px, py, pz, ax, ay, az,
                                     angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
-        s2 = gmsh.model.geo.revolve(s1[0], px, py, pz, ax, ay, az,
+        s2 = gmsh.model.geo.revolve([s1[0]], px, py, pz, ax, ay, az,
                                     angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
-        s3 = gmsh.model.geo.revolve(s2[0], px, py, pz, ax, ay, az,
+        s3 = gmsh.model.geo.revolve([s2[0]], px, py, pz, ax, ay, az,
                                     angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
+
+        # Sync
+        gmsh.model.geo.synchronize()
 
         # Define physical groups for subdomains (! target tag > 0)
         domain = 1

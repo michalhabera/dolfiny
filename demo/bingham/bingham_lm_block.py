@@ -144,7 +144,7 @@ def J2(A):
 
 def rJ2(A):
     """Square root of J2."""
-    return ufl.sqrt(J2(A) + np.finfo(np.float).eps)  # eps for AD
+    return ufl.sqrt(J2(A) + np.finfo(np.float64).eps)  # eps for AD
 
 
 def T(v, p):
