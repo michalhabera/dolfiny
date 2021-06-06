@@ -40,7 +40,7 @@ def mesh_annulus_gmshapi(name="annulus", iR=0.5, oR=3.0, nR=21, nT=16, x0=0.0, y
                                     angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
         s3 = gmsh.model.geo.revolve([s2[0]], px, py, pz, ax, ay, az,
                                     angle=gmsh.pi / 2, numElements=[nT], recombine=do_quads)
-        
+
         # Sync
         gmsh.model.geo.synchronize()
 
