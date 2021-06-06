@@ -47,14 +47,14 @@ def mesh_block3d_gmshapi(name="block3d", dx=1.0, dy=1.0, dz=1.0, nx=10, ny=10, n
 
         # Create block by extrusion from a point
         p0 = gmsh.model.geo.addPoint(x0, y0, z0)
-        # e0 = gmsh.model.geo.extrude([tdim - 3, p0], dx, 0.0, 0.0, recombine=do_quads)
-        e0 = gmsh.model.geo.extrude([tdim - 3, p0], dx, 0.0, 0.0, numElements=nele(nx), heights=prog(nx, px), recombine=do_quads)  # noqa: E501
+        # e0 = gmsh.model.geo.extrude([(tdim - 3, p0)], dx, 0.0, 0.0, recombine=do_quads)
+        e0 = gmsh.model.geo.extrude([(tdim - 3, p0)], dx, 0.0, 0.0, numElements=nele(nx), heights=prog(nx, px), recombine=do_quads)  # noqa: E501
         l0 = e0[1][1]
-        # e1 = gmsh.model.geo.extrude([tdim - 2, l0], 0.0, dy, 0.0, recombine=do_quads)
-        e1 = gmsh.model.geo.extrude([tdim - 2, l0], 0.0, dy, 0.0, numElements=nele(ny), heights=prog(ny, py), recombine=do_quads)  # noqa: E501
+        # e1 = gmsh.model.geo.extrude([(tdim - 2, l0)], 0.0, dy, 0.0, recombine=do_quads)
+        e1 = gmsh.model.geo.extrude([(tdim - 2, l0)], 0.0, dy, 0.0, numElements=nele(ny), heights=prog(ny, py), recombine=do_quads)  # noqa: E501
         s0 = e1[1][1]
-        # e2 = gmsh.model.geo.extrude([tdim - 1, s0], 0.0, 0.0, dz, recombine=do_quads)
-        e2 = gmsh.model.geo.extrude([tdim - 1, s0], 0.0, 0.0, dz, numElements=nele(nz), heights=prog(nz, pz), recombine=do_quads)  # noqa: E501, F841
+        # e2 = gmsh.model.geo.extrude([(tdim - 1, s0)], 0.0, 0.0, dz, recombine=do_quads)
+        e2 = gmsh.model.geo.extrude([(tdim - 1, s0)], 0.0, 0.0, dz, numElements=nele(nz), heights=prog(nz, pz), recombine=do_quads)  # noqa: E501, F841
 
         # Synchronize
         gmsh.model.geo.synchronize()
