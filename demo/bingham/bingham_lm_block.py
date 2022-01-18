@@ -57,21 +57,21 @@ ring_outer = interfaces_keys["ring_outer"]
 domain = subdomains_keys["domain"]
 
 # Fluid material parameters
-rho = dolfinx.Constant(mesh, 2.0)  # [kg/m^3]
-mu = dolfinx.Constant(mesh, 1.0)  # [kg/m/s]
-tau_zero = dolfinx.Constant(mesh, 0.2)  # [kg/m/s^2]
-tau_zero_regularisation = dolfinx.Constant(mesh, 1.e-3)  # [-]
+rho = dolfinx.fem.Constant(mesh, 2.0)  # [kg/m^3]
+mu = dolfinx.fem.Constant(mesh, 1.0)  # [kg/m/s]
+tau_zero = dolfinx.fem.Constant(mesh, 0.2)  # [kg/m/s^2]
+tau_zero_regularisation = dolfinx.fem.Constant(mesh, 1.e-3)  # [-]
 
 # Max inner ring velocity
 v_inner_max = 0.1  # [m/s]
 # Normal and tangential velocity at inner ring
-v_n = dolfinx.Constant(mesh, 0.0)  # [m/s]
-v_t = dolfinx.Constant(mesh, 0.0)  # [m/s] -- value set/updated in analysis
+v_n = dolfinx.fem.Constant(mesh, 0.0)  # [m/s]
+v_t = dolfinx.fem.Constant(mesh, 0.0)  # [m/s] -- value set/updated in analysis
 
 # Global time
-time = dolfinx.Constant(mesh, 0.0)  # [s]
+time = dolfinx.fem.Constant(mesh, 0.0)  # [s]
 # Time step size
-dt = dolfinx.Constant(mesh, 0.05)  # [s]
+dt = dolfinx.fem.Constant(mesh, 0.05)  # [s]
 # Number of time steps
 nT = 80
 
@@ -90,21 +90,21 @@ Ve = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
 Pe = ufl.FiniteElement("CG", mesh.ufl_cell(), 1)
 Le = ufl.FiniteElement("CG", mesh.ufl_cell(), 2)
 
-V = dolfinx.FunctionSpace(mesh, Ve)
-P = dolfinx.FunctionSpace(mesh, Pe)
-N = dolfinx.FunctionSpace(mesh, Le)
-T = dolfinx.FunctionSpace(mesh, Le)
+V = dolfinx.fem.FunctionSpace(mesh, Ve)
+P = dolfinx.fem.FunctionSpace(mesh, Pe)
+N = dolfinx.fem.FunctionSpace(mesh, Le)
+T = dolfinx.fem.FunctionSpace(mesh, Le)
 
 # Define functions
-v = dolfinx.Function(V, name="v")
-p = dolfinx.Function(P, name="p")
-n = dolfinx.Function(N, name="n")
-t = dolfinx.Function(T, name="t")
+v = dolfinx.fem.Function(V, name="v")
+p = dolfinx.fem.Function(P, name="p")
+n = dolfinx.fem.Function(N, name="n")
+t = dolfinx.fem.Function(T, name="t")
 
-vt = dolfinx.Function(V, name="vt")
-pt = dolfinx.Function(P, name="pt")
-nt = dolfinx.Function(N, name="nt")
-tt = dolfinx.Function(T, name="tt")
+vt = dolfinx.fem.Function(V, name="vt")
+pt = dolfinx.fem.Function(P, name="pt")
+nt = dolfinx.fem.Function(N, name="nt")
+tt = dolfinx.fem.Function(T, name="tt")
 
 δv = ufl.TestFunction(V)
 δp = ufl.TestFunction(P)
@@ -117,8 +117,8 @@ mt = [vt, pt, nt, tt]
 δm = [δv, δp, δn, δt]
 
 # Create other functions
-v_vector_o = dolfinx.Function(V)
-p_scalar_i = dolfinx.Function(P)
+v_vector_o = dolfinx.fem.Function(V)
+p_scalar_i = dolfinx.fem.Function(P)
 
 # Set up restriction
 rdofsV = dolfiny.mesh.locate_dofs_topological(V, subdomains, domain)
@@ -221,8 +221,8 @@ for time_step in range(1, nT + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velocity ring_outer
-        dolfinx.fem.DirichletBC(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
+        dolfinx.fem.dirichletbc(v_vector_o, ring_outer_dofs_V),  # velocity ring_outer
+        dolfinx.fem.dirichletbc(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
     ]
 
     # Solve nonlinear problem

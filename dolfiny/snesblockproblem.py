@@ -3,7 +3,7 @@ import typing
 import numpy as np
 from mpi4py import MPI
 
-import dolfinx
+import dolfinx.fem
 import ufl
 from dolfiny.function import functions_to_vec, vec_to_functions
 from dolfiny.utils import pprint
@@ -39,10 +39,10 @@ class SNESBlockProblem():
         if not len(self.u) > 0:
             raise RuntimeError("List of provided solution functions is empty!")
 
-        if not isinstance(self.u[0], dolfinx.Function):
+        if not isinstance(self.u[0], dolfinx.fem.Function):
             raise RuntimeError("Provided solution function not of type dolfinx.Function!")
 
-        self.comm = self.u[0].function_space.mesh.mpi_comm()
+        self.comm = self.u[0].function_space.mesh.comm
 
         if J_form is None:
             self.J_form = [[None for i in range(len(self.u))] for j in range(len(self.u))]
@@ -58,6 +58,9 @@ class SNESBlockProblem():
         else:
             self.J_form = J_form
 
+        self.F_form = dolfinx.fem.form(self.F_form)
+        self.J_form = dolfinx.fem.form(self.J_form)
+
         self.bcs = bcs
         self.restriction = restriction
 
@@ -66,7 +69,7 @@ class SNESBlockProblem():
         # Prepare empty functions on the corresponding sub-spaces
         # These store solution sub-functions
         for i, ui in enumerate(self.u):
-            u = dolfinx.Function(self.u[i].function_space, name=self.u[i].name)
+            u = dolfinx.fem.Function(self.u[i].function_space, name=self.u[i].name)
             self.solution.append(u)
 
         self.norm_r = {}
@@ -142,16 +145,18 @@ class SNESBlockProblem():
         vec_to_functions(x, self.u)
         x = x.getNestSubVecs()
 
-        bcs1 = dolfinx.cpp.fem.bcs_cols(dolfinx.fem.assemble._create_cpp_form(self.J_form), self.bcs)
-        for L, F_sub, a, bc in zip(self.F_form, F.getNestSubVecs(), self.J_form, bcs1):
+        # bcs1 = dolfinx.cpp.fem.bcs_cols(dolfinx.fem.assemble._create_cpp_form(self.J_form), self.bcs)
+        bcs1 = dolfinx.fem.bcs.bcs_by_block(dolfinx.fem.forms.extract_function_spaces(self.J_form, 1), self.bcs)
+        for L, F_sub, a in zip(self.F_form, F.getNestSubVecs(), self.J_form):
             with F_sub.localForm() as F_sub_local:
                 F_sub_local.set(0.0)
             dolfinx.fem.assemble_vector(F_sub, L)
-            dolfinx.fem.apply_lifting(F_sub, a, bc, x0=x, scale=-1.0)
+            dolfinx.fem.apply_lifting(F_sub, a, bcs1, x0=x, scale=-1.0)
             F_sub.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
 
         # Set bc value in RHS
-        bcs0 = dolfinx.cpp.fem.bcs_rows(dolfinx.fem.assemble._create_cpp_form(self.F_form), self.bcs)
+        # bcs0 = dolfinx.cpp.fem.bcs_rows(dolfinx.fem.assemble._create_cpp_form(self.F_form), self.bcs)
+        bcs0 = dolfinx.fem.bcs.bcs_by_block(dolfinx.fem.forms.extract_function_spaces(self.F_form), self.bcs)
         for F_sub, bc, u_sub in zip(F.getNestSubVecs(), bcs0, x):
             dolfinx.fem.set_bc(F_sub, bc, u_sub, -1.0)
 

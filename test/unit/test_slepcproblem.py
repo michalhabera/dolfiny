@@ -4,27 +4,27 @@ import dolfiny.slepcblockproblem
 import dolfiny.la
 
 import ufl
-from dolfinx import Function, FunctionSpace, VectorFunctionSpace
-from dolfinx.generation import UnitCubeMesh
-from dolfinx.io import XDMFFile
+import dolfinx.fem
+import dolfinx.mesh
+import dolfinx.io
 from mpi4py import MPI
 from petsc4py import PETSc
 
 
 def test_neohooke():
-    mesh = UnitCubeMesh(MPI.COMM_WORLD, 7, 7, 7)
-    V = VectorFunctionSpace(mesh, ("P", 1))
-    P = FunctionSpace(mesh, ("P", 1))
+    mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 7, 7, 7)
+    V = dolfinx.fem.VectorFunctionSpace(mesh, ("P", 1))
+    P = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
 
-    L = FunctionSpace(mesh, ("DG", 0))
+    L = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
 
-    u = Function(V, name="u")
+    u = dolfinx.fem.Function(V, name="u")
     v = ufl.TestFunction(V)
 
-    p = Function(P, name="p")
+    p = dolfinx.fem.Function(P, name="p")
     q = ufl.TestFunction(P)
 
-    lmbda0 = Function(L)
+    lmbda0 = dolfinx.fem.Function(L)
 
     d = mesh.topology.dim
     Id = ufl.Identity(d)
@@ -61,7 +61,7 @@ def test_neohooke():
     # mat = dolfiny.la.petsc_to_scipy(slepcp.eps.getOperators()[0])
     # eigvals, eigvecs = linalg.eigsh(mat, which="SM", k=nev)
 
-    with XDMFFile(MPI.COMM_WORLD, "eigvec.xdmf", "w") as ofile:
+    with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "eigvec.xdmf", "w") as ofile:
         ofile.write_mesh(mesh)
         for i in range(nev):
             eigval, ur, ui = slepcp.getEigenpair(i)

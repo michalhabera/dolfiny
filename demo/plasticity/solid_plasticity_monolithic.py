@@ -57,16 +57,16 @@ surface_1 = interfaces_keys["surface_grip_left"]
 surface_2 = interfaces_keys["surface_grip_right"]
 
 # Solid: material parameters
-mu = dolfinx.Constant(mesh, 100)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.Constant(mesh, 10.)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
-Sy = dolfinx.Constant(mesh, 0.3)  # initial yield stress [GPa]
-bh = dolfinx.Constant(mesh, 20.)  # isotropic hardening: saturation rate  [-]
-qh = dolfinx.Constant(mesh, 0.1)  # isotropic hardening: saturation value [GPa]
-bb = dolfinx.Constant(mesh, 250)  # kinematic hardening: saturation rate  [-]
-qb = dolfinx.Constant(mesh, 0.1)  # kinematic hardening: saturation value [GPa] (includes factor 2/3)
+mu = dolfinx.fem.Constant(mesh, 100.0)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
+la = dolfinx.fem.Constant(mesh, 10.00)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+Sy = dolfinx.fem.Constant(mesh, 0.300)  # initial yield stress [GPa]
+bh = dolfinx.fem.Constant(mesh, 20.00)  # isotropic hardening: saturation rate  [-]
+qh = dolfinx.fem.Constant(mesh, 0.100)  # isotropic hardening: saturation value [GPa]
+bb = dolfinx.fem.Constant(mesh, 250.0)  # kinematic hardening: saturation rate  [-]
+qb = dolfinx.fem.Constant(mesh, 0.100)  # kinematic hardening: saturation value [GPa] (includes factor 2/3)
 
 # Solid: load parameters
-μ = dolfinx.Constant(mesh, 1.0)  # load factor
+μ = dolfinx.fem.Constant(mesh, 1.0)  # load factor
 u_bar = lambda x: μ.value * np.array([l0 * 0.01 * np.sign(x[0]), 0.0 * x[1], 0.0 * x[2]])  # noqa: E731 [m]
 
 # Define integration measures
@@ -78,34 +78,34 @@ Ve = ufl.VectorElement("CG", mesh.ufl_cell(), p)
 Te = ufl.TensorElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default", symmetry=True)
 Se = ufl.FiniteElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default")
 
-Vf = dolfinx.FunctionSpace(mesh, Ve)
-Tf = dolfinx.FunctionSpace(mesh, Te)
-Sf = dolfinx.FunctionSpace(mesh, Se)
+Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
+Tf = dolfinx.fem.FunctionSpace(mesh, Te)
+Sf = dolfinx.fem.FunctionSpace(mesh, Se)
 
 # Define functions
-u = dolfinx.Function(Vf, name="u")  # displacement
-P = dolfinx.Function(Tf, name="P")  # plastic strain
-h = dolfinx.Function(Sf, name="h")  # isotropic hardening
-B = dolfinx.Function(Tf, name="B")  # kinematic hardening
+u = dolfinx.fem.Function(Vf, name="u")  # displacement
+P = dolfinx.fem.Function(Tf, name="P")  # plastic strain
+h = dolfinx.fem.Function(Sf, name="h")  # isotropic hardening
+B = dolfinx.fem.Function(Tf, name="B")  # kinematic hardening
 
-u0 = dolfinx.Function(Vf, name="u0")
-P0 = dolfinx.Function(Tf, name="P0")
-h0 = dolfinx.Function(Sf, name="h0")
-B0 = dolfinx.Function(Tf, name="B0")
+u0 = dolfinx.fem.Function(Vf, name="u0")
+P0 = dolfinx.fem.Function(Tf, name="P0")
+h0 = dolfinx.fem.Function(Sf, name="h0")
+B0 = dolfinx.fem.Function(Tf, name="B0")
 
-S0 = dolfinx.Function(Tf, name="S0")
+S0 = dolfinx.fem.Function(Tf, name="S0")
 
-u_ = dolfinx.Function(Vf, name="u_")  # boundary displacement
+u_ = dolfinx.fem.Function(Vf, name="u_")  # boundary displacement
 
-Po = dolfinx.Function(dolfinx.TensorFunctionSpace(mesh, ('DG', 0)), name="P")  # for output
-Bo = dolfinx.Function(dolfinx.TensorFunctionSpace(mesh, ('DG', 0)), name="B")
-So = dolfinx.Function(dolfinx.TensorFunctionSpace(mesh, ('DG', 0)), name="S")
-ho = dolfinx.Function(dolfinx.FunctionSpace(mesh, ('DG', 0)), name="h")
+Po = dolfinx.fem.Function(dolfinx.fem.TensorFunctionSpace(mesh, ('DG', 0)), name="P")  # for output
+Bo = dolfinx.fem.Function(dolfinx.fem.TensorFunctionSpace(mesh, ('DG', 0)), name="B")
+So = dolfinx.fem.Function(dolfinx.fem.TensorFunctionSpace(mesh, ('DG', 0)), name="S")
+ho = dolfinx.fem.Function(dolfinx.fem.FunctionSpace(mesh, ('DG', 0)), name="h")
 
 δu = ufl.TestFunction(Vf)
 δP = ufl.TestFunction(Tf)
 δh = ufl.TestFunction(Sf)
-δB = ufl.TestFunction(dolfinx.FunctionSpace(mesh, Te))  # to be distinct from δP
+δB = ufl.TestFunction(dolfinx.fem.FunctionSpace(mesh, Te))  # to be distinct from δP
 
 # Define state and variation of state as (ordered) list of functions
 m, δm = [u, P, h, B], [δu, δP, δh, δB]
@@ -211,8 +211,8 @@ for step, factor in enumerate(cycles):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(u_, surface_1_dofs_Vf),  # disp left
-        dolfinx.fem.DirichletBC(u_, surface_2_dofs_Vf),  # disp right
+        dolfinx.fem.dirichletbc(u_, surface_1_dofs_Vf),  # disp left
+        dolfinx.fem.dirichletbc(u_, surface_2_dofs_Vf),  # disp right
     ]
 
     # Solve nonlinear problem

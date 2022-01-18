@@ -55,18 +55,18 @@ ring_inner = interfaces_keys["ring_inner"]
 ring_outer = interfaces_keys["ring_outer"]
 
 # Fluid material parameters
-rho = dolfinx.Constant(mesh, 2.0)  # [kg/m^3]
-mu = dolfinx.Constant(mesh, 1.0)  # [kg/m/s]
-tau_zero = dolfinx.Constant(mesh, 0.2)  # [kg/m/s^2]
-tau_zero_regularisation = dolfinx.Constant(mesh, 1.e-3)  # [-]
+rho = dolfinx.fem.Constant(mesh, 2.0)  # [kg/m^3]
+mu = dolfinx.fem.Constant(mesh, 1.0)  # [kg/m/s]
+tau_zero = dolfinx.fem.Constant(mesh, 0.2)  # [kg/m/s^2]
+tau_zero_regularisation = dolfinx.fem.Constant(mesh, 1.e-3)  # [-]
 
 # Max inner ring velocity
 v_inner_max = 0.1  # [m/s]
 
 # Global time
-time = dolfinx.Constant(mesh, 0.0)  # [s]
+time = dolfinx.fem.Constant(mesh, 0.0)  # [s]
 # Time step size
-dt = dolfinx.Constant(mesh, 0.05)  # [s]
+dt = dolfinx.fem.Constant(mesh, 0.05)  # [s]
 # Number of time steps
 nT = 80
 
@@ -102,15 +102,15 @@ def v_vector_o_(x):
 Ve = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
 Pe = ufl.FiniteElement("CG", mesh.ufl_cell(), 1)
 
-V = dolfinx.FunctionSpace(mesh, Ve)
-P = dolfinx.FunctionSpace(mesh, Pe)
+V = dolfinx.fem.FunctionSpace(mesh, Ve)
+P = dolfinx.fem.FunctionSpace(mesh, Pe)
 
 # Define functions
-v = dolfinx.Function(V, name="v")
-p = dolfinx.Function(P, name="p")
+v = dolfinx.fem.Function(V, name="v")
+p = dolfinx.fem.Function(P, name="p")
 
-vt = dolfinx.Function(V, name="vt")
-pt = dolfinx.Function(P, name="pt")
+vt = dolfinx.fem.Function(V, name="vt")
+pt = dolfinx.fem.Function(P, name="pt")
 
 δv = ufl.TestFunction(V)
 δp = ufl.TestFunction(P)
@@ -121,9 +121,9 @@ mt = [vt, pt]
 δm = [δv, δp]
 
 # Create other functions
-v_vector_o = dolfinx.Function(V)
-v_vector_i = dolfinx.Function(V)
-p_scalar_i = dolfinx.Function(P)
+v_vector_o = dolfinx.fem.Function(V)
+v_vector_i = dolfinx.fem.Function(V)
+p_scalar_i = dolfinx.fem.Function(P)
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=m, xt=mt)
@@ -212,9 +212,9 @@ for time_step in range(1, nT + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(v_vector_o, ring_outer_dofs_V),  # velocity ring_outer
-        dolfinx.fem.DirichletBC(v_vector_i, ring_inner_dofs_V),  # velocity ring_inner
-        dolfinx.fem.DirichletBC(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
+        dolfinx.fem.dirichletbc(v_vector_o, ring_outer_dofs_V),  # velocity ring_outer
+        dolfinx.fem.dirichletbc(v_vector_i, ring_inner_dofs_V),  # velocity ring_inner
+        dolfinx.fem.dirichletbc(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
     ]
 
     # Solve nonlinear problem

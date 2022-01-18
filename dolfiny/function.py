@@ -1,7 +1,7 @@
 import typing
 import numpy
 
-import dolfinx
+import dolfinx.fem
 from petsc4py import PETSc
 import ufl
 
@@ -65,7 +65,7 @@ def extract_blocks(form, test_functions: typing.List[ufl.Argument],
     return blocks
 
 
-def functions_to_vec(u: typing.List[dolfinx.Function], x):
+def functions_to_vec(u: typing.List[dolfinx.fem.Function], x):
     """Copies functions into block vector."""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
@@ -81,7 +81,7 @@ def functions_to_vec(u: typing.List[dolfinx.Function], x):
             x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
 
-def vec_to_functions(x, u: typing.List[dolfinx.Function]):
+def vec_to_functions(x, u: typing.List[dolfinx.fem.Function]):
     """Copies block vector into functions."""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):

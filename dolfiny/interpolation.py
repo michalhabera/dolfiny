@@ -2,7 +2,7 @@ import numpy as np
 import logging
 
 import cffi
-import dolfinx
+import dolfinx.fem
 import ffcx.element_interface
 import basix
 import numba
@@ -41,20 +41,22 @@ class CompiledExpression:
         self.ffcx_element = ffcx.element_interface.create_element(target_el)
 
         if isinstance(self.ffcx_element, ffcx.element_interface.BlockedElement):
-            mapping_types = [self.ffcx_element.sub_element.element.mapping_type]
+            mapping_types = [self.ffcx_element.sub_element.element.map_type]
+            nodes = self.ffcx_element.sub_element.element.points
         elif isinstance(self.ffcx_element, ffcx.element_interface.MixedElement):
-            mapping_types = [e.element.mapping_type for e in self.ffcx_element.sub_elements]
+            mapping_types = [e.element.map_type for e in self.ffcx_element.sub_elements]
+            nodes = self.ffcx_element.sub_elements[0].element.points
         elif isinstance(self.ffcx_element, ffcx.element_interface.BasixElement):
-            mapping_types = [self.ffcx_element.element.mapping_type]
+            mapping_types = [self.ffcx_element.element.map_type]
+            nodes = self.ffcx_element.element.points
         elif isinstance(self.ffcx_element, ffcx.element_interface.QuadratureElement):
-            mapping_types = [basix.MappingType.identity]
+            mapping_types = [basix._basixcpp.MappingType.identity]
+            nodes = self.ffcx_element._points
         else:
             raise NotImplementedError("Unsupported element type")
 
-        if not all(x == basix.MappingType.identity for x in mapping_types):
+        if not all(x == basix._basixcpp.MappingType.identity for x in mapping_types):
             raise NotImplementedError("Only affine mapped function spaces supported")
-
-        nodes = self.ffcx_element.points
 
         module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))
         self.module = module
@@ -120,7 +122,7 @@ def interpolate_compiled(compiled_expression, target_func):
     lagrange/discontinuous lagrange of arbitrary order.
 
     """
-    kernel = compiled_expression.module.tabulate_expression
+    kernel = compiled_expression.module[0].tabulate_expression
 
     # Register complex types
     cffi_support.register_type(ffi.typeof('double _Complex'),
@@ -142,9 +144,9 @@ def interpolate_compiled(compiled_expression, target_func):
     # fetched inside hot cell-loop
 
     # Number of coefficients in ffcx-processed ufl form
-    num_coeffs = compiled_expression.module.num_coefficients
+    num_coeffs = compiled_expression.module[0].num_coefficients
     # Positions of ffcx-preprocessed coefficients in original form
-    cpos = compiled_expression.module.original_coefficient_positions
+    cpos = compiled_expression.module[0].original_coefficient_positions
 
     coeffs = ufl.algorithms.analysis.extract_coefficients(compiled_expression.expr)
     coeffs_dofmaps = List.empty_list(numba.types.Array(numba.typeof(dofmap[0]), 1, "C", readonly=True))
@@ -156,7 +158,7 @@ def interpolate_compiled(compiled_expression, target_func):
         coeffs_vectors.append(np.asarray(coeffs[cpos[i]].vector))
         coeffs_bs.append(coeffs[cpos[i]].function_space.dofmap.bs)
 
-    coeffs_sizes = np.asarray([coeff.function_space.element.space_dimension()
+    coeffs_sizes = np.asarray([coeff.function_space.element.space_dimension
                                for coeff in coeffs], dtype=np.int_)
 
     # Prepare and pack constants
@@ -167,7 +169,7 @@ def interpolate_compiled(compiled_expression, target_func):
 
     value_size = int(np.product(compiled_expression.expr.ufl_shape))
     basix_space_dim = compiled_expression.ffcx_element.dim
-    space_dim = target_func.function_space.element.space_dimension()
+    space_dim = target_func.function_space.element.space_dimension
 
     dofmap_bs = target_func.function_space.dofmap.bs
     element_bs = target_func.function_space.dofmap.dof_layout.block_size()

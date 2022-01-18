@@ -3,7 +3,7 @@
 from petsc4py import PETSc
 from mpi4py import MPI
 
-import dolfinx
+import dolfinx.fem
 import ufl
 
 import dolfiny.io
@@ -50,18 +50,18 @@ surface_left = interfaces_keys["surface_left"]
 surface_right = interfaces_keys["surface_right"]
 
 # Solid material parameters
-rho = dolfinx.Constant(mesh, 1e-9 * 1e+4)  # [1e-9 * 1e+4 kg/m^3]
-eta = dolfinx.Constant(mesh, 1e-9 * 0e+4)  # [1e-9 * 0e+4 kg/m^3/s]
-mu = dolfinx.Constant(mesh, 1e-9 * 1e11)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.Constant(mesh, 1e-9 * 1e10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+rho = dolfinx.fem.Constant(mesh, 1e-9 * 1e+4)  # [1e-9 * 1e+4 kg/m^3]
+eta = dolfinx.fem.Constant(mesh, 1e-9 * 0e+4)  # [1e-9 * 0e+4 kg/m^3/s]
+mu = dolfinx.fem.Constant(mesh, 1e-9 * 1e11)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
+la = dolfinx.fem.Constant(mesh, 1e-9 * 1e10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
 
 # Load
-b = dolfinx.Constant(mesh, [0.0, -10, 0.0])  # [m/s^2]
+b = dolfinx.fem.Constant(mesh, [0.0, -10, 0.0])  # [m/s^2]
 
 # Global time
-time = dolfinx.Constant(mesh, 0.0)  # [s]
+time = dolfinx.fem.Constant(mesh, 0.0)  # [s]
 # Time step size
-dt = dolfinx.Constant(mesh, 1e-2)  # [s]
+dt = dolfinx.fem.Constant(mesh, 1e-2)  # [s]
 # Number of time steps
 nT = 200
 
@@ -73,17 +73,17 @@ ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 Ve = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
 Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
 
-Vf = dolfinx.FunctionSpace(mesh, Ve)
-Sf = dolfinx.FunctionSpace(mesh, Se)
+Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
+Sf = dolfinx.fem.FunctionSpace(mesh, Se)
 
 # Define functions
-v = dolfinx.Function(Vf, name="v")
-S = dolfinx.Function(Sf, name="S")
+v = dolfinx.fem.Function(Vf, name="v")
+S = dolfinx.fem.Function(Sf, name="S")
 
-vt = dolfinx.Function(Vf, name="vt")
-St = dolfinx.Function(Sf, name="St")
+vt = dolfinx.fem.Function(Vf, name="vt")
+St = dolfinx.fem.Function(Sf, name="St")
 
-v_ = dolfinx.Function(Vf, name="u_")  # boundary conditions
+v_ = dolfinx.fem.Function(Vf, name="u_")  # boundary conditions
 
 δv = ufl.TestFunction(Vf)
 δS = ufl.TestFunction(Sf)
@@ -92,8 +92,8 @@ v_ = dolfinx.Function(Vf, name="u_")  # boundary conditions
 m, mt, δm = [v, S], [vt, St], [δv, δS]
 
 # Create other functions
-u = dolfinx.Function(Vf, name="u")
-d = dolfinx.Function(Vf, name="d")  # dummy
+u = dolfinx.fem.Function(Vf, name="u")
+d = dolfinx.fem.Function(Vf, name="d")  # dummy
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=m, xt=mt, rho=0.95)
@@ -172,7 +172,7 @@ for time_step in range(1, nT + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(v_, surface_left_dofs_Vf),  # velocity left (clamped)
+        dolfinx.fem.dirichletbc(v_, surface_left_dofs_Vf),  # velocity left (clamped)
     ]
 
     # Solve nonlinear problem
