@@ -142,8 +142,8 @@ opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 # opts["ksp_view"] = "::ascii_info_detail"
 opts["pc_type"] = "lu"
-opts["pc_factor_mat_solver_type"] = "mumps"
-# opts["pc_factor_mat_solver_type"] = "superlu_dist"
+# opts["pc_factor_mat_solver_type"] = "mumps"
+opts["pc_factor_mat_solver_type"] = "superlu_dist"
 
 opts_global = PETSc.Options()
 opts_global["mat_mumps_icntl_8"] = 8
