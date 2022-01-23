@@ -58,7 +58,8 @@ class XDMFFile(dolfinx.io.XDMFFile):
         logger.info("Reading mesh")
         mesh = self.read_mesh(name=mesh_name)
 
-        mesh.topology.create_connectivity_all()
+        for d in range(mesh.topology.dim):
+            mesh.topology.create_connectivity(d, mesh.topology.dim)
 
         logger.info("Reading information")
         value = self.read_information(self.KEYS_OF_MESHTAGS)

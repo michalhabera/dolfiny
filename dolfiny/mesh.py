@@ -6,7 +6,7 @@ from dolfinx.cpp.mesh import CellType
 from dolfinx import cpp
 from dolfinx.mesh import create_mesh, create_meshtags, MeshTags
 from dolfinx.io import ufl_mesh_from_gmsh
-from dolfinx.cpp.io import extract_local_entities
+from dolfinx.cpp.io import distribute_entity_data
 
 
 def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, prune_z=False):
@@ -232,7 +232,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             _mt_cells = numpy.empty((0, mt_cells_shape[1]), dtype=numpy.int64)
             _mt_values = numpy.empty((0, ), dtype=numpy.int32)
 
-        local_entities, local_values = extract_local_entities(mesh, pgdim, _mt_cells, _mt_values)
+        local_entities, local_values = distribute_entity_data(mesh, pgdim, _mt_cells, _mt_values)
 
         mesh.topology.create_connectivity(pgdim, 0)
 
@@ -322,7 +322,7 @@ def merge_meshtags(mts, dim):
 
     keys = {}
     for mt, name in mts:
-        comm = mt.mesh.mpi_comm()
+        comm = mt.mesh.comm
         # In some cases this process could receive a MeshTags which are empty
         # We need to return correct "keys" mapping on each process, so this
         # communicates the value from processes which don't have empty meshtags

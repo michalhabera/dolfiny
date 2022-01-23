@@ -1,6 +1,6 @@
 import dolfiny.expression
 import ufl
-import dolfinx
+import dolfinx.fem
 
 import numpy
 
@@ -35,8 +35,8 @@ def test_expression_evaluate(V1, V2, squaremesh_5):
 
 def test_expression_derivative(V1, V2, squaremesh_5):
 
-    u1, du1, v1 = dolfinx.Function(V1), ufl.TrialFunction(V1), ufl.TestFunction(V1)
-    u2, du2, v2 = dolfinx.Function(V2), ufl.TrialFunction(V2), ufl.TestFunction(V2)
+    u1, du1, v1 = dolfinx.fem.Function(V1), ufl.TrialFunction(V1), ufl.TestFunction(V1)
+    u2, du2, v2 = dolfinx.fem.Function(V2), ufl.TrialFunction(V2), ufl.TestFunction(V2)
 
     dx = ufl.dx(squaremesh_5)
 
@@ -62,7 +62,7 @@ def test_expression_derivative(V1, V2, squaremesh_5):
 
     # Test derivative of expressions at u0
 
-    u10, u20 = dolfinx.Function(V1), dolfinx.Function(V2)
+    u10, u20 = dolfinx.fem.Function(V1), dolfinx.fem.Function(V2)
 
     assert dolfiny.expression.derivative(1 * u1, u1, du1, u0=u10) == 1 * du1
     assert dolfiny.expression.derivative(2 * u1 + u2, u1, du1, u0=u10) == 2 * du1
@@ -75,8 +75,8 @@ def test_expression_derivative(V1, V2, squaremesh_5):
 
 def test_expression_linearise(V1, V2, squaremesh_5):
 
-    u1, u10 = dolfinx.Function(V1), dolfinx.Function(V1)
-    u2, u20 = dolfinx.Function(V2), dolfinx.Function(V2)
+    u1, u10 = dolfinx.fem.Function(V1), dolfinx.fem.Function(V1)
+    u2, u20 = dolfinx.fem.Function(V2), dolfinx.fem.Function(V2)
 
     dx = ufl.dx(squaremesh_5)
 
@@ -106,7 +106,7 @@ def test_expression_linearise(V1, V2, squaremesh_5):
 
 def test_expression_assemble(V1, vV1, squaremesh_5):
 
-    u1, u2 = dolfinx.Function(V1), dolfinx.Function(vV1)
+    u1, u2 = dolfinx.fem.Function(V1), dolfinx.fem.Function(vV1)
 
     dx = ufl.dx(squaremesh_5)
 

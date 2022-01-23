@@ -81,15 +81,15 @@ def S(E):
 sc_fac = 10 * (1 + n) / (12 + 11 * n)
 
 # Structure: load parameters
-μ = dolfinx.Constant(mesh, 1.0)  # load factor
+μ = dolfinx.fem.Constant(mesh, 1.0)  # load factor
 
-p_x = μ * dolfinx.Constant(mesh, 1.0 * 0)
-p_z = μ * dolfinx.Constant(mesh, 1.0 * 0)
-m_y = μ * dolfinx.Constant(mesh, 1.0 * 0)
+p_x = μ * dolfinx.fem.Constant(mesh, 1.0 * 0)
+p_z = μ * dolfinx.fem.Constant(mesh, 1.0 * 0)
+m_y = μ * dolfinx.fem.Constant(mesh, 1.0 * 0)
 
-F_x = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**2 * E * I * 0)  # prescribed F_x: 2, 4
-F_z = μ * dolfinx.Constant(mesh, (0.5 * np.pi / L)**2 * E * I * 0)  # prescribed F_z: 4, 8
-M_y = μ * dolfinx.Constant(mesh, (2.0 * np.pi / L)**1 * E * I * 1)  # prescribed M_y: 1, 2
+F_x = μ * dolfinx.fem.Constant(mesh, (2.0 * np.pi / L)**2 * E * I * 0)  # prescribed F_x: 2, 4
+F_z = μ * dolfinx.fem.Constant(mesh, (0.5 * np.pi / L)**2 * E * I * 0)  # prescribed F_z: 4, 8
+M_y = μ * dolfinx.fem.Constant(mesh, (2.0 * np.pi / L)**1 * E * I * 1)  # prescribed M_y: 1, 2
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
@@ -100,18 +100,18 @@ Ue = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
 We = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
 Re = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
 
-Uf = dolfinx.FunctionSpace(mesh, Ue)
-Wf = dolfinx.FunctionSpace(mesh, We)
-Rf = dolfinx.FunctionSpace(mesh, Re)
+Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
+Wf = dolfinx.fem.FunctionSpace(mesh, We)
+Rf = dolfinx.fem.FunctionSpace(mesh, Re)
 
 # Define functions
-u = dolfinx.Function(Uf, name='u')
-w = dolfinx.Function(Wf, name='w')
-r = dolfinx.Function(Rf, name='r')
+u = dolfinx.fem.Function(Uf, name='u')
+w = dolfinx.fem.Function(Wf, name='w')
+r = dolfinx.fem.Function(Rf, name='r')
 
-u_ = dolfinx.Function(Uf, name='u_')  # boundary conditions
-w_ = dolfinx.Function(Wf, name='w_')
-r_ = dolfinx.Function(Rf, name='r_')
+u_ = dolfinx.fem.Function(Uf, name='u_')  # boundary conditions
+w_ = dolfinx.fem.Function(Wf, name='w_')
+r_ = dolfinx.fem.Function(Rf, name='r_')
 
 δu = ufl.TestFunction(Uf)
 δw = ufl.TestFunction(Wf)
@@ -125,10 +125,10 @@ m, δm = [u, w, r], [δu, δw, δr]
 x0 = ufl.SpatialCoordinate(mesh)
 
 # Function spaces for geometric quantities extracted from mesh
-N = dolfinx.VectorFunctionSpace(mesh, ("DG", q), mesh.geometry.dim)
+N = dolfinx.fem.VectorFunctionSpace(mesh, ("DG", q), mesh.geometry.dim)
 
 # Normal vector (gdim x 1)
-n0i = dolfinx.Function(N)
+n0i = dolfinx.fem.Function(N)
 
 # Jacobi matrix of map reference -> undeformed
 J0 = ufl.geometry.Jacobian(mesh)
@@ -148,8 +148,8 @@ dolfiny.interpolation.interpolate(gξ, n0i)
 P = ufl.Identity(mesh.geometry.dim) - ufl.outer(n0i, n0i)
 
 # Thickness variable
-X = dolfinx.FunctionSpace(mesh, ("DG", q))
-ξ = dolfinx.Function(X, name='ξ')
+X = dolfinx.fem.FunctionSpace(mesh, ("DG", q))
+ξ = dolfinx.fem.Function(X, name='ξ')
 
 # Undeformed configuration: director d0 and placement b0
 d0 = n0i  # normal of manifold mesh, interpolated
@@ -200,8 +200,8 @@ T = S(Es) * A * sc_fac
 M = S(Eb) * I
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
-A = dolfinx.FunctionSpace(mesh, ("DG", 0))
-α = dolfinx.Function(A)
+A = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
+α = dolfinx.fem.Function(A)
 dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
 
 # Weak form: components (as one-form)
@@ -252,8 +252,8 @@ beg_dofs_Rf = dolfiny.mesh.locate_dofs_topological(Rf, interfaces, beg)
 plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{0}$)')
 
 # Create vector function space and vector function for writing the displacement vector
-Z = dolfinx.VectorFunctionSpace(mesh, ("CG", p), mesh.geometry.dim)
-z = dolfinx.Function(Z)
+Z = dolfinx.fem.VectorFunctionSpace(mesh, ("CG", p), mesh.geometry.dim)
+z = dolfinx.fem.Function(Z)
 
 # Process load steps
 for factor in np.linspace(0, 1, num=20 + 1):
@@ -263,9 +263,9 @@ for factor in np.linspace(0, 1, num=20 + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(u_, beg_dofs_Uf),  # u beg
-        dolfinx.fem.DirichletBC(w_, beg_dofs_Wf),  # w beg
-        dolfinx.fem.DirichletBC(r_, beg_dofs_Rf),  # r beg
+        dolfinx.fem.dirichletbc(u_, beg_dofs_Uf),  # u beg
+        dolfinx.fem.dirichletbc(w_, beg_dofs_Wf),  # w beg
+        dolfinx.fem.dirichletbc(r_, beg_dofs_Rf),  # r beg
     ]
 
     dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")

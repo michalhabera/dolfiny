@@ -2,7 +2,7 @@ import numpy
 from mpi4py import MPI
 
 import dolfinx
-from dolfinx.io import XDMFFile
+import dolfinx.io
 import dolfiny.mesh
 import ufl
 
@@ -57,23 +57,23 @@ def test_simple_triangle():
     assert mesh.topology.dim == 2
     assert mts["arc"].dim == 1
 
-    with XDMFFile(MPI.COMM_WORLD, "mesh.xdmf", "w") as file:
+    with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "mesh.xdmf", "w") as file:
         file.write_mesh(mesh)
         mesh.topology.create_connectivity(1, 2)
         file.write_meshtags(mts["arc"])
 
     ds = ufl.Measure("ds", subdomain_data=mt1, domain=mesh)
 
-    form = 1.0 * ds(keys1["sides"]) + 1.0 * ds(keys1["arc"])
+    form = dolfinx.fem.form(1.0 * ds(keys1["sides"]) + 1.0 * ds(keys1["arc"]))
     val = dolfinx.fem.assemble_scalar(form)
 
-    val = mesh.mpi_comm().allreduce(val, op=MPI.SUM)
+    val = mesh.comm.allreduce(val, op=MPI.SUM)
     assert numpy.isclose(val, 2.0 + 2.0 * numpy.pi * 0.5 / 2.0, rtol=1.0e-3)
 
     dx = ufl.Measure("dx", subdomain_data=mt2, domain=mesh)
 
-    form = 1.0 * dx(keys2["surface"])
+    form = dolfinx.fem.form(1.0 * dx(keys2["surface"]))
     val = dolfinx.fem.assemble_scalar(form)
 
-    val = mesh.mpi_comm().allreduce(val, op=MPI.SUM)
+    val = mesh.comm.allreduce(val, op=MPI.SUM)
     assert numpy.isclose(val, 1.0 + numpy.pi * 0.5**2 / 2.0, rtol=1.0e-3)

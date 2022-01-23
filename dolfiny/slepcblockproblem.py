@@ -1,13 +1,13 @@
 import typing
 
-import dolfinx
+import dolfinx.fem
 import ufl
 from dolfiny.function import vec_to_functions
 from slepc4py import SLEPc
 
 
 class SLEPcBlockProblem():
-    def __init__(self, F_form: typing.List, u: typing.List, lmbda: dolfinx.Function,
+    def __init__(self, F_form: typing.List, u: typing.List, lmbda: dolfinx.fem.Function,
                  A_form=None, B_form=None, prefix=None):
         """SLEPc problem and solver wrapper.
 
@@ -38,13 +38,13 @@ class SLEPcBlockProblem():
         self.F_form = F_form
         self.u = u
         self.lmbda = lmbda
-        self.comm = u[0].function_space.mesh.mpi_comm()
+        self.comm = u[0].function_space.mesh.comm
 
         self.ur = []
         self.ui = []
         for func in u:
-            self.ur.append(dolfinx.Function(func.function_space, name=func.name))
-            self.ui.append(dolfinx.Function(func.function_space, name=func.name))
+            self.ur.append(dolfinx.fem.Function(func.function_space, name=func.name))
+            self.ui.append(dolfinx.fem.Function(func.function_space, name=func.name))
 
         # Prepare tangent form M0 which has terms involving lambda
         self.M0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]
@@ -86,6 +86,9 @@ class SLEPcBlockProblem():
         self.eps = SLEPc.EPS().create(self.comm)
         self.eps.setOptionsPrefix(prefix)
         self.eps.setFromOptions()
+
+        self.A_form = dolfinx.fem.form(self.A_form)
+        self.B_form = dolfinx.fem.form(self.B_form)
 
         self.A = dolfinx.fem.create_matrix_block(self.A_form)
 

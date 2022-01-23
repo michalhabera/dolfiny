@@ -1,6 +1,6 @@
 import numpy as np
 
-import dolfinx
+import dolfinx.fem
 import dolfiny.snesblockproblem
 import pytest
 import ufl
@@ -11,9 +11,9 @@ def test_monolithic(V1, V2, squaremesh_5):
     mesh = squaremesh_5
 
     Wel = ufl.MixedElement([V1.ufl_element(), V2.ufl_element()])
-    W = dolfinx.FunctionSpace(mesh, Wel)
+    W = dolfinx.fem.FunctionSpace(mesh, Wel)
 
-    u = dolfinx.Function(W)
+    u = dolfinx.fem.Function(W)
     u0, u1 = ufl.split(u)
 
     v = ufl.TestFunction(W)
@@ -50,8 +50,8 @@ def test_monolithic(V1, V2, squaremesh_5):
 def test_block(V1, V2, squaremesh_5, nest):
     mesh = squaremesh_5
 
-    u0 = dolfinx.Function(V1, name="u0")
-    u1 = dolfinx.Function(V2, name="u1")
+    u0 = dolfinx.fem.Function(V1, name="u0")
+    u1 = dolfinx.fem.Function(V2, name="u1")
 
     v0 = ufl.TestFunction(V1)
     v1 = ufl.TestFunction(V2)

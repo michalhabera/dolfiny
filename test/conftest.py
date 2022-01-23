@@ -1,6 +1,7 @@
 import gc
 
-import dolfinx
+import dolfinx.fem
+import dolfinx.mesh
 import pytest
 from mpi4py import MPI
 
@@ -29,19 +30,19 @@ def pytest_configure(config):
 
 @pytest.fixture(scope="module")
 def squaremesh_5():
-    return dolfinx.generation.UnitSquareMesh(MPI.COMM_WORLD, 5, 5)
+    return dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 5, 5)
 
 
 @pytest.fixture(scope="module")
 def V1(squaremesh_5):
-    return dolfinx.FunctionSpace(squaremesh_5, ("P", 1))
+    return dolfinx.fem.FunctionSpace(squaremesh_5, ("P", 1))
 
 
 @pytest.fixture(scope="module")
 def V2(squaremesh_5):
-    return dolfinx.FunctionSpace(squaremesh_5, ("P", 2))
+    return dolfinx.fem.FunctionSpace(squaremesh_5, ("P", 2))
 
 
 @pytest.fixture(scope="module")
 def vV1(squaremesh_5):
-    return dolfinx.VectorFunctionSpace(squaremesh_5, ("P", 1))
+    return dolfinx.fem.VectorFunctionSpace(squaremesh_5, ("P", 1))

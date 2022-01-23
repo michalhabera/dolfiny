@@ -1,4 +1,4 @@
-import dolfinx
+import dolfinx.fem
 import dolfiny.expression
 import dolfiny.interpolation
 
@@ -63,10 +63,10 @@ class ODEInt():
         self.t = t
         self.dt = dt
 
-        if not isinstance(self.t, dolfinx.Constant):
+        if not isinstance(self.t, dolfinx.fem.Constant):
             raise RuntimeError("No stage time t as dolfinx.Constant provided.")
 
-        if not isinstance(self.dt, dolfinx.Constant):
+        if not isinstance(self.dt, dolfinx.fem.Constant):
             raise RuntimeError("No time step dt as dolfinx.Constant provided.")
 
         # Pointers to state x1 and rate x1t (as function or list of functions)
@@ -86,36 +86,36 @@ class ODEInt():
         if isinstance(self.x1, list):
             self.x0 = []
             for x1i in self.x1:
-                self.x0.append(dolfinx.Function(x1i.function_space))
+                self.x0.append(dolfinx.fem.Function(x1i.function_space))
         else:
-            self.x0 = dolfinx.Function(self.x1.function_space)
+            self.x0 = dolfinx.fem.Function(self.x1.function_space)
 
         # Set rate of state x0t
         if isinstance(self.x1t, list):
             self.x0t = []
             for x1ti in self.x1t:
-                self.x0t.append(dolfinx.Function(x1ti.function_space))
+                self.x0t.append(dolfinx.fem.Function(x1ti.function_space))
         else:
-            self.x0t = dolfinx.Function(self.x1t.function_space)
+            self.x0t = dolfinx.fem.Function(self.x1t.function_space)
 
         # Set *auxiliary* rate of state x1t_aux and x0t_aux
         if isinstance(self.x1t, list):
             self.x1t_aux = []
             self.x0t_aux = []
             for x1ti in self.x1t:
-                self.x1t_aux.append(dolfinx.Function(x1ti.function_space))
-                self.x0t_aux.append(dolfinx.Function(x1ti.function_space))
+                self.x1t_aux.append(dolfinx.fem.Function(x1ti.function_space))
+                self.x0t_aux.append(dolfinx.fem.Function(x1ti.function_space))
         else:
-            self.x1t_aux = dolfinx.Function(self.x1t.function_space)
-            self.x0t_aux = dolfinx.Function(self.x1t.function_space)
+            self.x1t_aux = dolfinx.fem.Function(self.x1t.function_space)
+            self.x0t_aux = dolfinx.fem.Function(self.x1t.function_space)
 
         # Initialise values of auxiliary state
         dolfiny.odeint._copy_entries(self.x1t, self.x1t_aux)
 
         # Default values: Crank-Nicolson
-        self.alpha_f = dolfinx.Constant(self.t.ufl_domain(), 0.5)
-        self.alpha_m = dolfinx.Constant(self.t.ufl_domain(), 0.5)
-        self.gamma = dolfinx.Constant(self.t.ufl_domain(), 0.5)
+        self.alpha_f = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
+        self.alpha_m = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
+        self.gamma = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
 
         # Parameters from given rho
         if "rho" in kwargs:
@@ -280,10 +280,10 @@ class ODEInt2():
         self.t = t
         self.dt = dt
 
-        if not isinstance(self.t, dolfinx.Constant):
+        if not isinstance(self.t, dolfinx.fem.Constant):
             raise RuntimeError("No stage time t as dolfinx.Constant provided.")
 
-        if not isinstance(self.dt, dolfinx.Constant):
+        if not isinstance(self.dt, dolfinx.fem.Constant):
             raise RuntimeError("No time step dt as dolfinx.Constant provided.")
 
         # Pointers to state x1, rate x1t and rate of rate x1tt (as function or list of functions)
@@ -306,45 +306,45 @@ class ODEInt2():
         if isinstance(self.x1, list):
             self.x0 = []
             for x1i in self.x1:
-                self.x0.append(dolfinx.Function(x1i.function_space))
+                self.x0.append(dolfinx.fem.Function(x1i.function_space))
         else:
-            self.x0 = dolfinx.Function(self.x1.function_space)
+            self.x0 = dolfinx.fem.Function(self.x1.function_space)
 
         # Set rate of state x0t
         if isinstance(self.x1t, list):
             self.x0t = []
             for x1ti in self.x1t:
-                self.x0t.append(dolfinx.Function(x1ti.function_space))
+                self.x0t.append(dolfinx.fem.Function(x1ti.function_space))
         else:
-            self.x0t = dolfinx.Function(self.x1t.function_space)
+            self.x0t = dolfinx.fem.Function(self.x1t.function_space)
 
         # Set rate of rate of state x0tt
         if isinstance(self.x1tt, list):
             self.x0tt = []
             for x1tti in self.x1tt:
-                self.x0tt.append(dolfinx.Function(x1tti.function_space))
+                self.x0tt.append(dolfinx.fem.Function(x1tti.function_space))
         else:
-            self.x0tt = dolfinx.Function(self.x1tt.function_space)
+            self.x0tt = dolfinx.fem.Function(self.x1tt.function_space)
 
         # Set *auxiliary* of rate of rate of state x1tt_aux and x0tt_aux
         if isinstance(self.x1tt, list):
             self.x1tt_aux = []
             self.x0tt_aux = []
             for x1tti in self.x1tt:
-                self.x1tt_aux.append(dolfinx.Function(x1tti.function_space))
-                self.x0tt_aux.append(dolfinx.Function(x1tti.function_space))
+                self.x1tt_aux.append(dolfinx.fem.Function(x1tti.function_space))
+                self.x0tt_aux.append(dolfinx.fem.Function(x1tti.function_space))
         else:
-            self.x1tt_aux = dolfinx.Function(self.x1tt.function_space)
-            self.x0tt_aux = dolfinx.Function(self.x1tt.function_space)
+            self.x1tt_aux = dolfinx.fem.Function(self.x1tt.function_space)
+            self.x0tt_aux = dolfinx.fem.Function(self.x1tt.function_space)
 
         # Initialise values of auxiliary state
         dolfiny.odeint._copy_entries(self.x1tt, self.x1tt_aux)
 
         # Default values: Newmark
-        self.alpha_f = dolfinx.Constant(self.t.ufl_domain(), 1.0)
-        self.alpha_m = dolfinx.Constant(self.t.ufl_domain(), 1.0)
-        self.gamma = dolfinx.Constant(self.t.ufl_domain(), 0.5)
-        self.beta = dolfinx.Constant(self.t.ufl_domain(), 0.25)
+        self.alpha_f = dolfinx.fem.Constant(self.t.ufl_domain(), 1.0)
+        self.alpha_m = dolfinx.fem.Constant(self.t.ufl_domain(), 1.0)
+        self.gamma = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
+        self.beta = dolfinx.fem.Constant(self.t.ufl_domain(), 0.25)
 
         # Parameters from given rho
         if "rho" in kwargs:

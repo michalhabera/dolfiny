@@ -1,8 +1,7 @@
 from mpi4py import MPI
 
-import dolfinx
-from dolfinx.generation import UnitIntervalMesh
-from dolfinx import Function, FunctionSpace
+import dolfinx.mesh
+import dolfinx.fem
 
 import ufl
 import numpy
@@ -22,11 +21,11 @@ def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01, **kwargs):
     dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
-    mesh = UnitIntervalMesh(MPI.COMM_WORLD, 10)
-    U = FunctionSpace(mesh, ("DG", 0))
+    mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
+    U = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
 
-    u = Function(U, name="u")
-    ut = Function(U, name="ut")
+    u = dolfinx.fem.Function(U, name="u")
+    ut = dolfinx.fem.Function(U, name="ut")
 
     u.vector.set(u_0)  # initial condition
     ut.vector.set(b - a * u_0)  # exact initial rate of this ODE for generalised alpha
@@ -39,10 +38,10 @@ def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01, **kwargs):
     dx = ufl.Measure("dx", domain=mesh)
 
     # Global time
-    time = dolfinx.Constant(mesh, 0.0)
+    time = dolfinx.fem.Constant(mesh, 0.0)
 
     # Time step size
-    dt = dolfinx.Constant(mesh, dt)
+    dt = dolfinx.fem.Constant(mesh, dt)
 
     # Time integrator
     odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=u, xt=ut, **kwargs)
@@ -99,11 +98,11 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
     t * dot u - a * cos(c*t) * u^2 - 2 * u - a * b^2 * t^4 * cos(c*t) = 0 with initial condition u(t=1) = 0
     """
 
-    mesh = UnitIntervalMesh(MPI.COMM_WORLD, 10)
-    U = FunctionSpace(mesh, ("DG", 0))
+    mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
+    U = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
 
-    u = Function(U, name="u")
-    ut = Function(U, name="ut")
+    u = dolfinx.fem.Function(U, name="u")
+    ut = dolfinx.fem.Function(U, name="ut")
 
     u.vector.set(0.0)  # initial condition
     ut.vector.set(a * b**2 * numpy.cos(c))  # exact initial rate of this ODE for generalised alpha
@@ -116,10 +115,10 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
     dx = ufl.Measure("dx", domain=mesh)
 
     # Global time
-    t = dolfinx.Constant(mesh, 1.0)
+    t = dolfinx.fem.Constant(mesh, 1.0)
 
     # Time step size
-    dt = dolfinx.Constant(mesh, dt)
+    dt = dolfinx.fem.Constant(mesh, dt)
 
     # Time integrator
     odeint = dolfiny.odeint.ODEInt(t=t, dt=dt, x=u, xt=ut, **kwargs)
@@ -187,12 +186,12 @@ def ode_2nd_linear_odeint(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
     ddot u + a * dot u + b * u - c = 0 with initial conditions u(t=0) = u_0 ; du(t=0) = du_0
     """
 
-    mesh = UnitIntervalMesh(MPI.COMM_WORLD, 10)
-    U = FunctionSpace(mesh, ("DG", 0))
+    mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
+    U = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
 
-    u = Function(U, name="u")
-    ut = Function(U, name="ut")
-    utt = Function(U, name="utt")
+    u = dolfinx.fem.Function(U, name="u")
+    ut = dolfinx.fem.Function(U, name="ut")
+    utt = dolfinx.fem.Function(U, name="utt")
 
     u.vector.set(u_0)  # initial condition
     ut.vector.set(du_0)  # initial condition
@@ -207,10 +206,10 @@ def ode_2nd_linear_odeint(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
     dx = ufl.Measure("dx", domain=mesh)
 
     # Global time
-    time = dolfinx.Constant(mesh, 0.0)
+    time = dolfinx.fem.Constant(mesh, 0.0)
 
     # Time step size
-    dt = dolfinx.Constant(mesh, dt)
+    dt = dolfinx.fem.Constant(mesh, dt)
 
     # Time integrator
     odeint = dolfiny.odeint.ODEInt2(t=time, dt=dt, x=u, xt=ut, xtt=utt, **kwargs)
@@ -267,12 +266,12 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
     ddot u + a * u + b * u^3 = 0 with initial conditions u(t=0) = u_0 ; du(t=0) = 0
     """
 
-    mesh = UnitIntervalMesh(MPI.COMM_WORLD, 10)
-    U = FunctionSpace(mesh, ("DG", 0))
+    mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
+    U = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
 
-    u = Function(U, name="u")
-    ut = Function(U, name="ut")
-    utt = Function(U, name="utt")
+    u = dolfinx.fem.Function(U, name="u")
+    ut = dolfinx.fem.Function(U, name="ut")
+    utt = dolfinx.fem.Function(U, name="utt")
 
     u.vector.set(u_0)  # initial condition
     ut.vector.set(0.0)  # initial condition
@@ -287,10 +286,10 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
     dx = ufl.Measure("dx", domain=mesh)
 
     # Global time
-    time = dolfinx.Constant(mesh, 0.0)
+    time = dolfinx.fem.Constant(mesh, 0.0)
 
     # Time step size
-    dt = dolfinx.Constant(mesh, dt)
+    dt = dolfinx.fem.Constant(mesh, dt)
 
     # Time integrator
     odeint = dolfiny.odeint.ODEInt2(t=time, dt=dt, x=u, xt=ut, xtt=utt, **kwargs)
@@ -364,7 +363,7 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
     and initial conditions: u(t=0) = u_0, v(t=0) = v_0 and s(t=0) = s(u_0)
     """
 
-    mesh = UnitIntervalMesh(MPI.COMM_WORLD, 10)
+    mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
 
     # Problem parameters, note: (a + b * u_0**2) !> 0
     a, b = a, b
@@ -378,16 +377,16 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
     def _st(u, v):
         return (a + 3 * b * u**2) * v  # rate of constitutive law
 
-    V = FunctionSpace(mesh, ("DG", 0))
-    S = FunctionSpace(mesh, ("DG", 0))
+    V = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
+    S = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
 
-    v = Function(V, name="v")
-    s = Function(S, name="s")
-    vt = Function(V, name="vt")
-    st = Function(S, name="st")
+    v = dolfinx.fem.Function(V, name="v")
+    s = dolfinx.fem.Function(S, name="s")
+    vt = dolfinx.fem.Function(V, name="vt")
+    st = dolfinx.fem.Function(S, name="st")
 
-    u = Function(V, name="u")
-    d = Function(V, name="d")  # dummy
+    u = dolfinx.fem.Function(V, name="u")
+    d = dolfinx.fem.Function(V, name="d")  # dummy
 
     δv = ufl.TestFunction(V)
     δs = ufl.TestFunction(S)
@@ -408,10 +407,10 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
     nT = nT
 
     # Global time
-    t = dolfinx.Constant(mesh, 0.0)
+    t = dolfinx.fem.Constant(mesh, 0.0)
 
     # Time step size
-    dt = dolfinx.Constant(mesh, dt)
+    dt = dolfinx.fem.Constant(mesh, dt)
 
     # Time integrator
     odeint = dolfiny.odeint.ODEInt(t=t, dt=dt, x=m, xt=mt, **kwargs)

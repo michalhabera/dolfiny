@@ -3,7 +3,8 @@
 from mpi4py import MPI
 from petsc4py import PETSc
 
-import dolfinx
+import dolfinx.mesh
+import dolfinx.fem
 import ufl
 
 import numpy
@@ -25,7 +26,7 @@ and its rate form: st(u, v) = [a + 3 * b * u^2] * v
 and initial conditions: u(t=0) = u_0, v(t=0) = v_0 and s(t=0) = s(u_0)
 """
 
-mesh = dolfinx.generation.UnitIntervalMesh(MPI.COMM_WORLD, 10)
+mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
 
 # Problem parameters, note: (a + b * u_0**2) !> 0
 a, b = 0.3, -0.25
@@ -42,16 +43,16 @@ def _st(u, v):
     return (a + 3 * b * u**2) * v  # rate of constitutive law
 
 
-V = dolfinx.FunctionSpace(mesh, ("DG", 0))
-S = dolfinx.FunctionSpace(mesh, ("DG", 0))
+V = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
+S = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
 
-v = dolfinx.Function(V, name="v")
-s = dolfinx.Function(S, name="s")
-vt = dolfinx.Function(V, name="vt")
-st = dolfinx.Function(S, name="st")
+v = dolfinx.fem.Function(V, name="v")
+s = dolfinx.fem.Function(S, name="s")
+vt = dolfinx.fem.Function(V, name="vt")
+st = dolfinx.fem.Function(S, name="st")
 
-u = dolfinx.Function(V, name="u")
-d = dolfinx.Function(V, name="d")  # dummy
+u = dolfinx.fem.Function(V, name="u")
+d = dolfinx.fem.Function(V, name="d")  # dummy
 
 δv = ufl.TestFunction(V)
 δs = ufl.TestFunction(S)
@@ -72,10 +73,10 @@ dx = ufl.Measure("dx", domain=mesh)
 nT = 100
 
 # Global time
-t = dolfinx.Constant(mesh, 0.0)
+t = dolfinx.fem.Constant(mesh, 0.0)
 
 # Time step size
-dt = dolfinx.Constant(mesh, 25 / nT)
+dt = dolfinx.fem.Constant(mesh, 25 / nT)
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(t=t, dt=dt, x=m, xt=mt)

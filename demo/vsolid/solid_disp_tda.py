@@ -3,7 +3,7 @@
 from petsc4py import PETSc
 from mpi4py import MPI
 
-import dolfinx
+import dolfinx.fem
 import ufl
 
 import dolfiny.io
@@ -50,13 +50,13 @@ surface_left = interfaces_keys["surface_left"]
 surface_right = interfaces_keys["surface_right"]
 
 # Solid material parameters
-rho = dolfinx.Constant(mesh, 1e-9 * 1e+4)  # [1e-9 * 1e+4 kg/m^3]
-eta = dolfinx.Constant(mesh, 1e-9 * 0e+4)  # [1e-9 * 0e+4 kg/m^3/s]
-mu = dolfinx.Constant(mesh, 1e-9 * 1e11)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.Constant(mesh, 1e-9 * 1e10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+rho = dolfinx.fem.Constant(mesh, 1e-9 * 1e+4)  # [1e-9 * 1e+4 kg/m^3]
+eta = dolfinx.fem.Constant(mesh, 1e-9 * 0e+4)  # [1e-9 * 0e+4 kg/m^3/s]
+mu = dolfinx.fem.Constant(mesh, 1e-9 * 1e11)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
+la = dolfinx.fem.Constant(mesh, 1e-9 * 1e10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
 
 # Load
-b = dolfinx.Constant(mesh, [0.0, -10, 0.0])  # [m/s^2]
+b = dolfinx.fem.Constant(mesh, [0.0, -10, 0.0])  # [m/s^2]
 
 # Reference values (Bernoulli cantilever, constant line load, free vibration frequency/period)
 # import numpy
@@ -68,9 +68,9 @@ b = dolfinx.Constant(mesh, [0.0, -10, 0.0])  # [m/s^2]
 # print(f"T_0 = {T_0} [s]")
 
 # Global time
-time = dolfinx.Constant(mesh, 0.0)  # [s]
+time = dolfinx.fem.Constant(mesh, 0.0)  # [s]
 # Time step size
-dt = dolfinx.Constant(mesh, 1e-2)  # [s]
+dt = dolfinx.fem.Constant(mesh, 1e-2)  # [s]
 # Number of time steps
 nT = 200
 
@@ -81,14 +81,14 @@ ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 # Function spaces
 Ue = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
 
-Uf = dolfinx.FunctionSpace(mesh, Ue)
+Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 
 # Define functions
-u = dolfinx.Function(Uf, name="u")
-ut = dolfinx.Function(Uf, name="ut")
-utt = dolfinx.Function(Uf, name="utt")
+u = dolfinx.fem.Function(Uf, name="u")
+ut = dolfinx.fem.Function(Uf, name="ut")
+utt = dolfinx.fem.Function(Uf, name="utt")
 
-u_ = dolfinx.Function(Uf, name="u_")  # boundary conditions
+u_ = dolfinx.fem.Function(Uf, name="u_")  # boundary conditions
 
 δu = ufl.TestFunction(Uf)
 
@@ -160,7 +160,7 @@ for time_step in range(1, nT + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(u_, surface_left_dofs_Uf),  # disp left (clamped)
+        dolfinx.fem.dirichletbc(u_, surface_left_dofs_Uf),  # disp left (clamped)
     ]
 
     # Solve nonlinear problem
