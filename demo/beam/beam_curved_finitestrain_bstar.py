@@ -148,7 +148,7 @@ dolfiny.interpolation.interpolate(gξ, n0i)
 # Contravariant basis
 K0 = ufl.geometry.JacobianInverse(mesh).T
 # Curvature tensor
-B0 = ufl.dot(n0i, ufl.dot(ufl.grad(K0), J0))  # = -ufl.dot(ufl.dot(ufl.grad(n0i), J0).T, K0)
+B0 = -ufl.dot(ufl.dot(ufl.grad(n0i), J0).T, K0)  # = ufl.dot(n0i, ufl.dot(ufl.grad(K0), J0))
 # Interpolate curvature tensor
 dolfiny.interpolation.interpolate(B0, B0i)
 # ----------------------------------------------------------------------------

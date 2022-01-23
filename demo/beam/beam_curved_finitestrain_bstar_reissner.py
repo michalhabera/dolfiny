@@ -19,7 +19,7 @@ import mesh_curve3d_gmshapi as mg
 import postprocess_matplotlib as pp
 
 # Basic settings
-name = "beam_curved_finitestrain_bstar"
+name = "beam_curved_finitestrain_bstar_reissner"
 comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
@@ -148,7 +148,7 @@ dolfiny.interpolation.interpolate(gξ, n0i)
 # Contravariant basis
 K0 = ufl.geometry.JacobianInverse(mesh).T
 # Curvature tensor
-B0 = ufl.dot(n0i, ufl.dot(ufl.grad(K0), J0))  # = -ufl.dot(ufl.dot(ufl.grad(n0i), J0).T, K0)
+B0 = -ufl.dot(ufl.dot(ufl.grad(n0i), J0).T, K0)  # = ufl.dot(n0i, ufl.dot(ufl.grad(K0), J0))
 # Interpolate curvature tensor
 dolfiny.interpolation.interpolate(B0, B0i)
 # ----------------------------------------------------------------------------
@@ -253,9 +253,9 @@ for factor in np.linspace(0, 1, num=20 + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.DirichletBC(u_, beg_dofs_Uf),  # u beg
-        dolfinx.fem.DirichletBC(w_, beg_dofs_Wf),  # w beg
-        dolfinx.fem.DirichletBC(r_, beg_dofs_Rf),  # r beg
+        dolfinx.fem.dirichletbc(u_, beg_dofs_Uf),  # u beg
+        dolfinx.fem.dirichletbc(w_, beg_dofs_Wf),  # w beg
+        dolfinx.fem.dirichletbc(r_, beg_dofs_Rf),  # r beg
     ]
 
     dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")
