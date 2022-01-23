@@ -172,7 +172,7 @@ def interpolate_compiled(compiled_expression, target_func):
     space_dim = target_func.function_space.element.space_dimension
 
     dofmap_bs = target_func.function_space.dofmap.bs
-    element_bs = target_func.function_space.dofmap.dof_layout.block_size()
+    element_bs = target_func.function_space.dofmap.dof_layout.block_size
 
     # Prepare mapping of subelements into the parent finite element
     # This mapping stores also how dofs are collapsed when symmetry to a TensorElement
