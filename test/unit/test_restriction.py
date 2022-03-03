@@ -1,17 +1,8 @@
 import os
 
+import dolfinx
+import dolfiny
 import numpy
-
-import dolfinx.mesh
-import dolfinx.cpp
-import dolfinx.io
-import dolfinx.geometry
-
-import dolfiny.la
-import dolfiny.mesh
-import dolfiny.restriction
-import dolfiny.snesblockproblem
-
 import pytest
 import ufl
 from mpi4py import MPI
@@ -25,9 +16,9 @@ skip_in_parallel = pytest.mark.skipif(
 def test_coupled_poisson():
     # dS integrals in parallel require shared_facet ghost mode
     if MPI.COMM_WORLD.size == 1:
-        ghost_mode = dolfinx.cpp.mesh.GhostMode.none
+        ghost_mode = dolfinx.mesh.GhostMode.none
     else:
-        ghost_mode = dolfinx.cpp.mesh.GhostMode.shared_facet
+        ghost_mode = dolfinx.mesh.GhostMode.shared_facet
 
     mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 16, 16, ghost_mode=ghost_mode)
     mesh.topology.create_connectivity(0, 1)

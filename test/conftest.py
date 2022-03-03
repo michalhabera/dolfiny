@@ -1,7 +1,6 @@
 import gc
 
-import dolfinx.fem
-import dolfinx.mesh
+import dolfinx
 import pytest
 from mpi4py import MPI
 

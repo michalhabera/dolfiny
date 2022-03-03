@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
 
+import dolfinx
+import dolfiny
+import numpy
+import ufl
 from mpi4py import MPI
 from petsc4py import PETSc
-
-import dolfinx.mesh
-import dolfinx.fem
-import ufl
-
-import numpy
-
-import dolfiny.odeint
-import dolfiny.snesblockproblem
-
 
 """
 First order nonlinear system of ODEs: (Duffing oscillator, undamped, unforced)
@@ -141,9 +135,10 @@ for ts in range(1, nT + 1):
 
 # Compare with reference solution
 import sys
+
 sys.path.append("../../test")
-from standalone_odeint import ode_2nd_nonlinear_closed
-from standalone_odeint import ode_2nd_nonlinear_odeint
+from standalone_odeint import (ode_2nd_nonlinear_closed,
+                               ode_2nd_nonlinear_odeint)
 
 u_c, v_c, a_c = u_, v_, vt_
 u_e, v_e, a_e = ode_2nd_nonlinear_closed(a, b, u_0, nT=nT, dt=dt.value)

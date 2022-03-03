@@ -1,9 +1,8 @@
-import pytest
-import numpy
 import json
 
-import dolfiny.utils
-
+import dolfiny
+import numpy
+import pytest
 import standalone_odeint as m
 import standalone_postprocess as p
 
@@ -23,8 +22,10 @@ def generalised_alpha_1st_params():
 def generalised_alpha_2nd_params():
     return {
         'newmark': {'param': {'alpha_f': 1.0, 'alpha_m': 1.0, 'gamma': 0.5, 'beta': 0.25}, 'order_expected': 2},
-        'hht_rho_0.5': {'param': {'alpha_f': 2/3, 'alpha_m': 1.0, 'gamma': 5/6, 'beta': 4/9}, 'order_expected': 2},  # noqa: E226, E501
-        'wbz_rho_0.5': {'param': {'alpha_f': 1.0, 'alpha_m': 4/3, 'gamma': 5/6, 'beta': 4/9}, 'order_expected': 2},  # noqa: E226, E501
+        'hht_rho_0.5': {'param': {'alpha_f': 2 / 3, 'alpha_m': 1.0, 'gamma': 5 / 6, 'beta': 4 / 9},
+                        'order_expected': 2},
+        'wbz_rho_0.5': {'param': {'alpha_f': 1.0, 'alpha_m': 4 / 3, 'gamma': 5 / 6, 'beta': 4 / 9},
+                        'order_expected': 2},
         'generalised_alpha_rho_1.0': {'param': {'rho': 1.0}, 'order_expected': 2},
         'generalised_alpha_rho_0.5': {'param': {'rho': 0.5}, 'order_expected': 2},
         'generalised_alpha_rho_0.0': {'param': {'rho': 0.0}, 'order_expected': 2},

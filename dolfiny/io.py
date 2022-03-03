@@ -1,6 +1,6 @@
 import logging
 
-import dolfinx.io
+import dolfinx
 
 
 class XDMFFile(dolfinx.io.XDMFFile):

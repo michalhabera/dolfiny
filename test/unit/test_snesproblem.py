@@ -1,7 +1,6 @@
+import dolfinx
+import dolfiny
 import numpy as np
-
-import dolfinx.fem
-import dolfiny.snesblockproblem
 import pytest
 import ufl
 from petsc4py import PETSc

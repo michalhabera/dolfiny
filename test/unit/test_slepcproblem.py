@@ -1,12 +1,7 @@
+import dolfinx
+import dolfiny
 import numpy as np
-
-import dolfiny.slepcblockproblem
-import dolfiny.la
-
 import ufl
-import dolfinx.fem
-import dolfinx.mesh
-import dolfinx.io
 from mpi4py import MPI
 from petsc4py import PETSc
 

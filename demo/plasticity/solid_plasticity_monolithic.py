@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
 
-from petsc4py import PETSc
-from mpi4py import MPI
-
 import dolfinx
+import dolfiny
+import numpy as np
 import ufl
-
-import dolfiny.io
-import dolfiny.mesh
-import dolfiny.utils
-import dolfiny.function
-import dolfiny.expression
-import dolfiny.projection
-import dolfiny.interpolation
-import dolfiny.snesblockproblem
+from mpi4py import MPI
+from petsc4py import PETSc
 
 import mesh_iso6892_gmshapi as mg
-
-import numpy as np
 
 # Basic settings
 name = "solid_plasticity_monolithic"
@@ -67,7 +57,11 @@ qb = dolfinx.fem.Constant(mesh, 0.100)  # kinematic hardening: saturation value 
 
 # Solid: load parameters
 μ = dolfinx.fem.Constant(mesh, 1.0)  # load factor
-u_bar = lambda x: μ.value * np.array([l0 * 0.01 * np.sign(x[0]), 0.0 * x[1], 0.0 * x[2]])  # noqa: E731 [m]
+
+
+def u_bar(x):
+    return μ.value * np.array([l0 * 0.01 * np.sign(x[0]), 0.0 * x[1], 0.0 * x[2]])
+
 
 # Define integration measures
 quad_degree = p
