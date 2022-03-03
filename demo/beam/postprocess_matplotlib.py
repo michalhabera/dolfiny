@@ -51,8 +51,8 @@ class Plotter():
         x0 = mesh.geometry.x[x0_idx]
 
         # Interpolate solution at mesh geometry nodes
-        import dolfinx.fem
-        import dolfiny.interpolation
+        import dolfinx
+        import dolfiny
         Q = dolfinx.fem.FunctionSpace(mesh, ("P", q))
         uf = dolfinx.fem.Function(Q)
 

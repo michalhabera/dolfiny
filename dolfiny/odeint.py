@@ -1,6 +1,6 @@
-import dolfinx.fem
-import dolfiny.expression
-import dolfiny.interpolation
+import dolfinx
+
+import dolfiny
 
 
 def _copy_entries(source, target):

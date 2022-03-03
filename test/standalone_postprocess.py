@@ -2,11 +2,12 @@
 
 def plot_convergence(jsonfile, title):
 
-    import matplotlib.pyplot
-    import matplotlib.colors
     import itertools
-    import numpy
     import json
+
+    import matplotlib.colors
+    import matplotlib.pyplot
+    import numpy
 
     with open(jsonfile, 'r') as file:
         mi = json.load(file)
@@ -33,7 +34,7 @@ def plot_convergence(jsonfile, title):
     ax1.legend(loc='lower left', ncol=len(mi), fontsize=4, markerscale=0.33, edgecolor='w', mode='expand')
 
     # put order indication
-    [xmin, xmax], [ymin, ymax] = ax1.get_xlim(), ax1.get_ylim()  # noqa: F841
+    [xmin, xmax], [_, ymax] = ax1.get_xlim(), ax1.get_ylim()
     for k in [0, 1, 2, 3]:
         lx = xmin + (xmax - xmin) * numpy.array([0.8, 1.0])
         ly = ymax - (xmax - xmin) * numpy.array([0.0, 0.2 * k])

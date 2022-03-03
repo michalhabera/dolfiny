@@ -1,17 +1,11 @@
+import dolfinx
+import dolfiny
+import numpy
+import ufl
 from mpi4py import MPI
 
-import dolfinx.mesh
-import dolfinx.fem
-
-import ufl
-import numpy
-
-import dolfiny.odeint
-import dolfiny.function
-import dolfiny.snesblockproblem
-
-
 # === ODEInt-based solutions =================================================
+
 
 def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01, **kwargs):
     """

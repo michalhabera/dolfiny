@@ -1,4 +1,4 @@
-import dolfiny.function
+import dolfiny
 import ufl
 
 

@@ -1,10 +1,8 @@
-import numpy
-from mpi4py import MPI
-
 import dolfinx
-import dolfinx.io
-import dolfiny.mesh
+import dolfiny
+import numpy
 import ufl
+from mpi4py import MPI
 
 
 def test_simple_triangle():

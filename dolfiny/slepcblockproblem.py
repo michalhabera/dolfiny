@@ -1,9 +1,10 @@
 import typing
 
-import dolfinx.fem
+import dolfinx
 import ufl
-from dolfiny.function import vec_to_functions
 from slepc4py import SLEPc
+
+from dolfiny.function import vec_to_functions
 
 
 class SLEPcBlockProblem():
@@ -90,20 +91,20 @@ class SLEPcBlockProblem():
         self.A_form = dolfinx.fem.form(self.A_form)
         self.B_form = dolfinx.fem.form(self.B_form)
 
-        self.A = dolfinx.fem.create_matrix_block(self.A_form)
+        self.A = dolfinx.fem.petsc.create_matrix_block(self.A_form)
 
         self.B = None
         if not self.empty_B():
-            self.B = dolfinx.fem.create_matrix_block(self.B_form)
+            self.B = dolfinx.fem.petsc.create_matrix_block(self.B_form)
 
     def solve(self):
         self.A.zeroEntries()
-        dolfinx.fem.assemble_matrix_block(self.A, self.A_form, [])
+        dolfinx.fem.petsc.assemble_matrix_block(self.A, self.A_form, [])
         self.A.assemble()
 
         if not self.empty_B():
             self.B.zeroEntries()
-            dolfinx.fem.assemble_matrix_block(self.B, self.B_form, [])
+            dolfinx.fem.petsc.assemble_matrix_block(self.B, self.B_form, [])
             self.B.assemble()
 
         self.eps.setOperators(self.A, self.B)

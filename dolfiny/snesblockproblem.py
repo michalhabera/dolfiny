@@ -1,13 +1,13 @@
 import typing
 
+import dolfinx
 import numpy as np
-from mpi4py import MPI
-
-import dolfinx.fem
 import ufl
+from mpi4py import MPI
+from petsc4py import PETSc
+
 from dolfiny.function import functions_to_vec, vec_to_functions
 from dolfiny.utils import pprint
-from petsc4py import PETSc
 
 
 class SNESBlockProblem():
@@ -82,8 +82,8 @@ class SNESBlockProblem():
             if restriction is not None:
                 raise RuntimeError("Restriction for MATNEST not yet supported.")
 
-            self.J = dolfinx.fem.create_matrix_nest(self.J_form)
-            self.F = dolfinx.fem.create_vector_nest(self.F_form)
+            self.J = dolfinx.fem.petsc.create_matrix_nest(self.J_form)
+            self.F = dolfinx.fem.petsc.create_vector_nest(self.F_form)
             self.x = self.F.copy()
 
             self.snes.setFunction(self._F_nest, self.F)
@@ -91,13 +91,13 @@ class SNESBlockProblem():
             self.snes.setMonitor(self._monitor_nest)
 
         else:
-            self.J = dolfinx.fem.create_matrix_block(self.J_form)
-            self.F = dolfinx.fem.create_vector_block(self.F_form)
+            self.J = dolfinx.fem.petsc.create_matrix_block(self.J_form)
+            self.F = dolfinx.fem.petsc.create_vector_block(self.F_form)
             self.x = self.F.copy()
 
             if restriction is not None:
                 # Need to create new global matrix for the restriction
-                self._J = dolfinx.fem.create_matrix_block(self.J_form)
+                self._J = dolfinx.fem.petsc.create_matrix_block(self.J_form)
                 self._J.assemble()
 
                 self._x = self.x.copy()
@@ -133,7 +133,7 @@ class SNESBlockProblem():
 
         self.update_functions(x)
 
-        dolfinx.fem.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
+        dolfinx.fem.petsc.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
 
         if self.restriction is not None:
             self.restriction.restrict_vector(self.F).copy(self.rF)
@@ -150,15 +150,15 @@ class SNESBlockProblem():
         for L, F_sub, a in zip(self.F_form, F.getNestSubVecs(), self.J_form):
             with F_sub.localForm() as F_sub_local:
                 F_sub_local.set(0.0)
-            dolfinx.fem.assemble_vector(F_sub, L)
-            dolfinx.fem.apply_lifting(F_sub, a, bcs1, x0=x, scale=-1.0)
+            dolfinx.fem.petsc.assemble_vector(F_sub, L)
+            dolfinx.fem.petsc.apply_lifting(F_sub, a, bcs1, x0=x, scale=-1.0)
             F_sub.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
 
         # Set bc value in RHS
         # bcs0 = dolfinx.cpp.fem.bcs_rows(dolfinx.fem.assemble._create_cpp_form(self.F_form), self.bcs)
         bcs0 = dolfinx.fem.bcs.bcs_by_block(dolfinx.fem.forms.extract_function_spaces(self.F_form), self.bcs)
         for F_sub, bc, u_sub in zip(F.getNestSubVecs(), bcs0, x):
-            dolfinx.fem.set_bc(F_sub, bc, u_sub, -1.0)
+            dolfinx.fem.petsc.set_bc(F_sub, bc, u_sub, -1.0)
 
         # Must assemble F here in the case of nest matrices
         F.assemble()
@@ -167,7 +167,7 @@ class SNESBlockProblem():
         self.J.zeroEntries()
         self.update_functions(x)
 
-        dolfinx.fem.assemble_matrix_block(self.J, self.J_form, self.bcs, diagonal=1.0)
+        dolfinx.fem.petsc.assemble_matrix_block(self.J, self.J_form, self.bcs, diagonal=1.0)
         self.J.assemble()
 
         if self.restriction is not None:
@@ -175,7 +175,7 @@ class SNESBlockProblem():
 
     def _J_nest(self, snes, u, J, P):
         self.J.zeroEntries()
-        dolfinx.fem.assemble_matrix_nest(self.J, self.J_form, self.bcs, diagonal=1.0)
+        dolfinx.fem.petsc.assemble_matrix_nest(self.J, self.J_form, self.bcs, diagonal=1.0)
         self.J.assemble()
 
     def _converged(self, snes, it, norms):

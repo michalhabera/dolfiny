@@ -1,9 +1,8 @@
+import dolfiny
 import numpy as np
-from mpi4py import MPI
-
-import dolfiny.la
 import pytest
 import scipy.sparse
+from mpi4py import MPI
 from petsc4py import PETSc
 
 skip_in_parallel = pytest.mark.skipif(

@@ -1,17 +1,18 @@
-import numpy as np
 import logging
 
-import cffi
-import dolfinx.fem
-import ffcx.element_interface
 import basix
+import cffi
+import dolfinx
+import ffcx.element_interface
 import numba
 import numba.core.typing.cffi_utils as cffi_support
+import numpy as np
 import ufl
-import dolfiny.expression
+from mpi4py import MPI
 from numba.typed import List
 from petsc4py import PETSc
-from mpi4py import MPI
+
+import dolfiny
 
 # Load ffi import-time, needed to be binded
 # into numba compiled code for interpolation
@@ -122,7 +123,7 @@ def interpolate_compiled(compiled_expression, target_func):
     lagrange/discontinuous lagrange of arbitrary order.
 
     """
-    kernel = compiled_expression.module[0].tabulate_expression
+    kernel = compiled_expression.module[0].tabulate_tensor_float64
 
     # Register complex types
     cffi_support.register_type(ffi.typeof('double _Complex'),
@@ -201,6 +202,8 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     # Coord dofs have shape (num_geometry_dofs, gdim)
     coordinate_dofs = np.zeros((geom_pos[1], gdim))
     coeffs = np.zeros(np.sum(coeffs_sizes), dtype=PETSc.ScalarType)
+    entity_index = np.array([0], dtype=np.intc)
+    quad_perm = np.array([0], dtype=np.dtype("uint8"))
 
     # Allocate space for local element tensor
     # This has the size which generated code expects, not the local
@@ -224,7 +227,8 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
             offset += coeffs_sizes[j]
 
         kernel(ffi.from_buffer(b_local), ffi.from_buffer(coeffs),
-               ffi.from_buffer(const_vector), ffi.from_buffer(coordinate_dofs))
+               ffi.from_buffer(const_vector), ffi.from_buffer(coordinate_dofs),
+               ffi.from_buffer(entity_index), ffi.from_buffer(quad_perm))
 
         for j in range(fiat_space_dim):
             for k in range(value_size):

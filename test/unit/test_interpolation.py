@@ -1,14 +1,12 @@
 import time
-import pytest
-import numpy
 
+import dolfinx
+import dolfiny
+import numpy
+import pytest
+import ufl
 from mpi4py import MPI
 from petsc4py import PETSc
-
-import ufl
-import dolfinx.fem
-import dolfiny.interpolation
-import dolfiny.projection
 
 N = 10
 mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, N, N, N)

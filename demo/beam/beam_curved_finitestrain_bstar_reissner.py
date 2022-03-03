@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 
-import numpy as np
-from petsc4py import PETSc
-from mpi4py import MPI
-
 import dolfinx
+import dolfiny
+import numpy as np
 import ufl
-
-import dolfiny.io
-import dolfiny.mesh
-import dolfiny.utils
-import dolfiny.function
-import dolfiny.expression
-import dolfiny.interpolation
-import dolfiny.snesblockproblem
+from mpi4py import MPI
+from petsc4py import PETSc
 
 import mesh_curve3d_gmshapi as mg
 import postprocess_matplotlib as pp
@@ -154,7 +146,11 @@ dolfiny.interpolation.interpolate(B0, B0i)
 # ----------------------------------------------------------------------------
 
 # DERIVATIVE with respect to arc-length coordinate s of straight reference configuration: du/ds = du/dx * dx/dr * dr/ds
-GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeterminant(mesh)  # noqa: E731
+
+
+def GRAD(u):
+    return ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeterminant(mesh)
+
 
 # Undeformed configuration: stretch (at the principal axis)
 λ0 = ufl.sqrt(ufl.dot(GRAD(x0), GRAD(x0)))  # from geometry (!= 1)
@@ -163,9 +159,9 @@ GRAD = lambda u: ufl.dot(ufl.grad(u), J0[:, 0]) * 1 / ufl.geometry.JacobianDeter
 
 # Deformed configuration: stretch components (at the principal axis)
 λs = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.cos(r) + \
-     (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.sin(r)  # noqa: E201
+     (GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.sin(r)
 λξ = (1.0 + GRAD(x0[0]) * GRAD(u) + GRAD(x0[2]) * GRAD(w)) * ufl.sin(r) - \
-     (      GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.cos(r)  # noqa: E201
+     (GRAD(x0[2]) * GRAD(u) - GRAD(x0[0]) * GRAD(w)) * ufl.cos(r)
 # Deformed configuration: curvature
 κ = GRAD(r)
 

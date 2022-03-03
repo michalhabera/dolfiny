@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
 
-from petsc4py import PETSc
-from mpi4py import MPI
-
-import dolfinx.fem
+import dolfinx
+import dolfiny
 import ufl
-
-import dolfiny.io
-import dolfiny.mesh
-import dolfiny.utils
-import dolfiny.odeint
-import dolfiny.function
-import dolfiny.snesblockproblem
+from mpi4py import MPI
+from petsc4py import PETSc
 
 import mesh_block3d_gmshapi as mg
 

@@ -1,19 +1,11 @@
 #!/usr/bin/env python3
 
-import numpy as np
-from petsc4py import PETSc
-from mpi4py import MPI
-
 import dolfinx
+import dolfiny
+import numpy as np
 import ufl
-
-import dolfiny.io
-import dolfiny.mesh
-import dolfiny.utils
-import dolfiny.function
-import dolfiny.expression
-import dolfiny.interpolation
-import dolfiny.snesblockproblem
+from mpi4py import MPI
+from petsc4py import PETSc
 
 import mesh_curve3d_gmshapi as mg
 import postprocess_matplotlib as pp

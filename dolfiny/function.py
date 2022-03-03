@@ -1,9 +1,9 @@
 import typing
-import numpy
 
-import dolfinx.fem
-from petsc4py import PETSc
+import dolfinx
+import numpy
 import ufl
+from petsc4py import PETSc
 
 
 def extract_blocks(form, test_functions: typing.List[ufl.Argument],

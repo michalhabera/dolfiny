@@ -1,4 +1,4 @@
-import dolfinx.fem
+import dolfinx
 import ufl
 from petsc4py import PETSc
 
@@ -15,12 +15,12 @@ def project(v, target_func, bcs=[]):
     L = dolfinx.fem.form(ufl.inner(v, w) * dx)
 
     # Assemble linear system
-    A = dolfinx.fem.assemble_matrix(a, bcs)
+    A = dolfinx.fem.petsc.assemble_matrix(a, bcs)
     A.assemble()
-    b = dolfinx.fem.assemble_vector(L)
-    dolfinx.fem.apply_lifting(b, [a], [bcs])
+    b = dolfinx.fem.petsc.assemble_vector(L)
+    dolfinx.fem.petsc.apply_lifting(b, [a], [bcs])
     b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    dolfinx.fem.set_bc(b, bcs)
+    dolfinx.fem.petsc.set_bc(b, bcs)
 
     # Solve linear system
     solver = PETSc.KSP().create(A.getComm())

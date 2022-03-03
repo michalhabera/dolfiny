@@ -1,8 +1,7 @@
-import dolfiny.expression
-import ufl
-import dolfinx.fem
-
+import dolfinx
+import dolfiny
 import numpy
+import ufl
 
 
 def test_expression_evaluate(V1, V2, squaremesh_5):

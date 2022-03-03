@@ -1,7 +1,7 @@
+import dolfinx
 import ufl
-import dolfinx.fem
-from ufl.corealg.multifunction import MultiFunction
 from ufl.algorithms.map_integrands import map_integrand_dags
+from ufl.corealg.multifunction import MultiFunction
 
 
 def evaluate(e, u, u0):
@@ -20,8 +20,8 @@ def evaluate(e, u, u0):
 
     """
 
-    from ufl.algorithms.replace import Replacer
     from ufl.algorithms.map_integrands import map_integrand_dags
+    from ufl.algorithms.replace import Replacer
 
     if isinstance(u, list) and isinstance(u0, list):
         repmap = {v: v0 for v, v0 in zip(u, u0)}
@@ -184,7 +184,7 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
     form where ``c_i`` could contain Constant must have first these nodes numerically evaluated.
 
     """
-    from ufl.classes import Sum, Product, Division, ScalarValue
+    from ufl.classes import Division, Product, ScalarValue, Sum
     if isinstance(e, dolfinx.fem.Function):
         linear_comb.append((e, scalar_weight))
     elif isinstance(e, (Product, Division)):
