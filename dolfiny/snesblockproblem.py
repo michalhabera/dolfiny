@@ -12,7 +12,7 @@ from dolfiny.utils import pprint
 
 class SNESBlockProblem():
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
-                 nest=False, restriction=None, prefix=None):
+                 nest=False, restriction=None, prefix=None, localsolver=None):
         """SNES problem and solver wrapper
 
         Parameters
@@ -63,6 +63,7 @@ class SNESBlockProblem():
 
         self.bcs = bcs
         self.restriction = restriction
+        self.localsolver = localsolver
 
         self.solution = []
 

@@ -4,7 +4,7 @@ from mpi4py import MPI
 import numpy
 from dolfinx.cpp.mesh import CellType
 from dolfinx import cpp
-from dolfinx.mesh import create_mesh, create_meshtags, MeshTags
+from dolfinx.mesh import create_mesh, meshtags_from_entities, meshtags
 from dolfinx.io import ufl_mesh_from_gmsh
 from dolfinx.cpp.io import distribute_entity_data
 
@@ -236,7 +236,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
 
         mesh.topology.create_connectivity(pgdim, 0)
 
-        mt = create_meshtags(mesh, pgdim, cpp.graph.AdjacencyList_int32(local_entities), numpy.int32(local_values))
+        mt = meshtags_from_entities(mesh, pgdim, cpp.graph.AdjacencyList_int32(local_entities), numpy.int32(local_values))
         mt.name = pg_tag_name
 
         mts[pg_tag_name] = mt
@@ -337,6 +337,6 @@ def merge_meshtags(mts, dim):
         keys[name] = value
 
     indices, pos = numpy.unique(indices, return_index=True)
-    mt = MeshTags(mts[0][0].mesh, dim, indices, values[pos])
+    mt = meshtags(mts[0][0].mesh, dim, indices, values[pos])
 
     return mt, keys

@@ -32,12 +32,12 @@ def test_coupled_poisson():
     indices = numpy.hstack((left_half, right_half))
     values = numpy.hstack((left_values, right_values))
     indices, pos = numpy.unique(indices, return_index=True)
-    mt = dolfinx.mesh.MeshTags(mesh, mesh.topology.dim, indices, values[pos])
+    mt = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, indices, values[pos])
 
     interface_facets = dolfinx.mesh.locate_entities(
         mesh, mesh.topology.dim - 1, lambda x: numpy.isclose(x[0], 0.5))
     indices = numpy.unique(interface_facets)
-    mt_interface = dolfinx.mesh.MeshTags(mesh, mesh.topology.dim - 1, indices, 1)
+    mt_interface = dolfinx.mesh.meshtags(mesh, mesh.topology.dim - 1, indices, 1)
 
     U0 = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
     U1 = dolfinx.fem.FunctionSpace(mesh, ("P", 2))

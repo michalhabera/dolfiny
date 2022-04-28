@@ -51,12 +51,12 @@ class CompiledExpression:
             mapping_types = [self.ffcx_element.element.map_type]
             nodes = self.ffcx_element.element.points
         elif isinstance(self.ffcx_element, ffcx.element_interface.QuadratureElement):
-            mapping_types = [basix._basixcpp.MappingType.identity]
+            mapping_types = [basix._basixcpp.MapType.identity]
             nodes = self.ffcx_element._points
         else:
             raise NotImplementedError("Unsupported element type")
 
-        if not all(x == basix._basixcpp.MappingType.identity for x in mapping_types):
+        if not all(x == basix._basixcpp.MapType.identity for x in mapping_types):
             raise NotImplementedError("Only affine mapped function spaces supported")
 
         module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))
