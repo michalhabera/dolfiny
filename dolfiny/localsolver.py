@@ -1,5 +1,3 @@
-import dolfiny
-import dolfinx
 from dolfinx.cpp.fem import Form_float64, Form_complex128
 from petsc4py import PETSc
 import numpy as np
@@ -133,9 +131,12 @@ class LocalSolver:
 
         sizes = np.array(sizes, dtype=int)
         # Numba does not support "list" of fn pointers, must be "tuple"
-        F_fn = tuple(F[i].ufcx_form.integrals(celltype)[0].tabulate_tensor_float64 if F[i].ufcx_form.num_integrals(celltype) > 0 else do_nothing_cffi for i in range(len(sizes)))
-        J_fn = tuple(tuple(J[i][j].ufcx_form.integrals(
-            celltype)[0].tabulate_tensor_float64 if (J[i][j] is not None and J[i][j].ufcx_form.num_integrals(celltype) > 0) else do_nothing_cffi for j in range(len(sizes))) for i in range(len(sizes)))
+        F_fn = tuple(F[i].ufcx_form.integrals(celltype)[0].tabulate_tensor_float64 if F[i].ufcx_form.num_integrals(
+            celltype) > 0 else do_nothing_cffi for i in range(len(sizes)))
+        J_fn = tuple(tuple(
+            J[i][j].ufcx_form.integrals(celltype)[0].tabulate_tensor_float64 if
+            (J[i][j] is not None and J[i][j].ufcx_form.num_integrals(celltype) > 0) else
+            do_nothing_cffi for j in range(len(sizes))) for i in range(len(sizes)))
 
         num_rows = sizes[indices[0]]
         num_cols = 1
@@ -163,7 +164,6 @@ class LocalSolver:
             kernel(J_all, F_all, A)
 
         return wrapped_kernel
-
 
     def _stack_data(self, forms_ufc, forms_ufl):
         """Stack all Coefficient functions across all blocks in F and J forms"""

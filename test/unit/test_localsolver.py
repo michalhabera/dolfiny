@@ -16,7 +16,6 @@ c_signature = numba.types.void(
 
 def test_linear(squaremesh_5):
 
-
     @numba.jit
     def sc_J(J, F, Jc):
         J01 = J[0][1]
@@ -24,7 +23,6 @@ def test_linear(squaremesh_5):
         J10 = J[1][0]
 
         Jc[:, :] = - J10 @ np.linalg.solve(J00, J01)
-
 
     @numba.jit
     def sc_F_cell(J, F, Fc):
@@ -35,13 +33,11 @@ def test_linear(squaremesh_5):
 
         Fc[:] = F1 - J10 @ np.linalg.solve(J00, F0)
 
-
     @numba.jit
     def sc_F_exterior_facet(J, F, Fc):
         F1 = F[1]
 
         Fc[:] = F1
-
 
     @numba.jit
     def solve_stress(J, F, u):
@@ -51,7 +47,7 @@ def test_linear(squaremesh_5):
         F0 = F[0]
         F1 = F[1]
 
-        u[:] = np.linalg.solve(J00, F0 - J01@F1)
+        u[:] = np.linalg.solve(J00, F0 - J01 @ F1)
 
     # Stress and displacement elements
     Se = ufl.TensorElement("DG", squaremesh_5.ufl_cell(), 1, symmetry=True)

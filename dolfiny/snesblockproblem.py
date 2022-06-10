@@ -159,7 +159,8 @@ class SNESBlockProblem():
             self.x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
             if self.localsolver is not None:
-                dolfinx.fem.petsc.assemble_vector_block(self.xloc, self.local_form, self.J_form, [], x0=self.xloc, scale=-1.0)
+                dolfinx.fem.petsc.assemble_vector_block(
+                    self.xloc, self.local_form, self.J_form, [], x0=self.xloc, scale=-1.0)
                 vec_to_functions(self.xloc, [self.u[idx] for idx in self.localsolver.local_spaces_id])
 
                 print("after ", self.xloc.norm())
