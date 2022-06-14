@@ -1,3 +1,4 @@
+from threading import local
 import dolfinx
 import dolfiny
 import numpy as np
@@ -16,38 +17,41 @@ c_signature = numba.types.void(
 
 def test_linear(squaremesh_5):
 
-    @numba.jit
-    def sc_J(J, F, Jc):
-        J01 = J[0][1]
-        J00 = J[0][0]
-        J10 = J[1][0]
-
-        Jc[:, :] = - J10 @ np.linalg.solve(J00, J01)
+    import cffi
+    ffi = cffi.FFI()
 
     @numba.jit
-    def sc_F_cell(J, F, Fc):
-        J10 = J[1][0]
-        J00 = J[0][0]
-        F0 = F[0]
-        F1 = F[1]
+    def sc_J(J_fn, F_fn, J, F, local_data, Jc):
+        J_fn[0][1](ffi.from_buffer(J[0][1]), *local_data)
+        J_fn[0][0](ffi.from_buffer(J[0][0]), *local_data)
+        J_fn[1][0](ffi.from_buffer(J[1][0]), *local_data)
 
-        Fc[:] = F1 - J10 @ np.linalg.solve(J00, F0)
-
-    @numba.jit
-    def sc_F_exterior_facet(J, F, Fc):
-        F1 = F[1]
-
-        Fc[:] = F1
+        Jc[:, :] = - J[1][0] @ np.linalg.solve(J[0][0], J[0][1])
 
     @numba.jit
-    def solve_stress(J, F, u):
-        J01 = J[0][1]
-        J00 = J[0][0]
+    def sc_F_cell(J_fn, F_fn, J, F, local_data, Fc):
+        J_fn[1][0](ffi.from_buffer(J[1][0]), *local_data)
+        J_fn[0][0](ffi.from_buffer(J[0][0]), *local_data)
+        F_fn[0](ffi.from_buffer(F[0]), *local_data)
+        F_fn[1](ffi.from_buffer(F[1]), *local_data)
 
-        F0 = F[0]
-        F1 = F[1]
+        Fc[:] = F[1] - J[1][0] @ np.linalg.solve(J[0][0], F[0])
 
-        u[:] = np.linalg.solve(J00, F0 - J01 @ F1)
+    @numba.jit
+    def sc_F_exterior_facet(J_fn, F_fn, J, F, local_data, Fc):
+        F_fn[1](ffi.from_buffer(F[1]), *local_data)
+
+        Fc[:] = F[1]
+
+    @numba.jit
+    def solve_stress(J_fn, F_fn, J, F, local_data, u):
+        J_fn[0][1](ffi.from_buffer(J[0][1]), *local_data)
+        J_fn[0][0](ffi.from_buffer(J[0][0]), *local_data)
+
+        F_fn[0](ffi.from_buffer(F[0]), *local_data)
+        F_fn[1](ffi.from_buffer(F[1]), *local_data)
+
+        u[:] = np.linalg.solve(J[0][0], F[0] - J[0][1] @ F[1])
 
     # Stress and displacement elements
     Se = ufl.TensorElement("DG", squaremesh_5.ufl_cell(), 1, symmetry=True)
@@ -79,13 +83,13 @@ def test_linear(squaremesh_5):
     E, nu = 1.0, 1.0 / 3.0
 
     def sigma_u(u):
-        """Consitutive relation for stress-strain. Assuming plane-stress in XY"""
+        """Constitutive relation for stress-strain. Assuming plane-stress in XY"""
         eps = 0.5 * (ufl.grad(u) + ufl.grad(u).T)
         sigma = E / (1. - nu ** 2) * ((1. - nu) * eps + nu * ufl.Identity(2) * ufl.tr(eps))
         return sigma
 
     f = ufl.as_vector([0.0, 1.0 / 16])
-    F0 = ufl.inner(sigma0 - sigma_u(u0), tau) * ufl.dx
+    F0 = dolfinx.fem.Constant(squaremesh_5, 1.0) * ufl.inner(sigma0 - sigma_u(u0), tau) * ufl.dx
     F1 = ufl.inner(sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
         dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0, v) * ufl.dx
 
@@ -108,8 +112,5 @@ def test_linear(squaremesh_5):
     problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls)
     sigma1, u1 = problem.solve()
 
-    print(sigma1.vector.norm())
-
-    with dolfinx.io.XDMFFile(squaremesh_5.comm, "u.xdmf", "w", dolfinx.io.XDMFFile.Encoding.HDF5) as file:
-        file.write_mesh(squaremesh_5)
-        file.write_function(u1)
+    assert np.isclose(u1.vector.norm(), 2.8002831339894887)
+    assert np.isclose(sigma1.vector.norm(), 1.8884853905348435)

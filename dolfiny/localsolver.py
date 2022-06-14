@@ -19,6 +19,7 @@ Form = Form_float64 if PETSc.ScalarType == np.float64 else Form_complex128
 
 class LocalSolver:
     def __init__(self, function_spaces, local_spaces_id, F_integrals, J_integrals, local_integrals):
+        """Local solver used to eliminate local degrees-of-freedom."""
         self.function_spaces = function_spaces
         self.local_spaces_id = local_spaces_id
         self.J_integrals = J_integrals
@@ -40,6 +41,7 @@ class LocalSolver:
         forms_ufl = [form for form in forms_ufl if form is not None]
 
         coefficients, constants = self._stack_data(forms_ufc, forms_ufl)
+        print(constants)
 
         F_form = []
 
@@ -148,25 +150,33 @@ class LocalSolver:
 
             A = numba.carray(A_, (num_rows, num_cols), dtype=PETSc.ScalarType)
 
-            F_all = [np.zeros((sizes[i], 1), dtype=PETSc.ScalarType) for i in range(len(sizes))]
-            for i in range(len(sizes)):
-                F_fn[i](ffi.from_buffer(F_all[i]), w_, c_, coords_, entity_local_index, permutation)
+            # Allocate empty data arrays for all residuals
+            F_arr = [np.zeros((sizes[i], 1), dtype=PETSc.ScalarType) for i in range(len(sizes))]
+            F_fn
 
-            J_all = [[np.zeros((sizes[i], sizes[j]), dtype=PETSc.ScalarType)
+            for i in range(len(sizes)):
+                # Prepare pre-evaluated functions
+                @numba.njit
+                def F_fn_wrapped(w):
+                    F_fn[i](ffi.from_buffer(F_arr[i]), w_, c_, coords_, entity_local_index, permutation)
+
+
+            # Allocate empty data arrays for all tangents
+            J_arr = [[np.zeros((sizes[i], sizes[j]), dtype=PETSc.ScalarType)
                       for j in range(len(sizes))] for i in range(len(sizes))]
 
-            for i in range(len(sizes)):
-                for j in range(len(sizes)):
-                    fn = J_fn[i]
-                    fn[j](ffi.from_buffer(J_all[i][j]), w_, c_, coords_, entity_local_index, permutation)
+            # for i in range(len(sizes)):
+            #     for j in range(len(sizes)):
+            #         fn = J_fn[i]
+            #         fn[j](ffi.from_buffer(J_arr[i][j]), w_, c_, coords_, entity_local_index, permutation)
 
             # Execute user kernel
-            kernel(J_all, F_all, A)
+            kernel(J_fn, F_fn_wrapped, J_arr, F_arr, (w_, c_, coords_, entity_local_index, permutation), A)
 
         return wrapped_kernel
 
     def _stack_data(self, forms_ufc, forms_ufl):
-        """Stack all Coefficient functions across all blocks in F and J forms"""
+        """Stack all Coefficient functions and Constants across all blocks in F and J forms"""
         coefficients = []
         constants = []
         for i, form_ufl in enumerate(forms_ufl):
