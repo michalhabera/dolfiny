@@ -153,3 +153,9 @@ demo/plasticity:
    script:
       - cd plasticity 
       - mpirun -n 8 python3 solid_plasticity_monolithic.py
+
+demo/spectral:
+   extends: .demo_template
+   script:
+      - cd spectral 
+      - mpirun -n 8 python3 spectral_elasticity.py
