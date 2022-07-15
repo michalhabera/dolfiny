@@ -71,13 +71,15 @@ class SNESBlockProblem():
         self.global_spaces_id = range(len(self.u))
 
         if self.localsolver is not None:
+            self.localsolver.F_ufl = self.F_form_all_ufl.copy()
+            self.localsolver.J_ufl = self.J_form_all_ufl.copy()
+            self.localsolver.F_ufc = self.F_form_all_ufc.copy()
+            self.localsolver.J_ufc = self.J_form_all_ufc.copy()
+
             # Replace compiled forms with wrapped forms for local solver
-            self.F_form = self.localsolver.reduced_F_forms(
-                self.F_form_all_ufc, self.J_form_all_ufc, self.F_form_all_ufl, self.J_form_all_ufl)
-            self.J_form = self.localsolver.reduced_J_forms(
-                self.F_form_all_ufc, self.J_form_all_ufc, self.F_form_all_ufl, self.J_form_all_ufl)
-            self.local_form = self.localsolver.local_form(
-                self.F_form_all_ufc, self.J_form_all_ufc, self.F_form_all_ufl, self.J_form_all_ufl)
+            self.F_form = self.localsolver.reduced_F_forms()
+            self.J_form = self.localsolver.reduced_J_forms()
+            self.local_form = self.localsolver.local_form()
             self.global_spaces_id = self.localsolver.global_spaces_id
 
         self.bcs = bcs
@@ -162,8 +164,6 @@ class SNESBlockProblem():
                 dolfinx.fem.petsc.assemble_vector_block(
                     self.xloc, self.local_form, self.J_form, [], x0=self.xloc, scale=-1.0)
                 vec_to_functions(self.xloc, [self.u[idx] for idx in self.localsolver.local_spaces_id])
-
-                print("after ", self.xloc.norm())
 
     def _F_block(self, snes, x, F):
         with self.F.localForm() as f_local:

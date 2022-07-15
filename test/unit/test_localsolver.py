@@ -1,4 +1,3 @@
-from threading import local
 import dolfinx
 import dolfiny
 import numpy as np
@@ -17,41 +16,21 @@ c_signature = numba.types.void(
 
 def test_linear(squaremesh_5):
 
-    import cffi
-    ffi = cffi.FFI()
+    @numba.jit
+    def sc_J(A, J, F, *other_data):
+        A[:] = - J[1][0].array @ np.linalg.solve(J[0][0].array, J[0][1].array)
 
     @numba.jit
-    def sc_J(J_fn, F_fn, J, F, local_data, Jc):
-        J_fn[0][1](ffi.from_buffer(J[0][1]), *local_data)
-        J_fn[0][0](ffi.from_buffer(J[0][0]), *local_data)
-        J_fn[1][0](ffi.from_buffer(J[1][0]), *local_data)
-
-        Jc[:, :] = - J[1][0] @ np.linalg.solve(J[0][0], J[0][1])
+    def sc_F_cell(A, J, F, *other_data):
+        A[:] = F[1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, F[0].array)
 
     @numba.jit
-    def sc_F_cell(J_fn, F_fn, J, F, local_data, Fc):
-        J_fn[1][0](ffi.from_buffer(J[1][0]), *local_data)
-        J_fn[0][0](ffi.from_buffer(J[0][0]), *local_data)
-        F_fn[0](ffi.from_buffer(F[0]), *local_data)
-        F_fn[1](ffi.from_buffer(F[1]), *local_data)
-
-        Fc[:] = F[1] - J[1][0] @ np.linalg.solve(J[0][0], F[0])
+    def sc_F_exterior_facet(A, J, F, *other_data):
+        A[:] = F[1].array
 
     @numba.jit
-    def sc_F_exterior_facet(J_fn, F_fn, J, F, local_data, Fc):
-        F_fn[1](ffi.from_buffer(F[1]), *local_data)
-
-        Fc[:] = F[1]
-
-    @numba.jit
-    def solve_stress(J_fn, F_fn, J, F, local_data, u):
-        J_fn[0][1](ffi.from_buffer(J[0][1]), *local_data)
-        J_fn[0][0](ffi.from_buffer(J[0][0]), *local_data)
-
-        F_fn[0](ffi.from_buffer(F[0]), *local_data)
-        F_fn[1](ffi.from_buffer(F[1]), *local_data)
-
-        u[:] = np.linalg.solve(J[0][0], F[0] - J[0][1] @ F[1])
+    def solve_stress(A, J, F, *other_data):
+        A[:] = np.linalg.solve(J[0][0].array, F[0].array - J[0][1].array @ F[1].array)
 
     # Stress and displacement elements
     Se = ufl.TensorElement("DG", squaremesh_5.ufl_cell(), 1, symmetry=True)
