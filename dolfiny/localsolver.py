@@ -18,34 +18,25 @@ c_signature = numba.types.void(
 Form = Form_float64 if PETSc.ScalarType == np.float64 else Form_complex128
 
 
-KernelData = collections.namedtuple("KernelData", ("kernel", "array", "w", "c", "coords"))
-CoefficientData = collections.namedtuple("CoefficientData", ("indices", "name", "begin", "end"))
-ConstantData = collections.namedtuple("ConstantData", ("indices", "name", "begin", "end"))
+KernelData = collections.namedtuple("KernelData", ("kernel", "array", "w", "c", "coords", "entity_local_index",
+                                                   "permutation"))
+ElementData = collections.namedtuple("ElementData", ("indices", "name", "begin", "end"))
 
 
-from numba.core import extending, cgutils, types
-
-
-@extending.intrinsic
-def printf(typingctx, format_type, *args):
-    """printf that can be called from Numba jit-decorated functions.
-    """
-    if isinstance(format_type, types.StringLiteral):
-        sig = types.void(format_type, types.BaseTuple.from_types(args))
-
-        def codegen(context, builder, signature, args):
-            cgutils.printf(builder, format_type.literal_value, *args[1:])
-        return sig, codegen
+@numba.cfunc(c_signature, nopython=True)
+def do_nothing(A_, w_, c_, coords_, entity_local_index, permutation=ffi.NULL):
+    pass
 
 
 class LocalSolver:
-    def __init__(self, function_spaces, local_spaces_id, F_integrals, J_integrals, local_integrals):
+    def __init__(self, function_spaces, local_spaces_id, F_integrals, J_integrals, local_integrals, local_update):
         """Local solver used to eliminate local degrees-of-freedom."""
         self.function_spaces = function_spaces
         self.local_spaces_id = local_spaces_id
         self.J_integrals = J_integrals
         self.F_integrals = F_integrals
         self.local_integrals = local_integrals
+        self.local_update = local_update
 
         self.global_spaces_id = [i for i in range(len(function_spaces)) if i not in self.local_spaces_id]
 
@@ -121,10 +112,6 @@ class LocalSolver:
 
     def wrap_kernel(self, kernel, indices, celltype):
 
-        @numba.cfunc(c_signature, nopython=True)
-        def do_nothing(A_, w_, c_, coords_, entity_local_index, permutation=ffi.NULL):
-            pass
-
         sizes = []
         for i, fs in enumerate(self.function_spaces):
             sizes += [fs.element.space_dimension]
@@ -149,17 +136,24 @@ class LocalSolver:
         stacked_coefficients, stacked_constants, coefficients, constants = self._stack_data()
 
         stacked_coefficients_size = stacked_coefficients[-1][1][1]
-        stacked_constants_size = stacked_constants[-1][1][1]
+        stacked_constants_size = stacked_constants[-1][1][1] if len(stacked_constants) > 0 else 0
 
         num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
 
+        # Extract number of coeffs/consts for later use in compile-time branch
+        # elimination
+        num_constants = len(constants)
+        num_coefficients = len(coefficients)
+
         @numba.cfunc(c_signature, nopython=False)
-        def wrapped_kernel(A_, w_, c_, coords_, entity_local_index, permutation=ffi.NULL):
+        def wrapped_kernel(A_, w_, c_, coords_, entity_local_index_, permutation_=ffi.NULL):
 
             A = numba.carray(A_, shape, dtype=PETSc.ScalarType)
             w = numba.carray(w_, (stacked_coefficients_size, ), dtype=PETSc.ScalarType)
             c = numba.carray(c_, (stacked_constants_size, ), dtype=PETSc.ScalarType)
             coords = numba.carray(coords_, (num_coordinate_dofs * 3, ), dtype=np.double)
+            entity_local_index = numba.carray(entity_local_index_, (1, ), dtype=np.int32)
+            permutation = numba.carray(permutation_, (1, ), dtype=np.uint8)
 
             J = numba.typed.List()
             F = numba.typed.List()
@@ -167,58 +161,78 @@ class LocalSolver:
             for i in range(len(sizes)):
                 F_array = np.zeros((sizes[i], 1), dtype=PETSc.ScalarType)
 
-                coeffs = [coeff for coeff in coefficients if coeff.indices == (i, -1)]
-                consts = [const for const in constants if const.indices == (i, -1)]
-                w_array = np.zeros((coeffs[-1].end if len(coeffs) > 0 else 1, ), dtype=PETSc.ScalarType)
-                c_array = np.zeros((consts[-1].end if len(consts) > 0 else 1, ), dtype=PETSc.ScalarType)
-
-                # Copy coefficient data to local vector for this kernel
-                pos = 0
-                for coeff in coeffs:
-                    size = coeff.end - coeff.begin
-                    w_array[pos:pos + size] = w[coeff.begin:coeff.end]
-                    pos += size
-
-                pos = 0
-                for const in consts:
-                    size = const.end - const.begin
-                    c_array[pos:pos + size] = c[const.begin:const.end]
-                    pos += size
-
-                F_fn[i](ffi.from_buffer(F_array), ffi.from_buffer(w_array), ffi.from_buffer(
-                    c_array), ffi.from_buffer(coords), entity_local_index, permutation)
-
-                F.append(KernelData(F_fn[i], F_array, w, c, coords))
-
-                J_row = numba.typed.List()
-                for j in range(len(sizes)):
-
-                    coeffs = [coeff for coeff in coefficients if coeff.indices == (i, j)]
-                    consts = [const for const in constants if const.indices == (i, j)]
-                    w_array = np.zeros((coeffs[-1].end if len(coeffs) > 0 else 1, ), dtype=PETSc.ScalarType)
+                if num_constants > 0:
+                    consts = [const for const in constants if const.indices == (i, -1)]
                     c_array = np.zeros((consts[-1].end if len(consts) > 0 else 1, ), dtype=PETSc.ScalarType)
+                else:
+                    c_array = np.zeros((1, ), dtype=PETSc.ScalarType)
 
-                    # Copy coefficient data to local vector for this kernel
-                    pos = 0
+                if num_coefficients > 0:
+                    coeffs = [coeff for coeff in coefficients if coeff.indices == (i, -1)]
+                    w_array = np.zeros((coeffs[-1].end if len(coeffs) > 0 else 1, ), dtype=PETSc.ScalarType)
+                else:
+                    w_array = np.zeros((1, ), dtype=PETSc.ScalarType)
+
+                pos = 0
+                if num_coefficients > 0:
                     for coeff in coeffs:
                         size = coeff.end - coeff.begin
                         w_array[pos:pos + size] = w[coeff.begin:coeff.end]
                         pos += size
 
-                    pos = 0
+                pos = 0
+                if num_constants > 0:
                     for const in consts:
                         size = const.end - const.begin
                         c_array[pos:pos + size] = c[const.begin:const.end]
                         pos += size
 
+                F_fn[i](ffi.from_buffer(F_array), ffi.from_buffer(w_array), ffi.from_buffer(
+                    c_array), ffi.from_buffer(coords), ffi.from_buffer(entity_local_index),
+                    ffi.from_buffer(permutation))
+
+                F.append(KernelData(F_fn[i], F_array, w, c, coords, entity_local_index, permutation))
+
+                J_row = numba.typed.List()
+                for j in range(len(sizes)):
+
+                    if num_constants > 0:
+                        consts = [const for const in constants if const.indices == (i, j)]
+                        c_array = np.zeros((consts[-1].end if len(consts) > 0 else 1, ), dtype=PETSc.ScalarType)
+                    else:
+                        c_array = np.zeros((1, ), dtype=PETSc.ScalarType)
+
+                    if num_coefficients > 0:
+                        coeffs = [coeff for coeff in coefficients if coeff.indices == (i, j)]
+                        w_array = np.zeros((coeffs[-1].end if len(coeffs) > 0 else 1, ), dtype=PETSc.ScalarType)
+                    else:
+                        w_array = np.zeros((1, ), dtype=PETSc.ScalarType)
+
+                    # Copy coefficient data to local vector for this kernel
+                    if num_coefficients > 0:
+                        pos = 0
+                        for coeff in coeffs:
+                            size = coeff.end - coeff.begin
+                            w_array[pos:pos + size] = w[coeff.begin:coeff.end]
+                            pos += size
+
+                    if num_constants > 0:
+                        pos = 0
+                        for const in consts:
+                            size = const.end - const.begin
+                            c_array[pos:pos + size] = c[const.begin:const.end]
+                            pos += size
+
                     J_array = np.zeros((sizes[i], sizes[j]), dtype=PETSc.ScalarType)
                     J_fn[i][j](ffi.from_buffer(J_array), ffi.from_buffer(w_array), ffi.from_buffer(
-                        c_array), ffi.from_buffer(coords), entity_local_index, permutation)
-                    J_row.append(KernelData(J_fn[i][j], J_array, w_array, c_array, coords))
+                        c_array), ffi.from_buffer(coords), ffi.from_buffer(entity_local_index),
+                        ffi.from_buffer(permutation))
+                    J_row.append(KernelData(J_fn[i][j], J_array, w_array, c_array,
+                                 coords, entity_local_index, permutation))
                 J.append(J_row)
 
             # Execute user kernel
-            kernel(A, J, F, entity_local_index, permutation)
+            kernel(A, J, F)
 
         return wrapped_kernel
 
@@ -260,11 +274,11 @@ class LocalSolver:
             for c in range(self.F_ufc[i].ufcx_form.num_coefficients):
                 coeff = original_coefficients[self.F_ufc[i].ufcx_form.original_coefficient_position[c]]._cpp_object
                 coeff_pos = [(c[1][0], c[1][1]) for c in stacked_coefficients if c[0] == coeff]
-                dat = CoefficientData((i, -1), coeff.name, coeff_pos[0][0], coeff_pos[0][1])
+                dat = ElementData((i, -1), coeff.name, coeff_pos[0][0], coeff_pos[0][1])
                 coefficients.append(dat)
             for const in self.F_ufl[i].constants():
                 const_pos = [(c[1][0], c[1][1]) for c in stacked_constants if c[0] == const._cpp_object]
-                dat = ConstantData((i, -1), str(const), const_pos[0][0], const_pos[0][1])
+                dat = ElementData((i, -1), str(const), const_pos[0][0], const_pos[0][1])
                 constants.append(dat)
 
             for j in range(len(self.F_ufl)):
@@ -273,11 +287,11 @@ class LocalSolver:
                     coeff = original_coefficients[self.J_ufc[i]
                                                   [j].ufcx_form.original_coefficient_position[c]]._cpp_object
                     coeff_pos = [(c[1][0], c[1][1]) for c in stacked_coefficients if c[0] == coeff]
-                    dat = CoefficientData((i, j), coeff.name, coeff_pos[0][0], coeff_pos[0][1])
+                    dat = ElementData((i, j), coeff.name, coeff_pos[0][0], coeff_pos[0][1])
                     coefficients.append(dat)
                 for const in self.J_ufl[i][j].constants():
                     const_pos = [(c[1][0], c[1][1]) for c in stacked_constants if c[0] == const._cpp_object]
-                    dat = ConstantData((i, j), str(const), const_pos[0][0], const_pos[0][1])
+                    dat = ElementData((i, j), str(const), const_pos[0][0], const_pos[0][1])
                     constants.append(dat)
 
         return stacked_coefficients, stacked_constants, tuple(coefficients), tuple(constants)

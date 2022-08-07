@@ -149,10 +149,6 @@ class SNESBlockProblem():
             functions_to_vec(self.u, self.x)
         else:
             if self.localsolver is not None:
-                # Zero local state and update functions
-                with self.xloc.localForm() as x_local:
-                    x_local.set(0.0)
-                vec_to_functions(self.xloc, [self.u[idx] for idx in self.localsolver.local_spaces_id])
                 vec_to_functions(x, [self.u[idx] for idx in self.localsolver.global_spaces_id])
             else:
                 vec_to_functions(x, self.u)
@@ -160,16 +156,14 @@ class SNESBlockProblem():
             x.copy(self.x)
             self.x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
-            if self.localsolver is not None:
-                dolfinx.fem.petsc.assemble_vector_block(
-                    self.xloc, self.local_form, self.J_form, [], x0=self.xloc, scale=-1.0)
-                vec_to_functions(self.xloc, [self.u[idx] for idx in self.localsolver.local_spaces_id])
-
     def _F_block(self, snes, x, F):
         with self.F.localForm() as f_local:
             f_local.set(0.0)
 
         self.update_functions(x)
+
+        if self.localsolver is not None:
+            self.localsolver.local_update(self)
 
         dolfinx.fem.petsc.assemble_vector_block(self.F, self.F_form, self.J_form, self.bcs, x0=self.x, scale=-1.0)
 
