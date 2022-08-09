@@ -84,9 +84,11 @@ def test_linear(squaremesh_5):
 
     def local_update(problem):
         dx = problem.snes.getSolutionUpdate()
+        dx.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
         # Fill the du function to be accessed from local kernel
-        dx.copy(du.vector)
+        with dx.localForm() as dx_, du.vector.localForm() as du_:
+            dx_.copy(du_)
 
         with problem.xloc.localForm() as x_local:
             x_local.set(0.0)
@@ -195,9 +197,11 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
 
     def local_update(problem):
         dx = problem.snes.getSolutionUpdate()
+        dx.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
         # Fill the du function to be accessed from local kernel
-        dx.copy(du.vector)
+        with dx.localForm() as dx_, du.vector.localForm() as du_:
+            dx_.copy(du_)
 
         with problem.xloc.localForm() as x_local:
             x_local.set(0.0)

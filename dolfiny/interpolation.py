@@ -50,7 +50,7 @@ class CompiledExpression:
         elif isinstance(self.ffcx_element, basix.ufl_wrapper.BasixElement):
             mapping_types = [self.ffcx_element.element.map_type]
             nodes = self.ffcx_element.element.points
-        elif isinstance(self.ffcx_element, basix.ufl_wrapper.QuadratureElement):
+        elif isinstance(self.ffcx_element, ffcx.element_interface.QuadratureElement):
             mapping_types = [basix._basixcpp.MapType.identity]
             nodes = self.ffcx_element._points
         else:
