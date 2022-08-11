@@ -5,6 +5,7 @@ import numba
 import cffi
 import itertools
 import collections
+import logging
 
 
 ffi = cffi.FFI()
@@ -96,7 +97,6 @@ class LocalSolver:
         local_form = []
         for li, i in enumerate(self.local_spaces_id):
             V = self.function_spaces[i]
-            assert(self.function_spaces[li] == V)
 
             integrals = self.local_integrals[li]
             for celltype, integral in integrals.items():
@@ -145,6 +145,8 @@ class LocalSolver:
         num_constants = len(constants)
         num_coefficients = len(coefficients)
 
+        logging.warning(f"Compiling kernel wrapper for indices={indices}")
+
         @numba.cfunc(c_signature, nopython=False)
         def wrapped_kernel(A_, w_, c_, coords_, entity_local_index_, permutation_=ffi.NULL):
 
@@ -191,7 +193,7 @@ class LocalSolver:
                     c_array), ffi.from_buffer(coords), ffi.from_buffer(entity_local_index),
                     ffi.from_buffer(permutation))
 
-                F.append(KernelData(F_fn[i], F_array, w, c, coords, entity_local_index, permutation))
+                F.append(KernelData(F_fn[i], F_array, w_array, c_array, coords, entity_local_index, permutation))
 
                 J_row = numba.typed.List()
                 for j in range(len(sizes)):
@@ -269,7 +271,8 @@ class LocalSolver:
                     size_const += const.value.size
 
         for i in range(len(self.F_ufl)):
-
+            if self.F_ufl[i] is None:
+                continue
             original_coefficients = self.F_ufl[i].coefficients()
             for c in range(self.F_ufc[i].ufcx_form.num_coefficients):
                 coeff = original_coefficients[self.F_ufc[i].ufcx_form.original_coefficient_position[c]]._cpp_object
@@ -282,6 +285,8 @@ class LocalSolver:
                 constants.append(dat)
 
             for j in range(len(self.F_ufl)):
+                if self.J_ufl[i][j] is None:
+                    continue
                 original_coefficients = self.J_ufl[i][j].coefficients()
                 for c in range(self.J_ufc[i][j].ufcx_form.num_coefficients):
                     coeff = original_coefficients[self.J_ufc[i]
