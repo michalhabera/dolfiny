@@ -20,7 +20,7 @@ Form = Form_float64 if PETSc.ScalarType == np.float64 else Form_complex128
 
 
 KernelData = collections.namedtuple("KernelData", ("kernel", "array", "w", "c", "coords", "entity_local_index",
-                                                   "permutation"))
+                                                   "permutation", "constants", "coefficients"))
 ElementData = collections.namedtuple("ElementData", ("indices", "name", "begin", "end"))
 
 
@@ -124,6 +124,7 @@ class LocalSolver:
         F_fn = tuple(self.F_ufc[i].ufcx_form.integrals(celltype)[0].tabulate_tensor_float64
                      if self.F_ufc[i].ufcx_form.num_integrals(
             celltype) > 0 else do_nothing_cffi for i in range(len(sizes)))
+
         J_fn = tuple(tuple(
             self.J_ufc[i][j].ufcx_form.integrals(celltype)[0].tabulate_tensor_float64 if
             (self.J_ufc[i][j] is not None and self.J_ufc[i][j].ufcx_form.num_integrals(celltype) > 0) else
@@ -135,7 +136,7 @@ class LocalSolver:
 
         stacked_coefficients, stacked_constants, coefficients, constants = self._stack_data()
 
-        stacked_coefficients_size = stacked_coefficients[-1][1][1]
+        stacked_coefficients_size = stacked_coefficients[-1][1][1] if len(stacked_coefficients) > 0 else 0
         stacked_constants_size = stacked_constants[-1][1][1] if len(stacked_constants) > 0 else 0
 
         num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
@@ -147,7 +148,7 @@ class LocalSolver:
 
         logging.warning(f"Compiling kernel wrapper for indices={indices}")
 
-        @numba.cfunc(c_signature, nopython=False)
+        @numba.cfunc(c_signature, nopython=True)
         def wrapped_kernel(A_, w_, c_, coords_, entity_local_index_, permutation_=ffi.NULL):
 
             A = numba.carray(A_, shape, dtype=PETSc.ScalarType)
@@ -161,8 +162,6 @@ class LocalSolver:
             F = numba.typed.List()
 
             for i in range(len(sizes)):
-                F_array = np.zeros((sizes[i], 1), dtype=PETSc.ScalarType)
-
                 if num_constants > 0:
                     consts = [const for const in constants if const.indices == (i, -1)]
                     c_array = np.zeros((consts[-1].end if len(consts) > 0 else 1, ), dtype=PETSc.ScalarType)
@@ -189,11 +188,13 @@ class LocalSolver:
                         c_array[pos:pos + size] = c[const.begin:const.end]
                         pos += size
 
+                F_array = np.zeros((sizes[i], 1), dtype=PETSc.ScalarType)
                 F_fn[i](ffi.from_buffer(F_array), ffi.from_buffer(w_array), ffi.from_buffer(
                     c_array), ffi.from_buffer(coords), ffi.from_buffer(entity_local_index),
                     ffi.from_buffer(permutation))
 
-                F.append(KernelData(F_fn[i], F_array, w_array, c_array, coords, entity_local_index, permutation))
+                F.append(KernelData(F_fn[i], F_array, w_array, c_array, coords, entity_local_index,
+                                    permutation, consts, coeffs))
 
                 J_row = numba.typed.List()
                 for j in range(len(sizes)):
@@ -230,7 +231,7 @@ class LocalSolver:
                         c_array), ffi.from_buffer(coords), ffi.from_buffer(entity_local_index),
                         ffi.from_buffer(permutation))
                     J_row.append(KernelData(J_fn[i][j], J_array, w_array, c_array,
-                                 coords, entity_local_index, permutation))
+                                 coords, entity_local_index, permutation, consts, coeffs))
                 J.append(J_row)
 
             # Execute user kernel

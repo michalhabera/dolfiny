@@ -71,6 +71,9 @@ class SNESBlockProblem():
         self.global_spaces_id = range(len(self.u))
 
         if self.localsolver is not None:
+            if nest:
+                raise RuntimeError("LocalSolver with MATNEST not implemented")
+
             self.localsolver.F_ufl = self.F_form_all_ufl.copy()
             self.localsolver.J_ufl = self.J_form_all_ufl.copy()
             self.localsolver.F_ufc = self.F_form_all_ufc.copy()

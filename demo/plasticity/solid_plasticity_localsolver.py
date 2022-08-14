@@ -9,6 +9,7 @@ from petsc4py import PETSc
 import numba
 import cffi
 from dolfiny.function import vec_to_functions
+import time
 
 import mesh_iso6892_gmshapi as mg
 
@@ -18,7 +19,7 @@ comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
 l0, d0 = 0.10, 0.02  # [m]
-nr = 2
+nr = 5
 # Geometry and physics ansatz order
 o, p = 1, 1
 
@@ -111,9 +112,8 @@ m, δm = [u, P, h, B], [δu, δP, δh, δB]
 def rJ2(A):
     """Square root of J2 invariant of tensor A"""
     J2 = 1 / 2 * ufl.inner(A, A)
-    rJ2 = ufl.sqrt(J2 + 1.0e-32)
-    return rJ2
-    # return ufl.conditional(rJ2 < 1.0e-12, 0.0, rJ2)
+    rJ2 = ufl.sqrt(J2)
+    return ufl.conditional(rJ2 < 1.0e-12, 0.0, rJ2)
 
 
 # Configuration gradient
@@ -180,19 +180,19 @@ opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 
-@numba.jit
+@numba.njit
 def sc_J(A, J, F):
-    J10 = np.concatenate((J[1][0].array, J[2][0].array, J[3][0].array), axis=0)
-    J01 = np.concatenate((J[0][1].array, J[0][2].array, J[0][3].array), axis=1)
-    J11row0 = np.concatenate((J[1][1].array, J[1][2].array, J[1][3].array), axis=1)
-    J11row1 = np.concatenate((J[2][1].array, J[2][2].array, J[2][3].array), axis=1)
-    J11row2 = np.concatenate((J[3][1].array, J[3][2].array, J[3][3].array), axis=1)
-    J11 = np.concatenate((J11row0, J11row1, J11row2), axis=0)
+    Jlg = np.concatenate((J[1][0].array, J[2][0].array, J[3][0].array), axis=0)
+    Jgl = np.concatenate((J[0][1].array, J[0][2].array, J[0][3].array), axis=1)
+    Jllrow0 = np.concatenate((J[1][1].array, J[1][2].array, J[1][3].array), axis=1)
+    Jllrow1 = np.concatenate((J[2][1].array, J[2][2].array, J[2][3].array), axis=1)
+    Jllrow2 = np.concatenate((J[3][1].array, J[3][2].array, J[3][3].array), axis=1)
+    Jll = np.concatenate((Jllrow0, Jllrow1, Jllrow2), axis=0)
 
-    A[:] = J[0][0].array - J01 @ np.linalg.solve(J11, J10)
+    A[:] = J[0][0].array - Jgl @ np.linalg.solve(Jll, Jlg)
 
 
-@numba.jit
+@numba.njit
 def sc_F_cell(A, J, F):
     A[:] = F[0].array
 
@@ -202,16 +202,18 @@ ffi = cffi.FFI()
 
 @numba.njit
 def solve_local(A, J, F):
-    # Previous local state is the first coefficient in F0 form
-    # sigma0 = F[0].w[:9].reshape(9, 1)
-    P = F[1].w[12:18]
-    h = F[1].w[18:19]
-    B = F[1].w[19:25]
+    P_idx = [(coeff.begin, coeff.end) for coeff in F[1].coefficients if coeff.name == "P"][0]
+    h_idx = [(coeff.begin, coeff.end) for coeff in F[1].coefficients if coeff.name == "h"][0]
+    B_idx = [(coeff.begin, coeff.end) for coeff in F[1].coefficients if coeff.name == "B"][0]
 
-    loc = np.concatenate((P, h, B)).copy()
+    P = F[1].w[P_idx[0]:P_idx[1]]
+    h = F[1].w[h_idx[0]:h_idx[1]]
+    B = F[1].w[B_idx[0]:B_idx[1]]
+
+    loc = np.concatenate((P, h, B))
     dloc = np.zeros_like(loc)
 
-    N = 50
+    N = 20
     for it in range(N):
         # Re-evaluate local residuals
         for i in range(1, 4):
@@ -223,6 +225,13 @@ def solve_local(A, J, F):
         R = np.concatenate((F[1].array, F[2].array, F[3].array))
         err = np.linalg.norm(R)
 
+        if it == 0:
+            err0 = err
+        if err <= 1e-6 * err0 or err < 1e-16:
+            break
+        elif it == N - 1:
+            raise RuntimeError("Local NR not converged")
+
         for i in range(1, 4):
             for j in range(1, 4):
                 J[i][j].array[:] = 0.0
@@ -230,51 +239,42 @@ def solve_local(A, J, F):
                     J[i][j].c), ffi.from_buffer(J[i][j].coords), ffi.from_buffer(J[i][j].entity_local_index),
                     ffi.from_buffer(J[i][j].permutation))
 
-        J11row0 = np.concatenate((J[1][1].array, J[1][2].array, J[1][3].array), axis=1)
-        J11row1 = np.concatenate((J[2][1].array, J[2][2].array, J[2][3].array), axis=1)
-        J11row2 = np.concatenate((J[3][1].array, J[3][2].array, J[3][3].array), axis=1)
-        J11 = np.concatenate((J11row0, J11row1, J11row2), axis=0)
-
-        if it == 0:
-            err0 = err
-        if err <= 1e-6 * err0:
-            break
-        elif it == N - 1:
-            v, w = np.linalg.eig(J11)
-            print(it, J11)
-            raise RuntimeError("Local NR not converged")
+        Jllrow0 = np.concatenate((J[1][1].array, J[1][2].array, J[1][3].array), axis=1)
+        Jllrow1 = np.concatenate((J[2][1].array, J[2][2].array, J[2][3].array), axis=1)
+        Jllrow2 = np.concatenate((J[3][1].array, J[3][2].array, J[3][3].array), axis=1)
+        Jll = np.concatenate((Jllrow0, Jllrow1, Jllrow2), axis=0)
 
         # Solve one NR iterate
         dloc[:] = 0.0
-        dloc[:] = np.linalg.solve(J11, R).flatten()
+        dloc[:] = np.linalg.solve(Jll, R).flatten()
         loc -= dloc
 
         for i in range(1, 4):
             # Scatter new local state into coefficients in residuals and tangents
-            F[i].w[12:18] = loc[0:6]
-            F[i].w[18:19] = loc[6:7]
-            F[i].w[19:25] = loc[7:13]
+            F[i].w[P_idx[0]:P_idx[1]] = loc[0:6]
+            F[i].w[h_idx[0]:h_idx[1]] = loc[6:7]
+            F[i].w[B_idx[0]:B_idx[1]] = loc[7:13]
             for j in range(1, 4):
-                J[i][j].w[12:18] = loc[0:6]
-                J[i][j].w[18:19] = loc[6:7]
-                J[i][j].w[19:25] = loc[7:13]
+                J[i][j].w[P_idx[0]:P_idx[1]] = loc[0:6]
+                J[i][j].w[h_idx[0]:h_idx[1]] = loc[6:7]
+                J[i][j].w[B_idx[0]:B_idx[1]] = loc[7:13]
 
     return loc
 
 
-@numba.jit
+@numba.njit
 def solve_plastic(A, J, F):
     loc = solve_local(A, J, F)
     A[:] = loc[0:6].reshape(6, 1)
 
 
-@numba.jit
+@numba.njit
 def solve_iso(A, J, F):
     loc = solve_local(A, J, F)
     A[:] = loc[6:7].reshape(1, 1)
 
 
-@numba.jit
+@numba.njit
 def solve_kine(A, J, F):
     loc = solve_local(A, J, F)
     A[:] = loc[7:13].reshape(6, 1)
@@ -282,21 +282,15 @@ def solve_kine(A, J, F):
 
 def local_update(problem):
 
-    print(f"pre-Reconstructed P={problem.u[1].vector.norm()}")
-    print(f"pre-Reconstructed h={problem.u[2].vector.norm()}")
-    print(f"pre-Reconstructed B={problem.u[3].vector.norm()}")
-
     with problem.xloc.localForm() as x_local:
         x_local.set(0.0)
     # Assemble into local vector and scatter to functions
+    t0 = time.time()
     dolfinx.fem.petsc.assemble_vector_block(
         problem.xloc, problem.local_form, [[problem.J_form[0][0] for i in range(3)] for i in range(3)], [],
         x0=problem.xloc, scale=-1.0)
+    print(f"Local update assembly {time.time() - t0}")
     vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
-
-    print(f"Reconstructed P={problem.u[1].vector.norm()}")
-    print(f"Reconstructed h={problem.u[2].vector.norm()}")
-    print(f"Reconstructed B={problem.u[3].vector.norm()}")
 
 
 ls = dolfiny.localsolver.LocalSolver([Vf, Tf, Sf, Tf], local_spaces_id=[1, 2, 3],
@@ -323,7 +317,7 @@ results = {'E': [], 'S': [], 'P': [], 'μ': []}
 
 # Set up load steps
 K = 25  # number of steps per load phase
-Z = 1  # number of cycles
+Z = 2  # number of cycles
 load, unload = np.linspace(0.0, 1.0, num=K + 1), np.linspace(1.0, 0.0, num=K + 1)
 cycle = np.concatenate((load, unload, -load, -unload))
 cycles = np.concatenate([cycle] * Z)
@@ -394,7 +388,7 @@ for step, factor in enumerate(cycles):
     import matplotlib.pyplot
 
     fig, ax1 = matplotlib.pyplot.subplots()
-    ax1.set_title("Rate-independent plasticity: $J_2$, monolithic formulation, 3D", fontsize=12)
+    ax1.set_title("Rate-independent plasticity: $J_2$, local solver formulation, 3D", fontsize=12)
     ax1.set_xlabel(r'volume-averaged strain $\frac{1}{V}\int n^T E n \, dV$ [-]', fontsize=12)
     ax1.set_ylabel(r'volume-averaged stress $\frac{1}{V}\int n^T S n \, dV$ [GPa]', fontsize=12)
     ax1.grid(linewidth=0.25)
