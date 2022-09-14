@@ -56,16 +56,21 @@ class LocalSolver:
 
         self.global_spaces_id = [i for i in range(len(function_spaces)) if i not in self.local_spaces_id]
 
+        # Initilize forms (and form-related info) to None.
+        # At this point localsolver has no information about forms, these
+        # get provided later once the localsolver is attached
+        # to SNESBlockProblem.
         self.F_ufc = None
         self.J_ufc = None
         self.F_ufl = None
         self.J_ufl = None
+        self.stacked_coefficients = None
+        self.stacked_constants = None
+        self.coefficients = None
+        self.constants = None
 
     def reduced_F_forms(self):
         """Return list of forms used to assemble reduced residuals"""
-
-        coefficients, constants, _, _ = self._stack_data()
-
         F_form = []
 
         for gi, i in enumerate(self.global_spaces_id):
@@ -77,16 +82,13 @@ class LocalSolver:
                     itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype))
 
             cppform = Form([V._cpp_object], integrals, [c[0]
-                           for c in coefficients], [c[0] for c in constants], False, None)
+                           for c in self.stacked_coefficients], [c[0] for c in self.stacked_constants], False, None)
             F_form += [cppform]
 
         return F_form
 
     def reduced_J_forms(self):
         """Return list of list of forms used to assemble reduced tangents"""
-
-        coefficients, constants, _, _ = self._stack_data()
-
         J_form = [[None for j in range(len(self.global_spaces_id))] for i in range(len(self.global_spaces_id))]
 
         for gi, i in enumerate(self.global_spaces_id):
@@ -100,15 +102,13 @@ class LocalSolver:
                         itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i, j), celltype))
 
                 J_form[gi][gj] = Form([V0._cpp_object, V1._cpp_object], integrals, [c[0]
-                                      for c in coefficients], [c[0] for c in constants], False, None)
+                                      for c in self.stacked_coefficients],
+                                      [c[0] for c in self.stacked_constants], False, None)
 
         return J_form
 
     def local_form(self):
         """Return list of forms used to 'assemble' into local state vectors."""
-
-        coefficients, constants, _, _ = self._stack_data()
-
         local_form = []
         for li, i in enumerate(self.local_spaces_id):
             V = self.function_spaces[i]
@@ -120,7 +120,7 @@ class LocalSolver:
                     itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype))
 
             cppform = Form([V._cpp_object], integrals, [c[0]
-                           for c in coefficients], [c[0] for c in constants], False, None)
+                           for c in self.stacked_coefficients], [c[0] for c in self.stacked_constants], False, None)
             local_form += [cppform]
 
         return local_form
@@ -154,17 +154,20 @@ class LocalSolver:
         if len(indices) == 2:
             shape = (sizes[indices[0]], sizes[indices[1]])
 
-        stacked_coefficients, stacked_constants, coefficients, constants = self._stack_data()
-
-        stacked_coefficients_size = stacked_coefficients[-1][1][1] if len(stacked_coefficients) > 0 else 0
-        stacked_constants_size = stacked_constants[-1][1][1] if len(stacked_constants) > 0 else 0
+        stacked_coefficients_size = self.stacked_coefficients[-1][1][1] if len(self.stacked_coefficients) > 0 else 0
+        stacked_constants_size = self.stacked_constants[-1][1][1] if len(self.stacked_constants) > 0 else 0
 
         num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
 
         # Extract number of coeffs/consts for later use in compile-time branch
         # elimination
-        num_constants = len(constants)
-        num_coefficients = len(coefficients)
+        num_constants = len(self.constants)
+        num_coefficients = len(self.coefficients)
+
+        # Weirdly, Numba cannot deduce these if accessed directly below,
+        # need to force their evaluation beforehand
+        constants = self.constants
+        coefficients = self.coefficients
 
         @numba.cfunc(c_signature, nopython=True)
         def wrapped_kernel(A_, w_, c_, coords_, entity_local_index_, permutation_=ffi.NULL):
@@ -275,19 +278,15 @@ class LocalSolver:
             shape = (sizes[indices[0]], sizes[indices[1]])
 
         code = ""
-
-        stacked_coefficients, stacked_constants, coefficients, constants = self._stack_data()
         num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
 
         alloc_code = ""
         copy_code = ""
 
-        num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
-
         for i in range(len(sizes)):
             # Find constants and coefficients required for (i, -1) block kernel
-            consts = [const for const in constants if const.indices == (i, -1)]
-            coeffs = [coeff for coeff in coefficients if coeff.indices == (i, -1)]
+            consts = [const for const in self.constants if const.indices == (i, -1)]
+            coeffs = [coeff for coeff in self.coefficients if coeff.indices == (i, -1)]
 
             if self.F_ufc[i].ufcx_form.num_integrals(celltype) > 0:
 
@@ -353,8 +352,8 @@ class LocalSolver:
             for j in range(len(sizes)):
                 if kernel.required_J is not None and (i, j) not in kernel.required_J:
                     continue
-                consts = [const for const in constants if const.indices == (i, j)]
-                coeffs = [coeff for coeff in coefficients if coeff.indices == (i, j)]
+                consts = [const for const in self.constants if const.indices == (i, j)]
+                coeffs = [coeff for coeff in self.coefficients if coeff.indices == (i, j)]
 
                 if self.J_ufc[i][j] is not None and self.J_ufc[i][j].ufcx_form.num_integrals(celltype) > 0:
 
@@ -457,7 +456,7 @@ class LocalSolver:
 
         return cppyy.ll.cast["intptr_t"](compiled_wrapper.kernel)
 
-    def _stack_data(self):
+    def stack_data(self):
         """Stack all Coefficients and Constants across all blocks in F and J forms"""
         stacked_coefficients = []
         stacked_constants = []
@@ -538,4 +537,7 @@ class LocalSolver:
                     constants.append(dat)
                     const_pos += const_size
 
-        return stacked_coefficients, stacked_constants, tuple(coefficients), tuple(constants)
+        self.stacked_coefficients = stacked_coefficients
+        self.stacked_constants = stacked_constants
+        self.coefficients = tuple(coefficients)
+        self.constants = tuple(constants)

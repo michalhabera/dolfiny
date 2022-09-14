@@ -3,19 +3,13 @@ import dolfinx
 import ufl
 import dolfiny
 import mesh_notched
-import cffi
 import time
-import numba
 from mpi4py import MPI
 from petsc4py import PETSc
 
 
 name = "notched_vm"
-gmsh_model, tdim = mesh_notched.mesh_notched(name, clscale=0.1)
-
-# Create the mesh of the specimen with given dimensions and save as msh, then read into gmsh model
-# mg.mesh_iso6892_gmshapi(name, l0, d0, nr, order=o, msh_file=f"{name}.msh")
-# gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
+gmsh_model, tdim = mesh_notched.mesh_notched(name, clscale=0.2)
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
@@ -24,7 +18,8 @@ mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
 with dolfiny.io.XDMFFile(MPI.COMM_WORLD, f"{name}.xdmf", "w") as ofile:
     ofile.write_mesh_meshtags(mesh, mts)
 
-top_facets = dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.logical_and(np.isclose(x[0], 0.0), np.greater_equal(x[1], 0.5)))
+top_facets = dolfinx.mesh.locate_entities_boundary(
+    mesh, 1, lambda x: np.logical_and(np.isclose(x[0], 0.0), np.greater_equal(x[1], 0.5)))
 bottom_facets = dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[1], 0.0))
 
 V = dolfinx.fem.VectorFunctionSpace(mesh, ("CG", 2))
@@ -83,7 +78,7 @@ mu = 100
 la = 10
 Sy = 0.3
 sigma = 2 * mu * E_el + la * ufl.tr(E_el) * ufl.Identity(2)
-young = 4*mu*(la + mu) / (la + 2*mu)
+young = 4 * mu * (la + mu) / (la + 2 * mu)
 cn = 1 / young
 
 sigma = ufl.variable(sigma)
@@ -103,18 +98,6 @@ u_bottom = dolfinx.fem.Function(V, name="u_bottom")
 
 bcs = [dolfinx.fem.dirichletbc(u_top, dolfinx.fem.locate_dofs_topological(V, 1, top_facets)),
        dolfinx.fem.dirichletbc(u_bottom, dolfinx.fem.locate_dofs_topological(V, 1, bottom_facets))]
-
-
-# @numba.njit
-# def sc_J(A, J, F):
-#     Jlg = np.concatenate((J[1][0].array, J[2][0].array), axis=0)
-#     Jgl = np.concatenate((J[0][1].array, J[0][2].array), axis=1)
-#     Jllrow0 = np.concatenate((J[1][1].array, J[1][2].array), axis=1)
-#     Jllrow1 = np.concatenate((J[2][1].array, J[2][2].array), axis=1)
-#     Jll = np.concatenate((Jllrow0, Jllrow1), axis=0)
-
-#     A[:] = J[0][0].array - Jgl @ np.linalg.solve(Jll, Jlg)
-
 
 sc_J = dolfiny.localsolver.UserKernel(
     name="sc_J",
@@ -272,91 +255,6 @@ solve_dl = dolfiny.localsolver.UserKernel(
     """,
     required_J=[(1, 1), (1, 2), (2, 1), (2, 2)])
 
-ffi = cffi.FFI()
-
-@numba.njit
-def solve_local(A, J, F, name):
-
-    dP_idx = (12, 60)
-    dl_idx = (60, 76)
-
-    dP = F[1].w[dP_idx[0]:dP_idx[1]]
-    dl = F[1].w[dl_idx[0]:dl_idx[1]]
-
-    loc = np.concatenate((dP, dl)).copy()
-    dloc = np.zeros_like(loc)
-
-    N = 20
-    for it in range(N):
-
-        # Re-evaluate local residuals
-        for i in [1, 2]:
-            F[i].array[:] = 0.0
-            F[i].kernel(ffi.from_buffer(F[i].array), ffi.from_buffer(F[i].w), ffi.from_buffer(
-                F[i].c), ffi.from_buffer(F[i].coords), ffi.from_buffer(F[i].entity_local_index),
-                ffi.from_buffer(F[i].permutation))
-
-        R = np.concatenate((F[1].array, F[2].array))
-        err = np.linalg.norm(R)
-
-        if it == 0:
-            err0 = err
-        if err <= 1e-9 * err0 or err < 1e-16:
-            break
-
-        # if it > N - 25:
-        print(it, err)
-
-        for i in [1, 2]:
-            for j in [1, 2]:
-                J[i][j].array[:] = 0.0
-                J[i][j].kernel(ffi.from_buffer(J[i][j].array), ffi.from_buffer(J[i][j].w), ffi.from_buffer(
-                    J[i][j].c), ffi.from_buffer(J[i][j].coords), ffi.from_buffer(J[i][j].entity_local_index),
-                    ffi.from_buffer(J[i][j].permutation))
-
-        Jllrow0 = np.concatenate((J[1][1].array, J[1][2].array), axis=1)
-        Jllrow1 = np.concatenate((J[2][1].array, J[2][2].array), axis=1)
-        Jll = np.concatenate((Jllrow0, Jllrow1), axis=0)
-
-        # Solve one NR iterate
-        dloc[:] = 0.0
-        dloc[:] = np.linalg.solve(Jll, R).flatten()
-        loc -= dloc
-
-        dP = loc[0:48]
-        dl = loc[48:48+16]
-
-        F[1].w[dP_idx[0]:dP_idx[1]] = dP
-        F[1].w[dl_idx[0]:dl_idx[1]] = dl
-
-        F[2].w[dP_idx[0]:dP_idx[1]] = dP
-        F[2].w[dl_idx[0]:dl_idx[1]] = dl
-
-        J[1][1].w[dP_idx[0]:dP_idx[1]] = dP
-        J[1][1].w[dl_idx[0]:dl_idx[1]] = dl
-
-        J[1][2].w[dP_idx[0]:dP_idx[1]] = dP
-
-        J[2][1].w[dP_idx[0]:dP_idx[1]] = dP
-        J[2][1].w[dl_idx[0]:dl_idx[1]] = dl
-
-        J[2][2].w[dP_idx[0]:dP_idx[1]] = dP
-        J[2][2].w[dl_idx[0]:dl_idx[1]] = dl
-
-    return loc
-
-
-# @numba.njit
-# def solve_dP(A, J, F):
-#     loc = solve_local(A, J, F, "dP")
-#     A[:] = loc[0:48].reshape(48, 1)
-
-
-# @numba.njit
-# def solve_dl(A, J, F):
-#     loc = solve_local(A, J, F, "dl")
-#     A[:] = loc[48:48+16].reshape(16, 1)
-
 
 def local_update(problem):
     with problem.xloc.localForm() as x_local:
@@ -398,10 +296,6 @@ opts["pc_factor_mat_solver_type"] = "mumps"
 problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u0, dP, dl], bcs=bcs,
                                                     prefix=name, localsolver=ls)
 
-print(u0.vector.size)
-print(u0.vector.size, dP.vector.size, dl.vector.size)
-
-
 steps = 50
 final = 0.005
 stepsize = final / steps
@@ -411,7 +305,6 @@ for i in range(steps):
     print(f"STEP ------ {i}")
     u_top.interpolate(lambda x: (np.zeros_like(x[0]), final / steps * i * np.ones_like(x[1])))
 
-    # problem.solve(u_init=[u0, dP, dl])
     problem.solve()
 
     if problem.snes.getConvergedReason() < 0:
@@ -421,9 +314,8 @@ for i in range(steps):
     for source, target in zip([dP, dl], [P0, l0]):
         with source.vector.localForm() as locs, target.vector.localForm() as loct:
             loct.axpy(1.0, locs)
-            # locs.set(0.0)
 
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, f"{name}.xdmf", "a") as ofile:
         ofile.write_function(u0, float(i))
 
-print(f"Simulation done in {time.time() - t0}")
+print(f"Simulation finished in {time.time() - t0}")

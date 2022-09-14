@@ -58,26 +58,28 @@ class SNESBlockProblem():
         else:
             self.J_form = J_form
 
-        self.F_form_all_ufl = F_form
-        self.J_form_all_ufl = J_form
-
         # Compile all forms
         self.F_form_all_ufc = dolfinx.fem.form(F_form)
         self.J_form_all_ufc = dolfinx.fem.form(J_form)
 
-        self.localsolver = localsolver
+        # By default, copy all forms as the forms used in assemblers
         self.F_form = self.F_form_all_ufc.copy()
         self.J_form = self.J_form_all_ufc.copy()
         self.global_spaces_id = range(len(self.u))
 
+        self.localsolver = localsolver
         if self.localsolver is not None:
             if nest:
                 raise RuntimeError("LocalSolver with MATNEST not implemented")
 
-            self.localsolver.F_ufl = self.F_form_all_ufl.copy()
-            self.localsolver.J_ufl = self.J_form_all_ufl.copy()
+            # Set UFL and compiled forms to localsolver
+            self.localsolver.F_ufl = F_form.copy()
+            self.localsolver.J_ufl = J_form.copy()
             self.localsolver.F_ufc = self.F_form_all_ufc.copy()
             self.localsolver.J_ufc = self.J_form_all_ufc.copy()
+
+            # Stack Coefficients and Constants
+            self.localsolver.stack_data()
 
             # Replace compiled forms with wrapped forms for local solver
             self.F_form = self.localsolver.reduced_F_forms()

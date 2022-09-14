@@ -341,25 +341,13 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     F1 = ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
         dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0, v) * ufl.dx
 
-    sc_J = dolfiny.localsolver.UserKernel(
-        name="sc_J",
-        code=r"""
-        template <typename T>
-        void sc_J(T& A){
-            A = J11.array - J10.array * J00.array.inverse() * J01.array;
-        };
-        """,
-        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)])
+    @numba.njit
+    def sc_J(A, J, F):
+        A[:] = J[1][1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, J[0][1].array)
 
-    sc_F_cell = dolfiny.localsolver.UserKernel(
-        name="sc_F_cell",
-        code=r"""
-        template <typename T>
-        void sc_F_cell(T& A){
-            A = F1.array - J10.array * J00.array.inverse() * F0.array;
-        };
-        """,
-        required_J=[(1, 0), (0, 0)])
+    @numba.njit
+    def sc_F_cell(A, J, F):
+        A[:] = F[1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, F[0].array)
 
     sc_F_exterior_facet = dolfiny.localsolver.UserKernel(
         name="sc_F_exterior_facet",

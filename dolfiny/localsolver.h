@@ -1,4 +1,6 @@
+// Vectorisation produces compiler error on my M1 machine
 #define EIGEN_DONT_VECTORIZE
+// C-style arrays for compatibility with FFCx
 #define EIGEN_DEFAULT_TO_ROW_MAJOR
 #include <Eigen/Dense>
 
@@ -6,7 +8,6 @@ using ufc_kernel_void_t = void(*)(double* __restrict__, const double* __restrict
                                   const double* __restrict__, void*, void*);
 using ufc_kernel_t = void(*)(double* __restrict__, const double* __restrict__, const double* __restrict__,
                              const double* __restrict__, int32_t* __restrict__, uint8_t* __restrict__);
-
 
 struct KernelData {
     const ufc_kernel_t kernel;
