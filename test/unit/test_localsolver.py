@@ -1,9 +1,12 @@
 import dolfinx
+import time
 import dolfiny
 import numpy as np
 import numba
 import ufl
+import pytest
 from petsc4py import PETSc
+from mpi4py import MPI
 from dolfiny.function import vec_to_functions
 
 
@@ -17,21 +20,22 @@ c_signature = numba.types.void(
 
 
 def test_linear(squaremesh_5):
+    mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = ufl.TensorElement("DG", squaremesh_5.ufl_cell(), 1, symmetry=True)
-    Ue = ufl.VectorElement("Lagrange", squaremesh_5.ufl_cell(), 2)
+    Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
+    Ue = ufl.VectorElement("Lagrange", mesh.ufl_cell(), 2)
 
-    S = dolfinx.fem.FunctionSpace(squaremesh_5, Se)
-    U = dolfinx.fem.FunctionSpace(squaremesh_5, Ue)
+    S = dolfinx.fem.FunctionSpace(mesh, Se)
+    U = dolfinx.fem.FunctionSpace(mesh, Ue)
 
     sigma0, tau = dolfinx.fem.Function(S, name="sigma"), ufl.TestFunction(S)
     u0, v = dolfinx.fem.Function(U, name="u"), ufl.TestFunction(U)
 
     # Locate all facets at the free end and assign them value 1. Sort the
     # facet indices (requirement for constructing MeshTags)
-    free_end_facets = np.sort(dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 1.0)))
-    mt = dolfinx.mesh.meshtags(squaremesh_5, 1, free_end_facets, 1)
+    free_end_facets = np.sort(dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[0], 1.0)))
+    mt = dolfinx.mesh.meshtags(mesh, 1, free_end_facets, 1)
 
     ds = ufl.Measure("ds", subdomain_data=mt)
 
@@ -40,7 +44,7 @@ def test_linear(squaremesh_5):
     u_bc.x.array[:] = 0.0
 
     # Displacement BC is applied to the left side
-    left_facets = dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 0.0))
+    left_facets = dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[0], 0.0))
     bdofs = dolfinx.fem.locate_dofs_topological(U, 1, left_facets)
     bc = dolfinx.fem.dirichletbc(u_bc, bdofs)
 
@@ -59,28 +63,53 @@ def test_linear(squaremesh_5):
 
     F0 = ufl.inner(sigma0 - sigma_u(u0), tau) * ufl.dx
     F1 = ufl.inner(sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
-        dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0 + du, v) * ufl.dx
+        dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(u0 + du, v) * ufl.dx
 
-    @numba.jit
-    def sc_J(A, J, F):
-        A[:] = J[1][1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, J[0][1].array)
+    sc_J = dolfiny.localsolver.UserKernel(
+        name="sc_J",
+        code=r"""
+        template <typename T>
+        void sc_J(T& A){
+            A = J11.array - J10.array * J00.array.inverse() * J01.array;
+        };
+        """,
+        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)]
+        )
 
-    @numba.jit
-    def sc_F_cell(A, J, F):
-        A[:] = F[1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, F[0].array)
+    sc_F_cell = dolfiny.localsolver.UserKernel(
+        name="sc_F_cell",
+        code=r"""
+        template <typename T>
+        void sc_F_cell(T& A){
+            A = F1.array - J10.array * J00.array.inverse() * F0.array;
+        };
+        """,
+        required_J=[(1, 0), (0, 0)]
+        )
 
-    @numba.jit
-    def sc_F_exterior_facet(A, J, F):
-        A[:] = F[1].array
+    sc_F_exterior_facet = dolfiny.localsolver.UserKernel(
+        name="sc_F_exterior_facet",
+        code=r"""
+        template <typename T>
+        void sc_F_exterior_facet(T& A){
+            A = F1.array;
+        };
+        """,
+        required_J=[]
+        )
 
-    @numba.jit
-    def solve_stress(A, J, F):
-        # du is the last coefficient in the F1 form
-        du = F[1].w[21:].reshape(12, 1)
-        # Previous stress state is the first coefficient in F1 form
-        sigma0 = F[1].w[:9].reshape(9, 1)
-
-        A[:] = sigma0 - np.linalg.solve(J[0][0].array, F[0].array - J[0][1].array @ du)
+    solve_stress = dolfiny.localsolver.UserKernel(
+        name="solve_stress",
+        code=r"""
+        template <typename T>
+        void solve_stress(T& A){
+            auto du = Eigen::Map<const Eigen::Matrix<double, 12, 1>>(&F1.w[21]);
+            auto sigma0 = Eigen::Map<const Eigen::Matrix<double, 9, 1>>(&F1.w[0]);
+            A = sigma0 - J00.array.inverse() * (F0.array - J01.array * du);
+        };
+        """,
+        required_J=[(0, 1), (0, 0)]
+        )
 
     def local_update(problem):
         dx = problem.snes.getSolutionUpdate()
@@ -174,26 +203,48 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     F1 = ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
         dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0 + du, v) * ufl.dx
 
-    @numba.jit
-    def sc_J(A, J, F, *other_data):
-        A[:] = J[1][1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, J[0][1].array)
+    sc_J = dolfiny.localsolver.UserKernel(
+        name="sc_J",
+        code=r"""
+        template <typename T>
+        void sc_J(T& A){
+            A = J11.array - J10.array * J00.array.inverse() * J01.array;
+        };
+        """,
+        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)])
 
-    @numba.jit
-    def sc_F_cell(A, J, F, *other_data):
-        A[:] = F[1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, F[0].array)
+    sc_F_cell = dolfiny.localsolver.UserKernel(
+        name="sc_F_cell",
+        code=r"""
+        template <typename T>
+        void sc_F_cell(T& A){
+            A = F1.array - J10.array * J00.array.inverse() * F0.array;
+        };
+        """,
+        required_J=[(1, 0), (0, 0)])
 
-    @numba.jit
-    def sc_F_exterior_facet(A, J, F, *other_data):
-        A[:] = F[1].array
+    sc_F_exterior_facet = dolfiny.localsolver.UserKernel(
+        name="sc_F_exterior_facet",
+        code=r"""
+        template <typename T>
+        void sc_F_exterior_facet(T& A){
+            A = F1.array;
+        };
+        """,
+        required_J=[]
+    )
 
-    @numba.jit
-    def solve_stress(A, J, F, *other_data):
-        # du is the last coefficient in the F1 form
-        du = F[1].w[21:].reshape(12, 1)
-        # Previous stress state is the first coefficient in F1 form
-        sigma0 = F[1].w[:9].reshape(9, 1)
-
-        A[:] = sigma0 - np.linalg.solve(J[0][0].array, F[0].array - J[0][1].array @ du)
+    solve_stress = dolfiny.localsolver.UserKernel(
+        name="solve_stress",
+        code=r"""
+        template <typename T>
+        void solve_stress(T& A){
+            auto du = Eigen::Map<const Eigen::Matrix<double, 12, 1>>(&F1.w[21]);
+            auto sigma0 = Eigen::Map<const Eigen::Matrix<double, 9, 1>>(&F1.w[0]);
+            A = sigma0 - J00.array.inverse() * (F0.array - J01.array * du);
+        };
+        """,
+        required_J=[(0, 0), (0, 1)])
 
     def local_update(problem):
         dx = problem.snes.getSolutionUpdate()
@@ -227,13 +278,15 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     opts["snes_rtol"] = 1.0e-08
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls)
+    t0 = time.time()
     sigma1, u1 = problem.solve()
+    print(time.time() - t0)
 
     assert np.isclose(u1.vector.norm(), 1.2419671416042748)
     assert np.isclose(sigma1.vector.norm(), 0.9835175347552177)
 
 
-def test_nonlinear_elasticity_consistent(squaremesh_5):
+def test_nonlinear_elasticity_nonlinear(squaremesh_5):
 
     mesh = squaremesh_5
     import cffi
@@ -288,48 +341,61 @@ def test_nonlinear_elasticity_consistent(squaremesh_5):
     F1 = ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
         dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0, v) * ufl.dx
 
-    @numba.jit
-    def sc_J(A, J, F):
-        A[:] = J[1][1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, J[0][1].array)
+    sc_J = dolfiny.localsolver.UserKernel(
+        name="sc_J",
+        code=r"""
+        template <typename T>
+        void sc_J(T& A){
+            A = J11.array - J10.array * J00.array.inverse() * J01.array;
+        };
+        """,
+        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)])
 
-    @numba.jit
-    def sc_F_cell(A, J, F):
-        A[:] = F[1].array
+    sc_F_cell = dolfiny.localsolver.UserKernel(
+        name="sc_F_cell",
+        code=r"""
+        template <typename T>
+        void sc_F_cell(T& A){
+            A = F1.array - J10.array * J00.array.inverse() * F0.array;
+        };
+        """,
+        required_J=[(1, 0), (0, 0)])
 
-    @numba.jit
-    def sc_F_exterior_facet(A, J, F):
-        A[:] = F[1].array
+    sc_F_exterior_facet = dolfiny.localsolver.UserKernel(
+        name="sc_F_exterior_facet",
+        code=r"""
+        template <typename T>
+        void sc_F_exterior_facet(T& A){
+            A = F1.array;
+        };
+        """,
+        required_J=[]
+    )
 
-    @numba.jit
-    def solve_stress(A, J, F):
-        # Previous stress state is the first coefficient in F0 form
-        sigma0 = F[0].w[:9].reshape(9, 1)
+    solve_stress = dolfiny.localsolver.UserKernel(
+        name="solve_stress",
+        code=r"""
+        template <typename T>
+        void solve_stress(T& A){
+            auto sigma0 = Eigen::Map<Eigen::Matrix<double, 9, 1>>(&F0.w[0]);
 
-        for i in range(5):
-            # Re-evaluate local residual
-            F[0].array[:] = 0.0
-            F[0].kernel(ffi.from_buffer(F[0].array), ffi.from_buffer(F[0].w), ffi.from_buffer(
-                F[0].c), ffi.from_buffer(F[0].coords), ffi.from_buffer(F[0].entity_local_index),
-                ffi.from_buffer(F[0].permutation))
+            for (int i = 0; i < 5; ++i){
+                F0.array.setZero();
+                F0.kernel(F0.array.data(), F0.w.data(), F0.c.data(), F0.coords.data(),
+                          F0.entity_local_index.data(), F0.permutation.data());
+                double err = F0.array.norm();
 
-            err = np.linalg.norm(F[0].array)
+                if (err < 1e-12)
+                    continue;
 
-            # Re-evaluate local tangent
-            # J00 does not depend on sigma0 in this case, so we do not need to update it
-            #
-            # J[0][0].array[:] = 0.0
-            # J[0][0].kernel(ffi.from_buffer(J[0][0].array), ffi.from_buffer(J[0][0].w), ffi.from_buffer(
-            #     J[0][0].c), ffi.from_buffer(J[0][0].coords), ffi.from_buffer(J[0][0].entity_local_index),
-            #     ffi.from_buffer(J[0][0].permutation))
-
-            # Solve one NR iterate
-            dsigma = np.linalg.solve(J[0][0].array, F[0].array)
-            sigma0 -= dsigma
-
-            if err < 1e-12:
-                continue
-
-        A[:] = sigma0
+                auto dsigma = J00.array.inverse() * F0.array;
+                sigma0 -= dsigma;
+            }
+        A = sigma0;
+        }
+        """,
+        required_J=[(0, 0)]
+        )
 
     def local_update(problem):
         with problem.xloc.localForm() as x_local:

@@ -1,3 +1,4 @@
+import dolfinx
 from dolfinx.cpp.fem import Form_float64, Form_complex128
 from petsc4py import PETSc
 import numpy as np
@@ -5,8 +6,14 @@ import numba
 import cffi
 import itertools
 import collections
-import logging
+import hashlib
 
+# Apple M1 is not detected and default args with march=native fail
+import os
+os.environ["EXTRA_CLING_ARGS"] = "-Ofast -Werror -pedantic -std=c++17"
+
+import cppyy
+import cppyy.ll
 
 ffi = cffi.FFI()
 c_signature = numba.types.void(
@@ -18,15 +25,23 @@ c_signature = numba.types.void(
     numba.types.CPointer(numba.types.uint8))
 Form = Form_float64 if PETSc.ScalarType == np.float64 else Form_complex128
 
+cppyy.add_include_path(os.path.dirname(__file__))
+cppyy.add_include_path("/usr/include/eigen3/")
+cppyy.include("localsolver.h")
 
 KernelData = collections.namedtuple("KernelData", ("kernel", "array", "w", "c", "coords", "entity_local_index",
                                                    "permutation", "constants", "coefficients"))
-ElementData = collections.namedtuple("ElementData", ("indices", "name", "begin", "end"))
+ElementData = collections.namedtuple("ElementData", ("indices", "name", "begin", "end", "stacked_begin", "stacked_end"))
+UserKernel = collections.namedtuple("UserKernel", ("name", "code", "required_J"))
 
 
 @numba.cfunc(c_signature, nopython=True)
 def do_nothing(A_, w_, c_, coords_, entity_local_index, permutation=ffi.NULL):
     pass
+
+
+do_nothing_cffi = ffi.cast(
+    "void(*)(double *, double *, double *, double *, int *, uint8_t *)", do_nothing.address)
 
 
 class LocalSolver:
@@ -59,7 +74,7 @@ class LocalSolver:
             for celltype, integral in integrals.items():
                 itg = integral[0]
                 for k in range(len(itg)):
-                    itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype).address)
+                    itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype))
 
             cppform = Form([V._cpp_object], integrals, [c[0]
                            for c in coefficients], [c[0] for c in constants], False, None)
@@ -82,7 +97,7 @@ class LocalSolver:
                 for celltype, integral in integrals.items():
                     itg = integral[0]
                     for k in range(len(itg)):
-                        itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i, j), celltype).address)
+                        itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i, j), celltype))
 
                 J_form[gi][gj] = Form([V0._cpp_object, V1._cpp_object], integrals, [c[0]
                                       for c in coefficients], [c[0] for c in constants], False, None)
@@ -102,7 +117,7 @@ class LocalSolver:
             for celltype, integral in integrals.items():
                 itg = integral[0]
                 for k in range(len(itg)):
-                    itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype).address)
+                    itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype))
 
             cppform = Form([V._cpp_object], integrals, [c[0]
                            for c in coefficients], [c[0] for c in constants], False, None)
@@ -111,13 +126,18 @@ class LocalSolver:
         return local_form
 
     def wrap_kernel(self, kernel, indices, celltype):
+        if isinstance(kernel, UserKernel):
+            return self.wrap_kernel_cpp(kernel, indices, celltype)
+        elif isinstance(kernel, numba.core.registry.CPUDispatcher):
+            return self.wrap_kernel_numba(kernel, indices, celltype)
+        else:
+            raise RuntimeError(f"Unrecognised kernel type {type(kernel)}")
+
+    def wrap_kernel_numba(self, kernel, indices, celltype):
 
         sizes = []
         for i, fs in enumerate(self.function_spaces):
             sizes += [fs.element.space_dimension]
-
-        do_nothing_cffi = ffi.cast(
-            "void(*)(double *, double *, double *, double *, int *, uint8_t *)", do_nothing.address)
 
         sizes = np.array(sizes, dtype=int)
         # Numba does not support "list" of fn pointers, must be "tuple"
@@ -146,8 +166,6 @@ class LocalSolver:
         num_constants = len(constants)
         num_coefficients = len(coefficients)
 
-        logging.warning(f"Compiling kernel wrapper for indices={indices}")
-
         @numba.cfunc(c_signature, nopython=True)
         def wrapped_kernel(A_, w_, c_, coords_, entity_local_index_, permutation_=ffi.NULL):
 
@@ -164,28 +182,32 @@ class LocalSolver:
             for i in range(len(sizes)):
                 if num_constants > 0:
                     consts = [const for const in constants if const.indices == (i, -1)]
-                    c_array = np.zeros((consts[-1].end if len(consts) > 0 else 1, ), dtype=PETSc.ScalarType)
+                    c_array = np.zeros((max([const.stacked_end for const in consts]) if len(consts) > 0 else 1, ),
+                                       dtype=PETSc.ScalarType)
                 else:
+                    consts = [None]
                     c_array = np.zeros((1, ), dtype=PETSc.ScalarType)
 
                 if num_coefficients > 0:
                     coeffs = [coeff for coeff in coefficients if coeff.indices == (i, -1)]
-                    w_array = np.zeros((coeffs[-1].end if len(coeffs) > 0 else 1, ), dtype=PETSc.ScalarType)
+                    w_array = np.zeros((max([coeff.stacked_end for coeff in coeffs]) if len(coeffs) > 0 else 1, ),
+                                       dtype=PETSc.ScalarType)
                 else:
+                    coeffs = [None]
                     w_array = np.zeros((1, ), dtype=PETSc.ScalarType)
 
                 pos = 0
-                if num_coefficients > 0:
+                if num_coefficients > 0 and len(coeffs) > 0:
                     for coeff in coeffs:
-                        size = coeff.end - coeff.begin
-                        w_array[pos:pos + size] = w[coeff.begin:coeff.end]
+                        size = coeff.stacked_end - coeff.stacked_begin
+                        w_array[pos:pos + size] = w[coeff.stacked_begin:coeff.stacked_end]
                         pos += size
 
                 pos = 0
-                if num_constants > 0:
+                if num_constants > 0 and len(consts) > 0:
                     for const in consts:
-                        size = const.end - const.begin
-                        c_array[pos:pos + size] = c[const.begin:const.end]
+                        size = const.stacked_end - const.stacked_begin
+                        c_array[pos:pos + size] = c[const.stacked_begin:const.stacked_end]
                         pos += size
 
                 F_array = np.zeros((sizes[i], 1), dtype=PETSc.ScalarType)
@@ -201,29 +223,33 @@ class LocalSolver:
 
                     if num_constants > 0:
                         consts = [const for const in constants if const.indices == (i, j)]
-                        c_array = np.zeros((consts[-1].end if len(consts) > 0 else 1, ), dtype=PETSc.ScalarType)
+                        c_array = np.zeros((max([const.stacked_end for const in consts]) if len(consts) > 0 else 1, ),
+                                           dtype=PETSc.ScalarType)
                     else:
+                        consts = [None]
                         c_array = np.zeros((1, ), dtype=PETSc.ScalarType)
 
                     if num_coefficients > 0:
                         coeffs = [coeff for coeff in coefficients if coeff.indices == (i, j)]
-                        w_array = np.zeros((coeffs[-1].end if len(coeffs) > 0 else 1, ), dtype=PETSc.ScalarType)
+                        w_array = np.zeros((max([coeff.stacked_end for coeff in coeffs]) if len(coeffs) > 0 else 1, ),
+                                           dtype=PETSc.ScalarType)
                     else:
+                        coeffs = [None]
                         w_array = np.zeros((1, ), dtype=PETSc.ScalarType)
 
                     # Copy coefficient data to local vector for this kernel
                     if num_coefficients > 0:
                         pos = 0
                         for coeff in coeffs:
-                            size = coeff.end - coeff.begin
-                            w_array[pos:pos + size] = w[coeff.begin:coeff.end]
+                            size = coeff.stacked_end - coeff.stacked_begin
+                            w_array[pos:pos + size] = w[coeff.stacked_begin:coeff.stacked_end]
                             pos += size
 
                     if num_constants > 0:
                         pos = 0
                         for const in consts:
-                            size = const.end - const.begin
-                            c_array[pos:pos + size] = c[const.begin:const.end]
+                            size = const.stacked_end - const.stacked_begin
+                            c_array[pos:pos + size] = c[const.stacked_begin:const.stacked_end]
                             pos += size
 
                     J_array = np.zeros((sizes[i], sizes[j]), dtype=PETSc.ScalarType)
@@ -237,7 +263,199 @@ class LocalSolver:
             # Execute user kernel
             kernel(A, J, F)
 
-        return wrapped_kernel
+        return int(wrapped_kernel.address)
+
+    def wrap_kernel_cpp(self, kernel: UserKernel, indices, celltype):
+        sizes = []
+        for i, fs in enumerate(self.function_spaces):
+            sizes += [fs.element.space_dimension]
+
+        shape = (sizes[indices[0]], 1)
+        if len(indices) == 2:
+            shape = (sizes[indices[0]], sizes[indices[1]])
+
+        code = ""
+
+        stacked_coefficients, stacked_constants, coefficients, constants = self._stack_data()
+        num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
+
+        alloc_code = ""
+        copy_code = ""
+
+        num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
+
+        for i in range(len(sizes)):
+            # Find constants and coefficients required for (i, -1) block kernel
+            consts = [const for const in constants if const.indices == (i, -1)]
+            coeffs = [coeff for coeff in coefficients if coeff.indices == (i, -1)]
+
+            if self.F_ufc[i].ufcx_form.num_integrals(celltype) > 0:
+
+                F_fn = self.F_ufc[i].ufcx_form.integrals(celltype)[0].tabulate_tensor_float64
+
+                alloc_code += f"""
+                auto kernel_F{i} = (ufc_kernel_t){int(ffi.cast("intptr_t", F_fn))};
+                """
+
+                alloc_code += f"""
+                KernelData F{i} = {{
+                    kernel_F{i},
+                    Eigen::Matrix<double, {sizes[i]}, 1>(),
+                    Eigen::Array<double,
+                    {max([coeff.stacked_end for coeff in coeffs]) if len(coeffs) > 0 else 0}, 1>(),
+                    Eigen::Array<double,
+                    {max([const.stacked_end for const in consts]) if len(consts) > 0 else 0}, 1>(),
+                    Eigen::Array<double, {num_coordinate_dofs*3}, 1>(),
+                    Eigen::Array<int32_t, 1, 1>(),
+                    Eigen::Array<uint8_t, 1, 1>()
+                }};
+                """
+
+                pos = 0
+                for coeff in coeffs:
+                    size = coeff.stacked_end - coeff.stacked_begin
+                    copy_code += f"""
+                    for (int j = 0; j < {size}; ++j){{
+                        F{i}.w[{pos} + j] = w_[{coeff.stacked_begin} + j];
+                    }}
+                    """
+                    pos += size
+
+                pos = 0
+                for const in consts:
+                    size = const.stacked_end - const.stacked_begin
+                    copy_code += f"""
+                    for (int j = 0; j < {size}; ++j){{
+                        F{i}.c[{pos} + j] = c_[{const.stacked_begin} + j];
+                    }}
+                    """
+                    pos += size
+
+                copy_code += f"""
+                for (int k=0; k<{3*num_coordinate_dofs}; ++k)
+                {{
+                    F{i}.coords[k] = coords_[k];
+                }}
+                """
+
+                if celltype in [dolfinx.fem.IntegralType.interior_facet, dolfinx.fem.IntegralType.exterior_facet]:
+                    copy_code += f"""
+                    F{i}.entity_local_index[0] = eli_[0];
+                    """
+
+                copy_code += f"""
+                F{i}.array.setZero();
+                F{i}.kernel(F{i}.array.data(), F{i}.w.data(), F{i}.c.data(),
+                            F{i}.coords.data(), F{i}.entity_local_index.data(),
+                            F{i}.permutation.data());
+                """
+
+            for j in range(len(sizes)):
+                if kernel.required_J is not None and (i, j) not in kernel.required_J:
+                    continue
+                consts = [const for const in constants if const.indices == (i, j)]
+                coeffs = [coeff for coeff in coefficients if coeff.indices == (i, j)]
+
+                if self.J_ufc[i][j] is not None and self.J_ufc[i][j].ufcx_form.num_integrals(celltype) > 0:
+
+                    J_fn = self.J_ufc[i][j].ufcx_form.integrals(celltype)[0].tabulate_tensor_float64
+                    alloc_code += f"""
+                    auto kernel_J{i}{j} = (ufc_kernel_t){int(ffi.cast("intptr_t", J_fn))};
+                    """
+
+                    alloc_code += f"""
+                    KernelData J{i}{j} = {{
+                        kernel_J{i}{j},
+                        Eigen::Matrix<double, {sizes[i]}, {sizes[j]}>(),
+                        Eigen::Array<double,
+                        {max([coeff.stacked_end for coeff in coeffs]) if len(coeffs) > 0 else 0}, 1>(),
+                        Eigen::Array<double,
+                        {max([const.stacked_end for const in consts]) if len(consts) > 0 else 0}, 1>(),
+                        Eigen::Array<double, {num_coordinate_dofs*3}, 1>(),
+                        Eigen::Array<int32_t, 1, 1>(),
+                        Eigen::Array<uint8_t, 1, 1>()
+                    }};
+                    """
+
+                    pos = 0
+                    for coeff in coeffs:
+                        size = coeff.stacked_end - coeff.stacked_begin
+                        copy_code += f"""
+                        for (int j = 0; j < {size}; ++j){{
+                            J{i}{j}.w[{pos} + j] = w_[{coeff.stacked_begin} + j];
+                        }}
+                        """
+                        pos += size
+
+                    pos = 0
+                    for const in consts:
+                        size = const.stacked_end - const.stacked_begin
+                        copy_code += f"""
+                        for (int j = 0; j < {size}; ++j){{
+                            J{i}{j}.c[{pos} + j] = c_[{const.stacked_begin} + j];
+                        }}
+                        """
+                        pos += size
+
+                    copy_code += f"""
+                    for (int k=0; k<{3*num_coordinate_dofs}; ++k)
+                    {{
+                        J{i}{j}.coords[k] = coords_[k];
+                    }}
+                    """
+
+                    if celltype in [dolfinx.fem.IntegralType.interior_facet, dolfinx.fem.IntegralType.exterior_facet]:
+                        copy_code += f"""
+                        J{i}{j}.entity_local_index[0] = eli_[0];
+                        """
+
+                    copy_code += f"""
+                    // Cast UFC kernel adrress to callable kernel and execute
+                    J{i}{j}.array.setZero();
+                    J{i}{j}.kernel(J{i}{j}.array.data(), J{i}{j}.w.data(), J{i}{j}.c.data(),
+                                   J{i}{j}.coords.data(), J{i}{j}.entity_local_index.data(),
+                                   J{i}{j}.permutation.data());
+                    """
+
+        code += f"""
+        // Allocate data structures with memory shared across all cells
+        {alloc_code}
+
+        {kernel.code}
+
+        void kernel(double* __restrict__ A_, const double* __restrict__ w_,
+                    const double* __restrict__ c_, const double* __restrict__ coords_,
+                    void* __restrict__ eli_null, void* __restrict__ perm_null)
+        {{
+            // This is a hack for cppyy which cannot implicitly cast nullptr
+            // passed for cell integrals into int32_t*
+            auto eli_ = static_cast<const int32_t* >(eli_null);
+            auto perm_ = static_cast<const uint8_t*>(perm_null);
+
+            auto Arr = Eigen::Map<Eigen::Matrix<double, {shape[0]}, {shape[1]}>>(A_);
+
+            // Copy coefficients and constants
+            {copy_code}
+
+            // Execute user kernel
+            {kernel.name}(Arr);
+        }};
+        """
+
+        # Compute caching hash and wrap in a namespace
+        hsh = hashlib.sha1(code.encode("utf-8")).hexdigest()
+
+        name = f"wrapped_{kernel.name}_{hsh}"
+        code = f"""
+        namespace {name} {{
+            {code}
+        }}
+        """
+
+        cppyy.cppdef(code)
+        compiled_wrapper = getattr(cppyy.gbl, name)
+
+        return cppyy.ll.cast["intptr_t"](compiled_wrapper.kernel)
 
     def _stack_data(self):
         """Stack all Coefficients and Constants across all blocks in F and J forms"""
@@ -275,29 +493,49 @@ class LocalSolver:
             if self.F_ufl[i] is None:
                 continue
             original_coefficients = self.F_ufl[i].coefficients()
+
+            coeff_pos = 0
             for c in range(self.F_ufc[i].ufcx_form.num_coefficients):
                 coeff = original_coefficients[self.F_ufc[i].ufcx_form.original_coefficient_position[c]]._cpp_object
-                coeff_pos = [(c[1][0], c[1][1]) for c in stacked_coefficients if c[0] == coeff]
-                dat = ElementData((i, -1), coeff.name, coeff_pos[0][0], coeff_pos[0][1])
+                coeff_stacked_pos = [(c[1][0], c[1][1]) for c in stacked_coefficients if c[0] == coeff][0]
+                coeff_size = coeff_stacked_pos[1] - coeff_stacked_pos[0]
+                dat = ElementData((i, -1), coeff.name, coeff_pos, coeff_pos + coeff_size,
+                                  coeff_stacked_pos[0], coeff_stacked_pos[1])
                 coefficients.append(dat)
+                coeff_pos += coeff_size
+
+            const_pos = 0
             for const in self.F_ufl[i].constants():
-                const_pos = [(c[1][0], c[1][1]) for c in stacked_constants if c[0] == const._cpp_object]
-                dat = ElementData((i, -1), str(const), const_pos[0][0], const_pos[0][1])
+                const_stacked_pos = [(c[1][0], c[1][1]) for c in stacked_constants if c[0] == const._cpp_object][0]
+                const_size = const_stacked_pos[1] - const_stacked_pos[0]
+                dat = ElementData((i, -1), str(const), const_pos, const_pos + const_size,
+                                  const_stacked_pos[0], const_stacked_pos[1])
                 constants.append(dat)
+                const_pos += const_size
 
             for j in range(len(self.F_ufl)):
                 if self.J_ufl[i][j] is None:
                     continue
                 original_coefficients = self.J_ufl[i][j].coefficients()
+
+                coeff_pos = 0
                 for c in range(self.J_ufc[i][j].ufcx_form.num_coefficients):
                     coeff = original_coefficients[self.J_ufc[i]
                                                   [j].ufcx_form.original_coefficient_position[c]]._cpp_object
-                    coeff_pos = [(c[1][0], c[1][1]) for c in stacked_coefficients if c[0] == coeff]
-                    dat = ElementData((i, j), coeff.name, coeff_pos[0][0], coeff_pos[0][1])
+                    coeff_stacked_pos = [(c[1][0], c[1][1]) for c in stacked_coefficients if c[0] == coeff][0]
+                    coeff_size = coeff_stacked_pos[1] - coeff_stacked_pos[0]
+                    dat = ElementData((i, j), coeff.name, coeff_pos, coeff_pos + coeff_size,
+                                      coeff_stacked_pos[0], coeff_stacked_pos[1])
                     coefficients.append(dat)
+                    coeff_pos += coeff_size
+
+                const_pos = 0
                 for const in self.J_ufl[i][j].constants():
-                    const_pos = [(c[1][0], c[1][1]) for c in stacked_constants if c[0] == const._cpp_object]
-                    dat = ElementData((i, j), str(const), const_pos[0][0], const_pos[0][1])
+                    const_stacked_pos = [(c[1][0], c[1][1]) for c in stacked_constants if c[0] == const._cpp_object][0]
+                    const_size = const_stacked_pos[1] - const_stacked_pos[0]
+                    dat = ElementData((i, j), str(const), const_pos, const_pos + const_size,
+                                      const_stacked_pos[0], const_stacked_pos[1])
                     constants.append(dat)
+                    const_pos += const_size
 
         return stacked_coefficients, stacked_constants, tuple(coefficients), tuple(constants)
