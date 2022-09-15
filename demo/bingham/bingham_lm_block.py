@@ -163,7 +163,8 @@ f = ufl.inner(δv, rho * vt + rho * ufl.grad(v) * v) * dx \
     - ufl.inner(δv, n_vec) * n * ds(ring_inner) \
     - ufl.inner(δv, t_vec) * t * ds(ring_inner) \
     - δn * (v_n - ufl.inner(v, n_vec)) * ds(ring_inner) \
-    - δt * (v_t - ufl.inner(v, t_vec)) * ds(ring_inner)
+    - δt * (v_t - ufl.inner(v, t_vec)) * ds(ring_inner) \
+    + dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(p, δp) * dx  # Zero pressure block for BCs
 
 # Overall form (as one-form)
 F = odeint.discretise_in_time(f)
