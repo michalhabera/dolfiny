@@ -10,7 +10,7 @@ import hashlib
 
 # Apple M1 is not detected and default args with march=native fail
 import os
-os.environ["EXTRA_CLING_ARGS"] = "-Ofast -Werror -pedantic -std=c++17"
+os.environ["EXTRA_CLING_ARGS"] = "-Ofast"
 
 import cppyy
 import cppyy.ll
