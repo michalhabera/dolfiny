@@ -105,8 +105,8 @@ def test_coupled_poisson():
         value_s0 = s0.eval(p, cell)
         value_s1 = s1.eval(p, cell)
 
-        assert(numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
-        assert(numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
+        assert (numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
+        assert (numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
 
 
 def test_sloped_stokes():

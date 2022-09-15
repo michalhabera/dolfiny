@@ -203,7 +203,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             for i, entity_tag in enumerate(entity_tags):
                 pgcell_types, pgcell_tags, pgnode_tags = gmsh_model.mesh.getElements(pgdim, entity_tag)
 
-                assert(len(pgcell_types) == 1)
+                assert (len(pgcell_types) == 1)
                 pgcellname = gmsh_cellname[pgcell_types[0]]
                 pgnum_nodes = nodes[pgcellname]
 
