@@ -30,4 +30,4 @@ RUN git clone --branch main https://github.com/FEniCS/dolfinx.git \
         && cmake --install build \
         && python3 -m pip install ./python
 
-RUN pip3 install matplotlib
+RUN pip3 install matplotlib cppyy
