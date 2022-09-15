@@ -153,7 +153,8 @@ def T(v, p):
 # Weak form (as one-form)
 f = ufl.inner(δv, rho * vt + rho * ufl.grad(v) * v) * dx \
     + ufl.inner(ufl.grad(δv), T(v, p)) * dx \
-    + ufl.inner(δp, ufl.div(v)) * dx
+    + ufl.inner(δp, ufl.div(v)) * dx \
+    + dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(p, δp) * dx  # Zero pressure block for BCs
 
 # Overall form (as one-form)
 F = odeint.discretise_in_time(f)
