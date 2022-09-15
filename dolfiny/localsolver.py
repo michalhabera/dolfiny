@@ -25,9 +25,8 @@ c_signature = numba.types.void(
     numba.types.CPointer(numba.types.uint8))
 Form = Form_float64 if PETSc.ScalarType == np.float64 else Form_complex128
 
-cppyy.add_include_path(os.path.dirname(__file__))
 cppyy.add_include_path("/usr/include/eigen3/")
-cppyy.include("localsolver.h")
+cppyy.include(os.path.join(os.path.dirname(__file__), "localsolver.h"))
 
 KernelData = collections.namedtuple("KernelData", ("kernel", "array", "w", "c", "coords", "entity_local_index",
                                                    "permutation", "constants", "coefficients"))
