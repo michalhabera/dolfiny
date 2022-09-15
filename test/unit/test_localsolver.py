@@ -334,10 +334,12 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     F1 = ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
         dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0, v) * ufl.dx
 
+    # Using here Numba kernel to test the codepath
     @numba.njit
     def sc_J(A, J, F):
         A[:] = J[1][1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, J[0][1].array)
 
+    # Using here Numba kernel to test the codepath
     @numba.njit
     def sc_F_cell(A, J, F):
         A[:] = F[1].array - J[1][0].array @ np.linalg.solve(J[0][0].array, F[0].array)

@@ -1,3 +1,4 @@
+import logging
 import dolfinx
 from dolfinx.cpp.fem import Form_float64, Form_complex128
 from petsc4py import PETSc
@@ -12,9 +13,6 @@ import hashlib
 import os
 os.environ["EXTRA_CLING_ARGS"] = "-Ofast"
 
-import cppyy
-import cppyy.ll
-
 ffi = cffi.FFI()
 c_signature = numba.types.void(
     numba.types.CPointer(numba.typeof(PETSc.ScalarType())),
@@ -24,9 +22,6 @@ c_signature = numba.types.void(
     numba.types.CPointer(numba.types.int32),
     numba.types.CPointer(numba.types.uint8))
 Form = Form_float64 if PETSc.ScalarType == np.float64 else Form_complex128
-
-cppyy.add_include_path("/usr/include/eigen3/")
-cppyy.include(os.path.join(os.path.dirname(__file__), "localsolver.h"))
 
 KernelData = collections.namedtuple("KernelData", ("kernel", "array", "w", "c", "coords", "entity_local_index",
                                                    "permutation", "constants", "coefficients"))
@@ -171,6 +166,9 @@ class LocalSolver:
 
     def wrap_kernel_numba(self, kernel, indices, celltype):
 
+        logging.warning(
+            f"Compiling Numba kernel for indices {indices}! This has significant overhead, consider using C++ kernels.")
+
         sizes = []
         for i, fs in enumerate(self.function_spaces):
             sizes += [fs.element.space_dimension]
@@ -305,6 +303,14 @@ class LocalSolver:
         return int(wrapped_kernel.address)
 
     def wrap_kernel_cpp(self, kernel: UserKernel, indices, celltype):
+        import cppyy
+        import cppyy.ll
+
+        cppyy.add_include_path("/usr/include/eigen3/")
+        if getattr(cppyy.gbl, "kernel_data_t", None) is None:
+            # Include header only once
+            cppyy.include(os.path.join(os.path.dirname(__file__), "localsolver.h"))
+
         sizes = []
         for i, fs in enumerate(self.function_spaces):
             sizes += [fs.element.space_dimension]
