@@ -4,9 +4,7 @@ import dolfiny
 import numpy as np
 import numba
 import ufl
-import pytest
 from petsc4py import PETSc
-from mpi4py import MPI
 from dolfiny.function import vec_to_functions
 
 
@@ -74,7 +72,7 @@ def test_linear(squaremesh_5):
         };
         """,
         required_J=[(1, 0), (0, 0), (0, 1), (1, 1)]
-        )
+    )
 
     sc_F_cell = dolfiny.localsolver.UserKernel(
         name="sc_F_cell",
@@ -85,7 +83,7 @@ def test_linear(squaremesh_5):
         };
         """,
         required_J=[(1, 0), (0, 0)]
-        )
+    )
 
     sc_F_exterior_facet = dolfiny.localsolver.UserKernel(
         name="sc_F_exterior_facet",
@@ -96,7 +94,7 @@ def test_linear(squaremesh_5):
         };
         """,
         required_J=[]
-        )
+    )
 
     solve_stress = dolfiny.localsolver.UserKernel(
         name="solve_stress",
@@ -109,7 +107,7 @@ def test_linear(squaremesh_5):
         };
         """,
         required_J=[(0, 1), (0, 0)]
-        )
+    )
 
     def local_update(problem):
         dx = problem.snes.getSolutionUpdate()
@@ -289,8 +287,6 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
 def test_nonlinear_elasticity_nonlinear(squaremesh_5):
 
     mesh = squaremesh_5
-    import cffi
-    ffi = cffi.FFI()
 
     # Stress and displacement elements
     Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
@@ -383,7 +379,7 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
         }
         """,
         required_J=[(0, 0)]
-        )
+    )
 
     def local_update(problem):
         with problem.xloc.localForm() as x_local:
