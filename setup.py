@@ -6,4 +6,6 @@ setup(name='dolfiny',
       author='Michal Habera',
       author_email='michal.habera@gmail.com',
       packages=['dolfiny'],
-      zip_safe=False)
+      zip_safe=False,
+      package_data={'dolfiny': ['localsolver.h']},
+      include_package_data=True)
