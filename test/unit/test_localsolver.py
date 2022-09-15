@@ -1,5 +1,4 @@
 import dolfinx
-import time
 import dolfiny
 import numpy as np
 import numba
@@ -276,9 +275,7 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     opts["snes_rtol"] = 1.0e-08
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls)
-    t0 = time.time()
     sigma1, u1 = problem.solve()
-    print(time.time() - t0)
 
     assert np.isclose(u1.vector.norm(), 1.2419671416042748)
     assert np.isclose(sigma1.vector.norm(), 0.9835175347552177)

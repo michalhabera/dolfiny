@@ -45,7 +45,44 @@ do_nothing_cffi = ffi.cast(
 
 class LocalSolver:
     def __init__(self, function_spaces, local_spaces_id, F_integrals, J_integrals, local_integrals, local_update):
-        """Local solver used to eliminate local degrees-of-freedom."""
+        """Local solver used to eliminate local degrees-of-freedom.
+
+        Local solver is defined with 4 callback functions:
+        1. assemble tangent for global dofs, parameter ``J_integrals``,
+        2. assemble residual for global dofs, parameter ``F_integrals``,
+        3. reconstruct local dofs for a fixed, known global dofs, parameter ``local_integrals``,
+        4. update local dofs (globally), parameter ``local_update``.
+
+        It supports use of C++ (via cppyy JIT compilation) or Numba kernels.
+
+        The interface for ``foo_integrals`` follows integral storage in dolfinx,
+        for example
+
+        ```python
+        F_integrals = [{dolfinx.fem.IntegralType.cell:
+                         ([(-1, sc_F_cell)], None),
+                         dolfinx.fem.IntegralType.exterior_facet:
+                         ([(1, sc_F_exterior_facet)], mt)}]
+        ```
+
+        defines an integral ``sc_F_cell`` which will be assembled over cells, has default
+        marker ID -1 and no MeshTags used for marking,
+        and integral ``sc_F_exterior_facet`` which is assembled over exterior facets which are
+        marked 1 based on provided MeshTags ``mt``.
+
+        C++ kernels
+        -----
+        Recommended approach. User writes C++ code string which has access to
+        pre-tabulated residuals F0, F1, ..., Fn and J00, J01, J10, ..., Jnn tangents.
+        These are kernel_data_t types (see localsolver.h for details).
+
+        Numba kernels
+        -----
+        Numba kernels should be used for smaller problems and testing purposes due to
+        several performance limitations. User provides Numba jitted callback with access
+        to residual and tangent data structures via passed arguments.
+
+        """
         self.function_spaces = function_spaces
         self.local_spaces_id = local_spaces_id
         self.J_integrals = J_integrals
@@ -296,7 +333,7 @@ class LocalSolver:
                 """
 
                 alloc_code += f"""
-                KernelData F{i} = {{
+                kernel_data_t F{i} = {{
                     kernel_F{i},
                     Eigen::Matrix<double, {sizes[i]}, 1>(),
                     Eigen::Array<double,
@@ -362,7 +399,7 @@ class LocalSolver:
                     """
 
                     alloc_code += f"""
-                    KernelData J{i}{j} = {{
+                    kernel_data_t J{i}{j} = {{
                         kernel_J{i}{j},
                         Eigen::Matrix<double, {sizes[i]}, {sizes[j]}>(),
                         Eigen::Array<double,

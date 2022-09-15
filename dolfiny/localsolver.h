@@ -9,7 +9,7 @@ using ufc_kernel_void_t = void(*)(double* __restrict__, const double* __restrict
 using ufc_kernel_t = void(*)(double* __restrict__, const double* __restrict__, const double* __restrict__,
                              const double* __restrict__, int32_t* __restrict__, uint8_t* __restrict__);
 
-struct KernelData {
+struct kernel_data_t {
     const ufc_kernel_t kernel;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> array;
     Eigen::Array<double, Eigen::Dynamic, 1> w;
