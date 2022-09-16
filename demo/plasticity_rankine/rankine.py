@@ -8,7 +8,7 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 
-name = "notched_vm"
+name = "notched"
 gmsh_model, tdim = mesh_notched.mesh_notched(name, clscale=0.2)
 
 # Get mesh and meshtags
@@ -45,14 +45,6 @@ l0 = dolfinx.fem.Function(L, name="l0")
 δdl = ufl.TestFunction(L)
 
 
-def f(sigma):
-    """Square root of J2 invariant of tensor A"""
-    J2 = 1 / 2 * ufl.inner(ufl.dev(sigma), ufl.dev(sigma))
-    rJ2 = ufl.sqrt(J2)
-    rJ2 = ufl.conditional(rJ2 < 1.0e-16, -0.0, rJ2)
-    return ufl.sqrt(3) * rJ2 - Sy
-
-
 def eigvals(A):
     eps = 3.0e-8
     i1 = ufl.tr(A)
@@ -65,9 +57,9 @@ def eigvals(A):
     return λ
 
 
-# def f(sigma):
-#     max_eigtress = eigvals(sigma)[0]
-#     return max_eigtress - Sy
+def f(sigma):
+    max_eigtress = eigvals(sigma)[0]
+    return max_eigtress - Sy
 
 
 # Strain measures
@@ -86,15 +78,17 @@ sigma = ufl.variable(sigma)
 dx = ufl.Measure("dx", domain=mesh, metadata={"quadrature_degree": quad_degree})
 F0 = ufl.inner(sigma, ufl.sym(ufl.grad(δu))) * dx  # Global momentum equilibrium
 F1 = ufl.inner(dP - dl * ufl.diff(f(sigma), sigma), δdP) * dx  # Plastic flow rule
-# F2 = ufl.inner(ufl.conditional(f(sigma) >= -1e-8, f(sigma), dl), δdl) * dx  # Lagrange multiplier
-# F2 = ufl.inner(cn * dl - ufl.Max(0.0, cn*dl + f(sigma)), δdl) * dx
 F2 = ufl.inner(ufl.Min(dl, -f(sigma)), δdl) * dx
+
+# Alternative KKT complementarity functions are:
+# (Note: changes in these lead to changes in coefficient dofs ordering, needs
+# adjusting the kernels)
+#
+# F2 = ufl.inner(cn * dl - ufl.Max(0.0, cn*dl + f(sigma)), δdl) * dx
 # F2 = ufl.inner(ufl.Min(dl, -f(sigma)), δdl) * dx
-# F2 = ufl.inner(ufl.sqrt(dl**2 + f(sigma)**2 + 2*1e-12) - dl + f(sigma), δdl) * dx
 
 u_top = dolfinx.fem.Function(V, name="u_top")
 u_bottom = dolfinx.fem.Function(V, name="u_bottom")
-
 
 bcs = [dolfinx.fem.dirichletbc(u_top, dolfinx.fem.locate_dofs_topological(V, 1, top_facets)),
        dolfinx.fem.dirichletbc(u_bottom, dolfinx.fem.locate_dofs_topological(V, 1, bottom_facets))]
@@ -286,9 +280,9 @@ opts = PETSc.Options(name)
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-8
+opts["snes_atol"] = 1.0e-12
 opts["snes_rtol"] = 1.0e-8
-opts["snes_max_it"] = 35
+opts["snes_max_it"] = 20
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"

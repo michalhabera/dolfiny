@@ -167,7 +167,7 @@ class LocalSolver:
     def wrap_kernel_numba(self, kernel, indices, celltype):
 
         logging.warning(
-            f"Compiling Numba kernel for indices {indices}! This has significant overhead, consider using C++ kernels.")
+            f"Compiling Numba kernel for indices {indices}. This has significant overhead, consider using C++ kernels.")
 
         sizes = []
         for i, fs in enumerate(self.function_spaces):
