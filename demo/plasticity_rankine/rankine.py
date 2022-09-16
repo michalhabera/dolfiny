@@ -3,7 +3,6 @@ import dolfinx
 import ufl
 import dolfiny
 import mesh_notched
-import time
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -257,11 +256,9 @@ def local_update(problem):
     dolfiny.function.vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
 
     # Assemble into local vector and scatter to functions
-    t0 = time.time()
     dolfinx.fem.petsc.assemble_vector_block(
         problem.xloc, problem.local_form, [[problem.J_form[0][0] for i in range(2)] for i in range(2)], [],
         x0=problem.xloc, scale=-1.0)
-    print(f"Local update time: {time.time() - t0}")
     dolfiny.function.vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
 
 
@@ -290,10 +287,11 @@ opts["pc_factor_mat_solver_type"] = "mumps"
 problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u0, dP, dl], bcs=bcs,
                                                     prefix=name, localsolver=ls)
 
+ls.view()
+
 steps = 50
 final = 0.005
 stepsize = final / steps
-t0 = time.time()
 for i in range(steps):
 
     print(f"STEP ------ {i}")
@@ -311,5 +309,3 @@ for i in range(steps):
 
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, f"{name}.xdmf", "a") as ofile:
         ofile.write_function(u0, float(i))
-
-print(f"Simulation finished in {time.time() - t0}")

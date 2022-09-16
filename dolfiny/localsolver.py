@@ -8,6 +8,7 @@ import cffi
 import itertools
 import collections
 import hashlib
+from dolfiny.utils import pprint
 
 # Apple M1 is not detected and default args with march=native fail
 import os
@@ -583,3 +584,31 @@ class LocalSolver:
         self.stacked_constants = stacked_constants
         self.coefficients = tuple(coefficients)
         self.constants = tuple(constants)
+
+    def view(self):
+        """Shows information about kernels, sizes of blocks and positions of Coefficient DOFs."""
+        pprint(79 * "#")
+        pprint(79 * "*")
+        for i in range(len(self.F_ufl)):
+            rows = self.F_ufc[i].function_spaces[0].element.space_dimension
+            pprint(f"F{i} ({rows}):")
+            coeffs = [coeff for coeff in self.coefficients if coeff.indices == (i, -1)]
+            for coeff in coeffs:
+                pprint(f"\t{coeff.name} \t [{coeff.begin}, {coeff.end}]")
+            pprint()
+
+        for i in range(len(self.F_ufl)):
+            for j in range(len(self.F_ufl)):
+                form = self.J_ufc[i][j]
+                if form is None:
+                    continue
+                rows = self.J_ufc[i][j].function_spaces[0].element.space_dimension
+                cols = self.J_ufc[i][j].function_spaces[1].element.space_dimension
+                pprint(f"J{i}{j} ({rows}, {cols}):")
+                coeffs = [coeff for coeff in self.coefficients if coeff.indices == (i, j)]
+                for coeff in coeffs:
+                    pprint(f"\t{coeff.name} \t [{coeff.begin}, {coeff.end}]")
+                pprint()
+
+        pprint(79 * "*")
+        pprint(79 * "#")
