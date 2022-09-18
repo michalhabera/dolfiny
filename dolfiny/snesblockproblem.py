@@ -28,7 +28,11 @@ class SNESBlockProblem():
             True for 'matnest' data layout, False for 'aij'
         restriction: optional
             ``Restriction`` class used to provide information about degree-of-freedom
-            indices for which this solver should solve.
+            indices for which this solver should solve. With ``LocalSolver`` only
+            degrees-of-freedom for global fields must be considered.
+        localsolver: optional
+            ``LocalSolver`` class providing context on elimination of local
+            degrees-of-freedom.
 
         """
         self.u = u
@@ -69,9 +73,6 @@ class SNESBlockProblem():
 
         self.localsolver = localsolver
         if self.localsolver is not None:
-            if nest:
-                raise RuntimeError("LocalSolver with MATNEST not implemented")
-
             # Set UFL and compiled forms to localsolver
             self.localsolver.F_ufl = F_form.copy()
             self.localsolver.J_ufl = J_form.copy()
@@ -88,7 +89,6 @@ class SNESBlockProblem():
             self.global_spaces_id = self.localsolver.global_spaces_id
 
         self.bcs = bcs
-        self.restriction = restriction
         self.solution = []
 
         # Prepare empty functions on the corresponding sub-spaces
@@ -103,9 +103,13 @@ class SNESBlockProblem():
 
         self.snes = PETSc.SNES().create(self.comm)
 
+        self.restriction = restriction
         if nest:
-            if restriction is not None:
+            if self.restriction is not None:
                 raise RuntimeError("Restriction for MATNEST not yet supported.")
+
+            if self.localsolver is not None:
+                raise RuntimeError("LocalSolver for MATNEST not yet supported.")
 
             self.J = dolfinx.fem.petsc.create_matrix_nest(self.J_form)
             self.F = dolfinx.fem.petsc.create_vector_nest(self.F_form)
@@ -117,22 +121,23 @@ class SNESBlockProblem():
 
         else:
             if self.localsolver is not None:
+                # Create global vector where all local fields are assembled into
                 self.xloc = dolfinx.fem.petsc.create_vector_block(self.local_form)
 
             self.J = dolfinx.fem.petsc.create_matrix_block(self.J_form)
             self.F = dolfinx.fem.petsc.create_vector_block(self.F_form)
             self.x = self.F.copy()
 
-            if restriction is not None:
+            if self.restriction is not None:
                 # Need to create new global matrix for the restriction
                 self._J = dolfinx.fem.petsc.create_matrix_block(self.J_form)
                 self._J.assemble()
 
                 self._x = self.x.copy()
 
-                self.rJ = restriction.restrict_matrix(self._J)
-                self.rF = restriction.restrict_vector(self.F)
-                self.rx = restriction.restrict_vector(self._x)
+                self.rJ = self.restriction.restrict_matrix(self._J)
+                self.rF = self.restriction.restrict_vector(self.F)
+                self.rx = self.restriction.restrict_vector(self._x)
 
                 self.snes.setFunction(self._F_block, self.rF)
                 self.snes.setJacobian(self._J_block, self.rJ)
@@ -150,13 +155,10 @@ class SNESBlockProblem():
         """Update solution functions from the stored vector x"""
 
         if self.restriction is not None:
-            self.restriction.update_functions(self.u, x)
-            functions_to_vec(self.u, self.x)
+            self.restriction.update_functions([self.u[idx] for idx in self.global_spaces_id], x)
+            functions_to_vec([self.u[idx] for idx in self.global_spaces_id], self.x)
         else:
-            if self.localsolver is not None:
-                vec_to_functions(x, [self.u[idx] for idx in self.localsolver.global_spaces_id])
-            else:
-                vec_to_functions(x, self.u)
+            vec_to_functions(x, [self.u[idx] for idx in self.global_spaces_id])
 
             x.copy(self.x)
             self.x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
@@ -328,11 +330,12 @@ class SNESBlockProblem():
 
         if self.restriction is not None:
             self.snes.solve(None, self.rx)
-            self.restriction.update_functions(self.solution, self.rx)
+            self.restriction.update_functions([self.solution[idx] for idx in self.global_spaces_id], self.rx)
         else:
             self.snes.solve(None, self.x)
             vec_to_functions(self.x, [self.solution[idx] for idx in self.global_spaces_id])
-            if self.localsolver is not None:
-                vec_to_functions(self.xloc, [self.solution[idx] for idx in self.localsolver.local_spaces_id])
+
+        if self.localsolver is not None:
+            vec_to_functions(self.xloc, [self.solution[idx] for idx in self.localsolver.local_spaces_id])
 
         return self.solution

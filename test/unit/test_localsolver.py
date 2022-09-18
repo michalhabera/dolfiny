@@ -404,7 +404,12 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     opts["snes_linesearch_type"] = "basic"
     opts["snes_rtol"] = 1.0e-08
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls)
+    Usize = U.dofmap.index_map_bs * U.dofmap.index_map.size_local
+    rdofsU = np.arange(Usize, dtype=np.int32)
+    r = dolfiny.restriction.Restriction([U], [rdofsU])
+
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls,
+                                                        restriction=r)
     sigma1, u1 = problem.solve()
 
     assert np.isclose(u1.vector.norm(), 1.2419671416042748)
