@@ -5,7 +5,7 @@ import numpy
 from dolfinx.cpp.mesh import CellType
 from dolfinx import cpp
 from dolfinx.mesh import create_mesh, meshtags_from_entities, meshtags
-from dolfinx.io import ufl_mesh_from_gmsh
+from dolfinx.io.gmshio import ufl_mesh
 from dolfinx.cpp.io import distribute_entity_data
 
 
@@ -179,7 +179,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         cells = numpy.empty((0, cells_shape[1]))
         points = numpy.empty((0, pts_shape[1]))
 
-    mesh = create_mesh(comm, cells, points, ufl_mesh_from_gmsh(celltype, pts_shape[1]))
+    mesh = create_mesh(comm, cells, points, ufl_mesh(celltype, pts_shape[1]))
     mts = {}
 
     # Get physical groups (dimension, tag)
@@ -203,7 +203,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
             for i, entity_tag in enumerate(entity_tags):
                 pgcell_types, pgcell_tags, pgnode_tags = gmsh_model.mesh.getElements(pgdim, entity_tag)
 
-                assert(len(pgcell_types) == 1)
+                assert (len(pgcell_types) == 1)
                 pgcellname = gmsh_cellname[pgcell_types[0]]
                 pgnum_nodes = nodes[pgcellname]
 

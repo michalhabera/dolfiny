@@ -154,6 +154,12 @@ demo/plasticity:
       - cd plasticity 
       - mpirun -n 8 python3 solid_plasticity_monolithic.py
 
+demo/plasticity_rankine:
+   extends: .demo_template
+   script:
+      - cd plasticity_rankine
+      - mpirun -n 8 python3 rankine.py
+
 demo/spectral:
    extends: .demo_template
    script:

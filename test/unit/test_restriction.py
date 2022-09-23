@@ -105,8 +105,8 @@ def test_coupled_poisson():
         value_s0 = s0.eval(p, cell)
         value_s1 = s1.eval(p, cell)
 
-        assert(numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
-        assert(numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
+        assert (numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
+        assert (numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
 
 
 def test_sloped_stokes():
@@ -269,7 +269,7 @@ def test_pipes_stokes():
 
     F0 = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx(mesh) \
         - p * ufl.div(v) * ufl.dx(mesh) + lam * ufl.inner(v, n) * ds(keys1["bottom"])
-    F1 = ufl.div(u) * q * ufl.dx(mesh)
+    F1 = ufl.div(u) * q * ufl.dx(mesh) + dolfinx.fem.Constant(mesh, 0.0) * p * q * ufl.dx(mesh)
     F2 = ufl.inner(u, n) * m * ds(keys1["bottom"])
 
     u_inflow = dolfinx.fem.Function(V)

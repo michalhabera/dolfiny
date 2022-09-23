@@ -1,11 +1,11 @@
-FROM dolfinx/dev-env
+FROM dolfinx/dev-env:nightly
 
 ARG DOLFINY_BUILD_TYPE=Release
 
-ARG UFL_GIT_COMMIT=2ad4ef16f9149f0c079b0d1fd7c63c07ce3c8700
-ARG BASIX_GIT_COMMIT=314498fc9a3a3cc398baa8dc921212d96f647a0e
-ARG FFCX_GIT_COMMIT=61a02c26c97a096f24857feca008c7c49b7616ea
-ARG DOLFINX_GIT_COMMIT=cefa0092702e80e254c7a8e58d6af17f05b12a8d
+ARG UFL_GIT_COMMIT=50d2a48
+ARG BASIX_GIT_COMMIT=8f731b9
+ARG FFCX_GIT_COMMIT=763c6be
+ARG DOLFINX_GIT_COMMIT=2be366d
 
 ENV PYTHONDONTWRITEBYTECODE=1
 
@@ -30,4 +30,4 @@ RUN git clone --branch main https://github.com/FEniCS/dolfinx.git \
         && cmake --install build \
         && python3 -m pip install ./python
 
-RUN pip3 install matplotlib
+RUN pip3 install matplotlib cppyy

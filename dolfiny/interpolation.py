@@ -41,22 +41,22 @@ class CompiledExpression:
         # Identify points at which to evaluate the expression
         self.ffcx_element = ffcx.element_interface.create_element(target_el)
 
-        if isinstance(self.ffcx_element, ffcx.element_interface.BlockedElement):
+        if isinstance(self.ffcx_element, basix.ufl_wrapper.BlockedElement):
             mapping_types = [self.ffcx_element.sub_element.element.map_type]
             nodes = self.ffcx_element.sub_element.element.points
-        elif isinstance(self.ffcx_element, ffcx.element_interface.MixedElement):
+        elif isinstance(self.ffcx_element, basix.ufl_wrapper.MixedElement):
             mapping_types = [e.element.map_type for e in self.ffcx_element.sub_elements]
             nodes = self.ffcx_element.sub_elements[0].element.points
-        elif isinstance(self.ffcx_element, ffcx.element_interface.BasixElement):
+        elif isinstance(self.ffcx_element, basix.ufl_wrapper.BasixElement):
             mapping_types = [self.ffcx_element.element.map_type]
             nodes = self.ffcx_element.element.points
         elif isinstance(self.ffcx_element, ffcx.element_interface.QuadratureElement):
-            mapping_types = [basix._basixcpp.MappingType.identity]
+            mapping_types = [basix._basixcpp.MapType.identity]
             nodes = self.ffcx_element._points
         else:
             raise NotImplementedError("Unsupported element type")
 
-        if not all(x == basix._basixcpp.MappingType.identity for x in mapping_types):
+        if not all(x == basix._basixcpp.MapType.identity for x in mapping_types):
             raise NotImplementedError("Only affine mapped function spaces supported")
 
         module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))

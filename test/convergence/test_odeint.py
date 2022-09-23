@@ -72,7 +72,7 @@ def test_odeint_convergence(generalised_alpha_1st_params, jsonfile, odeint_m, cl
             info["l2error"][l2key] = l2value
             info["order_measured"][l2key] = numpy.abs(m)
 
-            assert(numpy.greater(info["order_measured"][l2key], info['order_expected'] - 0.1))
+            assert (numpy.greater(info["order_measured"][l2key], info['order_expected'] - 0.1))
 
     # Write results as json file
     with open(jsonfile, 'w') as file:
@@ -119,7 +119,7 @@ def test_odeint2_convergence(generalised_alpha_2nd_params, jsonfile, odeint_m, c
             info["l2error"][l2key] = l2value
             info["order_measured"][l2key] = numpy.abs(m)
 
-            assert(numpy.greater(info["order_measured"][l2key], info['order_expected'] - 0.1))
+            assert (numpy.greater(info["order_measured"][l2key], info['order_expected'] - 0.1))
 
     # Write results as json file
     with open(jsonfile, 'w') as file:
