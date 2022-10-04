@@ -28,6 +28,8 @@ def test_simple_triangle():
         cl0 = gmsh.model.geo.addCurveLoop([l0, l1, l2, l3])
         s0 = gmsh.model.geo.addPlaneSurface([cl0])
 
+        gmsh.model.geo.synchronize()
+
         gmsh.model.addPhysicalGroup(1, [l0, l2], 2)
         gmsh.model.setPhysicalName(1, 2, "sides")
 
