@@ -184,7 +184,6 @@ class SNESBlockProblem():
         vec_to_functions(x, self.u)
         x = x.getNestSubVecs()
 
-        # bcs1 = dolfinx.cpp.fem.bcs_cols(dolfinx.fem.assemble._create_cpp_form(self.J_form), self.bcs)
         bcs1 = dolfinx.fem.bcs.bcs_by_block(dolfinx.fem.forms.extract_function_spaces(self.J_form, 1), self.bcs)
         for L, F_sub, a in zip(self.F_form, F.getNestSubVecs(), self.J_form):
             with F_sub.localForm() as F_sub_local:
@@ -194,7 +193,6 @@ class SNESBlockProblem():
             F_sub.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
 
         # Set bc value in RHS
-        # bcs0 = dolfinx.cpp.fem.bcs_rows(dolfinx.fem.assemble._create_cpp_form(self.F_form), self.bcs)
         bcs0 = dolfinx.fem.bcs.bcs_by_block(dolfinx.fem.forms.extract_function_spaces(self.F_form), self.bcs)
         for F_sub, bc, u_sub in zip(F.getNestSubVecs(), bcs0, x):
             dolfinx.fem.petsc.set_bc(F_sub, bc, u_sub, -1.0)

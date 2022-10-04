@@ -21,7 +21,7 @@ def invariants_main(A):
     return j1, j2, j3
 
 
-def eigenstate_legacy(A):
+def eigenstate3_legacy(A):
     """Eigenvalues and eigenprojectors of the 3x3 (real-valued) tensor A.
     Provides the spectral decomposition A = sum_{a=0}^{2} λ_a * E_a
     with eigenvalues λ_a and their associated eigenprojectors E_a = n_a^R x n_a^L
@@ -69,7 +69,7 @@ def eigenstate_legacy(A):
     return [λ0, λ1, λ2], [E0, E1, E2]
 
 
-def eigenstate(A):
+def eigenstate3(A):
     """Eigenvalues and eigenprojectors of the 3x3 (real-valued) tensor A.
     Provides the spectral decomposition A = sum_{a=0}^{2} λ_a * E_a
     with (ordered) eigenvalues λ_a and their associated eigenprojectors E_a = n_a^R x n_a^L.
@@ -146,3 +146,77 @@ def eigenstate(A):
     E = [ufl.diff(λk, A).T for λk in λ]
 
     return λ, E
+
+
+def eigenstate2(A):
+    """Eigenvalues and eigenprojectors of the 2x2 (real-valued) tensor A.
+    Provides the spectral decomposition A = sum_{a=0}^{1} λ_a * E_a
+    with (ordered) eigenvalues λ_a and their associated eigenprojectors E_a = n_a^R x n_a^L.
+
+    Note: Tensor A must not have complex eigenvalues!
+    """
+    if ufl.shape(A) != (2, 2):
+        raise RuntimeError(f"Tensor A of shape {ufl.shape(A)} != (2, 2) is not supported!")
+    #
+    eps = 3.0e-16  # slightly above 2**-(53 - 1), see https://en.wikipedia.org/wiki/IEEE_754
+    #
+    A = ufl.variable(A)
+    #
+    # --- determine eigenvalues λ0, λ1
+    #
+    I1, _, _ = invariants_principal(A)
+    #
+    Δ = (A[0, 0] - A[1, 1])**2 + 4 * A[0, 1] * A[1, 0]  # = I1**2 - 4 * I2
+    # Avoid dp = 0 and disc = 0, both are known with absolute error of ~eps**2
+    # Required to avoid sqrt(0) derivatives and negative square roots
+    Δ += eps**2
+    # sorted eigenvalues: λ0 <= λ1
+    λ = (I1 + ufl.sqrt(Δ)) / 2, (I1 - ufl.sqrt(Δ)) / 2
+    #
+    # --- determine eigenprojectors E0, E1
+    #
+    E = [ufl.diff(λk, A).T for λk in λ]
+
+    return λ, E
+
+
+def eigenstate(A):
+    """Eigenvalues and eigenprojectors of the (real-valued) tensor A of dimension m = 2, 3.
+    Provides the spectral decomposition A = sum_{a=0}^{m} λ_a * E_a
+    with (ordered) eigenvalues λ_a and their associated eigenprojectors E_a = n_a^R x n_a^L.
+
+    Note: Tensor A must not have complex eigenvalues!
+    """
+    if ufl.shape(A) == (3, 3):
+        return eigenstate3(A)
+    elif ufl.shape(A) == (2, 2):
+        return eigenstate2(A)
+    else:
+        raise RuntimeError(f"Tensor A of shape {ufl.shape(A)} is not supported!")
+
+
+def matrix_function(A, fn=lambda A: A):
+    """Evaluates A -> fn(A) : R^(m x m) -> R^(m x m) for the given (real-valued) tensor A and fn.
+    Uses spectral decomposition and spectral synthesis fn(A) = sum_{a=0}^{m} fn(λ_a) * E_a.
+
+    Parameters
+    ----------
+    A
+        UFL tensor
+    fn
+        Functor providing the analytic function
+
+        Examples: `fn=ufl.exp`, `fn=lambda A: A**2`
+        Note: If differentiation through the matrix function is needed, consider
+              eps-ification of expressions which are not differentiable at critical points,
+              e.g. `fn=lambda A: ufl.sqrt(A + eps)`.
+    """
+    # obtain symbolic spectral decomposition
+    λ, E = eigenstate(A)
+    # instantiate zero matrix
+    fn_A = ufl.zero(ufl.shape(A))
+    # apply UFL function on eigenvalue and synthesise matrix function
+    for λ_, E_ in zip(λ, E):
+        fn_A += fn(λ_) * E_
+
+    return fn_A

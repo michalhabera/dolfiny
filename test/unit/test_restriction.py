@@ -226,6 +226,8 @@ def test_pipes_stokes():
     cl = geo.addCurveLoop([l0, l1, l2, l3, l4, l5, l6])
     s0 = geo.addPlaneSurface([cl])
 
+    gmsh.model.geo.synchronize()
+
     # Bottom
     gmsh.model.addPhysicalGroup(1, [l0, l1, l2], 1)
     gmsh.model.setPhysicalName(1, 1, "bottom")
