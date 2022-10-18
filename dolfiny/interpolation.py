@@ -136,7 +136,6 @@ def interpolate_compiled(compiled_expression, target_func):
     geom_dofmap = mesh.geometry.dofmap.array
     geom_pos = mesh.geometry.dofmap.offsets
     geom = mesh.geometry.x
-    gdim = mesh.geometry.dim
 
     dofmap = target_func.function_space.dofmap.list.array
 
@@ -189,18 +188,18 @@ def interpolate_compiled(compiled_expression, target_func):
         b.set(0.0)
         assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
                             coeffs_vectors, coeffs_dofmaps, coeffs_bs, constants_vector,
-                            coeffs_sizes, gdim, basix_space_dim, space_dim,
+                            coeffs_sizes, basix_space_dim, space_dim,
                             value_size, subel_map, dofmap_bs, element_bs)
 
 
 @numba.njit(fastmath=True)
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps, coeffs_bs,
-                        const_vector, coeffs_sizes, gdim, fiat_space_dim,
+                        const_vector, coeffs_sizes, fiat_space_dim,
                         space_dim, value_size, subel_map, dofmap_bs, element_bs):
     geom_dofmap, geom_pos, geom = mesh
 
     # Coord dofs have shape (num_geometry_dofs, gdim)
-    coordinate_dofs = np.zeros((geom_pos[1], gdim))
+    coordinate_dofs = np.zeros((geom_pos[1], 3))
     coeffs = np.zeros(np.sum(coeffs_sizes), dtype=PETSc.ScalarType)
     entity_index = np.array([0], dtype=np.intc)
     quad_perm = np.array([0], dtype=np.dtype("uint8"))
@@ -213,7 +212,7 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     for i, cell in enumerate(geom_pos[:-1]):
         for j in range(geom_pos[1]):
             c = geom_dofmap[cell + j]
-            for k in range(gdim):
+            for k in range(3):
                 coordinate_dofs[j, k] = geom[c, k]
         b_local.fill(0.0)
 
