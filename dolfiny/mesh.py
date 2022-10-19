@@ -269,6 +269,7 @@ def msh_to_gmsh(msh_file, order=1, comm=MPI.COMM_WORLD):
 
         import gmsh
 
+        gmsh.initialize()
         gmsh.open(msh_file)
         gmsh.model.geo.synchronize()
         gmsh.model.mesh.generate()
