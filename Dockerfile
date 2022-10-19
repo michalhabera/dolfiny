@@ -7,6 +7,8 @@ ARG BASIX_GIT_COMMIT=8f731b9f76b9d72d25f799dfc7b40cb21f50641e
 ARG FFCX_GIT_COMMIT=b057deadac4fbe30db6472e92eca5f91b2d0cb4d
 ARG DOLFINX_GIT_COMMIT=136aa0acdeeb7e29b336949ad9ed8537237f5f88
 
+ARG PYPI_PACKAGE_REPO=https://gitlab.uni.lu/api/v4/projects/3415/packages/pypi/simple
+
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV CLING_REBUILD_PCH=1
 
@@ -31,4 +33,4 @@ RUN git clone --branch main https://github.com/FEniCS/dolfinx.git \
         && cmake --install build \
         && python3 -m pip install ./python
 
-RUN pip3 install matplotlib cppyy
+RUN pip3 install --index-url $PYPI_PACKAGE_REPO cppyy
