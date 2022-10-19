@@ -8,6 +8,7 @@ ARG FFCX_GIT_COMMIT=b057deadac4fbe30db6472e92eca5f91b2d0cb4d
 ARG DOLFINX_GIT_COMMIT=136aa0acdeeb7e29b336949ad9ed8537237f5f88
 
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV CLING_REBUILD_PCH=1
 
 RUN git clone --branch main https://github.com/FEniCS/basix.git \
         && cd basix \
