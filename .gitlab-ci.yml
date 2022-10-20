@@ -10,9 +10,10 @@ default:
       - docker
 
 variables:
-   CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:master
-   CONTAINER_MASTER_IMAGE: $CI_REGISTRY_IMAGE:master
-   CONTAINER_LATEST_IMAGE: $CI_REGISTRY_IMAGE:latest
+   CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+   # CONTAINER_MASTER_IMAGE: $CI_REGISTRY_IMAGE:master
+   # CONTAINER_LATEST_IMAGE: $CI_REGISTRY_IMAGE:latest
+   CI_RUNNER_ARCHITECTURE: amd64
 
 # jobs
 
@@ -22,72 +23,95 @@ flake8:
    script:
       - flake8 --verbose .
 
-.image_template:
+.image build:
    stage: image
    image: docker:latest
    variables:
-      PLATFORMS: linux/amd64,linux/arm64
+      PLATFORMS: linux/$CI_RUNNER_ARCHITECTURE
+      ARCH: $CI_RUNNER_ARCHITECTURE
    script:
       - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
       - docker buildx create --name multi --platform $PLATFORMS
       - docker buildx build --build-arg BUILDKIT_INLINE_CACHE=1
                      --build-arg DOLFINY_BUILD_TYPE=Release
-                     --cache-from $CONTAINER_COMMIT_IMAGE
-                     --cache-from $CONTAINER_MASTER_IMAGE
-                     --tag $CONTAINER_COMMIT_IMAGE
+                     --cache-from $CONTAINER_COMMIT_IMAGE-$ARCH
+                     --cache-from $CONTAINER_MASTER_IMAGE-$ARCH
+                     --tag $CONTAINER_COMMIT_IMAGE-$ARCH
                      --pull
                      --push
                      --builder multi --platform $PLATFORMS
                      .
-      - echo CONTAINER_COMMIT_IMAGE="${CONTAINER_COMMIT_IMAGE}" >> build.env
-   rules:
-      - if: ($CI_PIPELINE_SOURCE == "schedule")
+      # - echo CONTAINER_COMMIT_IMAGE="${CONTAINER_COMMIT_IMAGE}" >> build.env
+   # rules:
+      # - if: ($CI_PIPELINE_SOURCE == "schedule")
+      #   variables:
+      #    PLATFORMS: linux/amd64,linux/arm64
       # - if: ($CI_PIPELINE_SOURCE == "merge_request_event")
       # - changes: 
       #    - Dockerfile
       #   variables:
       #      CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
       #   when: always
+      # - exists: 
+      #    - Dockerfile
+      #   when: manual
+      #   allow_failure: true
+   # artifacts:
+   #    reports:
+   #      dotenv: build.env
+
+image build amd64:
+   extends: .image build
+   variables:
+      PLATFORMS: linux/amd64
+      ARCH: amd64
+   # rules:
+   #    - if: ($CI_PIPELINE_SOURCE == "merge_request_event")
+      # - changes: 
+      #    - Dockerfile
+      #   variables:
+      #      CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+      #   when: always
+
+image build arm64:
+   extends: .image build
+   variables:
+      PLATFORMS: linux/arm64
+      ARCH: arm64
+   rules:
+      - if: ($CI_COMMIT_BRANCH == "master" || $CI_PIPELINE_SOURCE == "schedule")
       - exists: 
          - Dockerfile
         when: manual
         allow_failure: true
-   artifacts:
-      reports:
-        dotenv: build.env
 
-image-amd64:
-   extends: .image_template
-   variables:
-      PLATFORMS: linux/amd64
-   rules:
-      - if: ($CI_PIPELINE_SOURCE == "merge_request_event")
-      - changes: 
-         - Dockerfile
-        variables:
-           CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
-        when: always
-
-image-arm64:
-   extends: .image_template
-   variables:
-      PLATFORMS: linux/arm64
-
-container release:
+image release:
    stage: release
    image: docker:latest
    script:
       - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-      - docker pull $CONTAINER_COMMIT_IMAGE
-      - docker tag $CONTAINER_COMMIT_IMAGE $CONTAINER_LATEST_IMAGE
-      - docker push $CONTAINER_LATEST_IMAGE
+      - docker login -u $DOCKERHUB_USER -p $DOCKERHUB_PASSWORD
+      - docker pull $CONTAINER_COMMIT_IMAGE-amd64
+      - docker pull $CONTAINER_COMMIT_IMAGE-arm64
+      - docker manifest create $CONTAINER_COMMIT_IMAGE $CONTAINER_COMMIT_IMAGE-amd64 $CONTAINER_COMMIT_IMAGE-arm64
+      - docker manifest push $CONTAINER_COMMIT_IMAGE
+      - docker tag $CONTAINER_COMMIT_IMAGE-amd64 $DOCKERHUB_COMMIT_IMAGE-amd64
+      - docker tag $CONTAINER_COMMIT_IMAGE-arm64 $DOCKERHUB_COMMIT_IMAGE-arm64
+      - docker push $DOCKERHUB_COMMIT_IMAGE-amd64
+      - docker push $DOCKERHUB_COMMIT_IMAGE-arm64
+      - docker manifest create $DOCKERHUB_COMMIT_IMAGE $DOCKERHUB_COMMIT_IMAGE-amd64 $DOCKERHUB_COMMIT_IMAGE-arm64
+      - docker manifest push $DOCKERHUB_COMMIT_IMAGE
    rules:
       - if: ($CI_COMMIT_BRANCH == "master")
-      - if: ($CI_PIPELINE_SOURCE == "merge_request_event")
+        variables:
+           DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:latest
+      - if: ($CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "master")
+        variables:
+           DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:nightly
 
 .test_template:
    stage: test
-   image: $CONTAINER_COMMIT_IMAGE
+   image: $CONTAINER_COMMIT_IMAGE-$CI_RUNNER_ARCHITECTURE
    before_script:
       - pip3 install .
       - cd test
@@ -128,7 +152,7 @@ test/convergence:
 
 .demo_template:
    stage: demo
-   image: $CONTAINER_COMMIT_IMAGE
+   image: $CONTAINER_COMMIT_IMAGE-$CI_RUNNER_ARCHITECTURE
    before_script:
       - pip3 install .
       - cd demo
