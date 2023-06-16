@@ -248,7 +248,7 @@ def test_pipes_stokes():
 
     mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh.model, 2, prune_z=True)
 
-    mt1, keys1 = dolfiny.mesh.merge_meshtags(mts, 1)
+    mt1, keys1 = dolfiny.mesh.merge_meshtags(mesh, mts, 1)
 
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "mesh.xdmf", "w") as out:
         out.write_mesh(mesh)

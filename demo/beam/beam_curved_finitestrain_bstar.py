@@ -4,6 +4,7 @@ import dolfinx
 import dolfiny
 import numpy as np
 import ufl
+import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -39,8 +40,8 @@ mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim)
 #     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 beg = interfaces_keys["beg"]
@@ -88,9 +89,9 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Function spaces
-Ue = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
-We = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
-Re = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
+Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
+We = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
+Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
 
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 Wf = dolfinx.fem.FunctionSpace(mesh, We)
@@ -117,8 +118,8 @@ m, δm = [u, w, r], [δu, δw, δr]
 x0 = ufl.SpatialCoordinate(mesh)
 
 # Function spaces for geometric quantities extracted from mesh
-N = dolfinx.fem.VectorFunctionSpace(mesh, ("DG", q), mesh.geometry.dim)
-B = dolfinx.fem.TensorFunctionSpace(mesh, ("DG", q), (mesh.topology.dim, mesh.topology.dim))
+N = dolfinx.fem.VectorFunctionSpace(mesh, ("DP", q), mesh.geometry.dim)
+B = dolfinx.fem.TensorFunctionSpace(mesh, ("DP", q), (mesh.topology.dim, mesh.topology.dim))
 
 # Normal vector (gdim x 1) and curvature tensor (tdim x tdim)
 n0i = dolfinx.fem.Function(N)
@@ -186,7 +187,7 @@ T = s(g) * A * sc_fac
 M = s(k) * I
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
-A = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
+A = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
 α = dolfinx.fem.Function(A)
 dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
 
@@ -238,7 +239,7 @@ beg_dofs_Rf = dolfiny.mesh.locate_dofs_topological(Rf, interfaces, beg)
 plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{*}$)')
 
 # Create vector function space and vector function for writing the displacement vector
-Z = dolfinx.fem.VectorFunctionSpace(mesh, ("CG", p), mesh.geometry.dim)
+Z = dolfinx.fem.VectorFunctionSpace(mesh, ("P", p), mesh.geometry.dim)
 z = dolfinx.fem.Function(Z)
 
 # Process load steps

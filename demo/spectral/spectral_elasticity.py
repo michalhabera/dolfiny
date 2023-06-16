@@ -6,6 +6,7 @@ from mpi4py import MPI
 
 import dolfinx
 import ufl
+import basix
 
 import dolfiny
 
@@ -26,8 +27,8 @@ gmsh_model, tdim = mg.mesh_block3d_gmshapi(name, dx, dy, dz, nx, ny, nz, do_quad
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim)
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 surface_front = interfaces_keys["surface_front"]
@@ -38,7 +39,7 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadra
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 3})
 
 # Function spaces
-Ue = ufl.VectorElement("CG", mesh.ufl_cell(), 1)
+Ue = basix.ufl.element("P", mesh.basix_cell(), 1, rank=1)
 
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 

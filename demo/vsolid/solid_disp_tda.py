@@ -3,6 +3,7 @@
 import dolfinx
 import dolfiny
 import ufl
+import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -35,8 +36,8 @@ with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "r") as ifile:
     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 surface_left = interfaces_keys["surface_left"]
@@ -72,7 +73,7 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Function spaces
-Ue = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
+Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
 
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 
@@ -92,7 +93,7 @@ m, mt, mtt, δm = [u], [ut], [utt], [δu]
 odeint = dolfiny.odeint.ODEInt2(t=time, dt=dt, x=m, xt=mt, xtt=mtt, rho=0.95)
 
 # Configuration gradient
-I = ufl.Identity(u.geometric_dimension())  # noqa: E741
+I = ufl.Identity(3)  # noqa: E741
 F = I + ufl.grad(u)  # deformation gradient as function of displacement
 
 # Strain measures
@@ -135,7 +136,6 @@ opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
-# opts["pc_factor_mat_solver_type"] = "superlu_dist"
 
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)

@@ -3,8 +3,10 @@ import dolfiny
 import numpy as np
 import numba
 import ufl
+import basix
 from petsc4py import PETSc
 from dolfiny.function import vec_to_functions
+from dolfinx.cpp.fem import compute_integration_domains
 
 
 c_signature = numba.types.void(
@@ -20,8 +22,8 @@ def test_linear(squaremesh_5):
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
-    Ue = ufl.VectorElement("Lagrange", mesh.ufl_cell(), 2)
+    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
+    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
 
     S = dolfinx.fem.FunctionSpace(mesh, Se)
     U = dolfinx.fem.FunctionSpace(mesh, Ue)
@@ -123,14 +125,18 @@ def test_linear(squaremesh_5):
             problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0)
         vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
 
+    cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
+    exterior_facets = dict(compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object))
+
     ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
                                          F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       ([(-1, sc_F_cell)], None),
+                                                       [(-1, sc_F_cell, cells[-1])],
                                                        dolfinx.fem.IntegralType.exterior_facet:
-                                                       ([(1, sc_F_exterior_facet)], mt)}],
-                                         J_integrals=[[{dolfinx.fem.IntegralType.cell: ([(-1, sc_J)], None)}]],
+                                                       [(1, sc_F_exterior_facet, exterior_facets[1])]}],
+                                         J_integrals=[[{dolfinx.fem.IntegralType.cell:
+                                                        [(-1, sc_J, cells[-1])]}]],
                                          local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           ([(-1, solve_stress)], None)}],
+                                                           [(-1, solve_stress, cells[-1])]}],
                                          local_update=local_update)
 
     opts = PETSc.Options("linear")
@@ -151,8 +157,8 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
-    Ue = ufl.VectorElement("Lagrange", mesh.ufl_cell(), 2)
+    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
+    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
 
     S = dolfinx.fem.FunctionSpace(mesh, Se)
     U = dolfinx.fem.FunctionSpace(mesh, Ue)
@@ -258,14 +264,18 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
             problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0)
         vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
 
+    cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
+    exterior_facets = dict(compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object))
+
     ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
                                          F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       ([(-1, sc_F_cell)], None),
+                                                       [(-1, sc_F_cell, cells[-1])],
                                                        dolfinx.fem.IntegralType.exterior_facet:
-                                                       ([(1, sc_F_exterior_facet)], mt)}],
-                                         J_integrals=[[{dolfinx.fem.IntegralType.cell: ([(-1, sc_J)], None)}]],
+                                                       [(1, sc_F_exterior_facet, exterior_facets[1])]}],
+                                         J_integrals=[[{dolfinx.fem.IntegralType.cell:
+                                                        [(-1, sc_J, cells[-1])]}]],
                                          local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           ([(-1, solve_stress)], None)}],
+                                                           [(-1, solve_stress, cells[-1])]}],
                                          local_update=local_update)
 
     opts = PETSc.Options("linear")
@@ -286,8 +296,8 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
-    Ue = ufl.VectorElement("Lagrange", mesh.ufl_cell(), 2)
+    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
+    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
 
     S = dolfinx.fem.FunctionSpace(mesh, Se)
     U = dolfinx.fem.FunctionSpace(mesh, Ue)
@@ -388,14 +398,18 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
             problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0)
         vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
 
+    cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
+    exterior_facets = dict(compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object))
+
     ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
                                          F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       ([(-1, sc_F_cell)], None),
+                                                       [(-1, sc_F_cell, cells[-1])],
                                                        dolfinx.fem.IntegralType.exterior_facet:
-                                                       ([(1, sc_F_exterior_facet)], mt)}],
-                                         J_integrals=[[{dolfinx.fem.IntegralType.cell: ([(-1, sc_J)], None)}]],
+                                                       [(1, sc_F_exterior_facet, exterior_facets[1])]}],
+                                         J_integrals=[[{dolfinx.fem.IntegralType.cell:
+                                                        [(-1, sc_J, cells[-1])]}]],
                                          local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           ([(-1, solve_stress)], None)}],
+                                                           [(-1, solve_stress, cells[-1])]}],
                                          local_update=local_update)
 
     opts = PETSc.Options("linear")

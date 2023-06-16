@@ -24,7 +24,7 @@ class CompiledExpression:
         self.expr = expr
         self.target_el = target_el
 
-        if target_el.value_size() > 1:
+        if target_el.value_size > 1:
             # For mixed elements fetch only one element
             # Saves computation for vector/tensor elements,
             # no need to evaluate at same points for each vector
@@ -39,15 +39,15 @@ class CompiledExpression:
             target_el = sub_elements[0]
 
         # Identify points at which to evaluate the expression
-        self.ffcx_element = ffcx.element_interface.create_element(target_el)
+        self.ffcx_element = ffcx.element_interface.convert_element(target_el)
 
-        if isinstance(self.ffcx_element, basix.ufl_wrapper.BlockedElement):
+        if isinstance(self.ffcx_element, basix.ufl._BlockedElement):
             mapping_types = [self.ffcx_element.sub_element.element.map_type]
             nodes = self.ffcx_element.sub_element.element.points
-        elif isinstance(self.ffcx_element, basix.ufl_wrapper.MixedElement):
+        elif isinstance(self.ffcx_element, basix.ufl._MixedElement):
             mapping_types = [e.element.map_type for e in self.ffcx_element.sub_elements]
             nodes = self.ffcx_element.sub_elements[0].element.points
-        elif isinstance(self.ffcx_element, basix.ufl_wrapper.BasixElement):
+        elif isinstance(self.ffcx_element, basix.ufl._BasixElement):
             mapping_types = [self.ffcx_element.element.map_type]
             nodes = self.ffcx_element.element.points
         elif isinstance(self.ffcx_element, ffcx.element_interface.QuadratureElement):
@@ -133,11 +133,10 @@ def interpolate_compiled(compiled_expression, target_func):
 
     # Unpack mesh and dofmap data
     mesh = target_func.function_space.mesh
-    geom_dofmap = mesh.geometry.dofmap.array
-    geom_pos = mesh.geometry.dofmap.offsets
+    geom_dofmap = mesh.geometry.dofmap
     geom = mesh.geometry.x
 
-    dofmap = target_func.function_space.dofmap.list.array
+    dofmap = target_func.function_space.dofmap.list.flatten()
 
     # Prepare coefficients and their dofmaps
     # Global vectors and dofmaps are prepared here, local are
@@ -154,7 +153,7 @@ def interpolate_compiled(compiled_expression, target_func):
     coeffs_bs = List.empty_list(numba.types.int_)
 
     for i in range(num_coeffs):
-        coeffs_dofmaps.append(coeffs[cpos[i]].function_space.dofmap.list.array)
+        coeffs_dofmaps.append(coeffs[cpos[i]].function_space.dofmap.list.flatten())
         coeffs_vectors.append(np.asarray(coeffs[cpos[i]].vector))
         coeffs_bs.append(coeffs[cpos[i]].function_space.dofmap.bs)
 
@@ -177,7 +176,8 @@ def interpolate_compiled(compiled_expression, target_func):
     # Prepare mapping of subelements into the parent finite element
     # This mapping stores also how dofs are collapsed when symmetry to a TensorElement
     # is applied
-    if hasattr(compiled_expression.target_el, "flattened_sub_element_mapping"):
+    if hasattr(compiled_expression.target_el, "flattened_sub_element_mapping") and \
+       compiled_expression.target_el._has_symmetry:
         subel_map = np.array(compiled_expression.target_el.flattened_sub_element_mapping())
     else:
         subel_map = np.array(range(value_size))
@@ -186,7 +186,7 @@ def interpolate_compiled(compiled_expression, target_func):
 
     with target_func.vector.localForm() as b:
         b.set(0.0)
-        assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom_pos, geom), dofmap,
+        assemble_vector_ufc(np.asarray(b), kernel, (geom_dofmap, geom), dofmap,
                             coeffs_vectors, coeffs_dofmaps, coeffs_bs, constants_vector,
                             coeffs_sizes, basix_space_dim, space_dim,
                             value_size, subel_map, dofmap_bs, element_bs)
@@ -196,10 +196,12 @@ def interpolate_compiled(compiled_expression, target_func):
 def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps, coeffs_bs,
                         const_vector, coeffs_sizes, fiat_space_dim,
                         space_dim, value_size, subel_map, dofmap_bs, element_bs):
-    geom_dofmap, geom_pos, geom = mesh
+    geom_dofmap, geom = mesh
+
+    num_geometry_dofs = geom_dofmap.shape[1]
 
     # Coord dofs have shape (num_geometry_dofs, gdim)
-    coordinate_dofs = np.zeros((geom_pos[1], 3))
+    coordinate_dofs = np.zeros((num_geometry_dofs, 3))
     coeffs = np.zeros(np.sum(coeffs_sizes), dtype=PETSc.ScalarType)
     entity_index = np.array([0], dtype=np.intc)
     quad_perm = np.array([0], dtype=np.dtype("uint8"))
@@ -209,11 +211,10 @@ def assemble_vector_ufc(b, kernel, mesh, dofmap, coeffs_vectors, coeffs_dofmaps,
     # dofmap of the actual element (these are different for symmetric spaces)
     b_local = np.zeros(fiat_space_dim * value_size, dtype=PETSc.ScalarType)
 
-    for i, cell in enumerate(geom_pos[:-1]):
-        for j in range(geom_pos[1]):
-            c = geom_dofmap[cell + j]
+    for i, cell in enumerate(geom_dofmap):
+        for j, dof in enumerate(cell):
             for k in range(3):
-                coordinate_dofs[j, k] = geom[c, k]
+                coordinate_dofs[j, k] = geom[dof, k]
         b_local.fill(0.0)
 
         offset = 0

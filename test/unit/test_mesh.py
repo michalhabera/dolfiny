@@ -50,8 +50,8 @@ def test_simple_triangle():
         gmsh_model = None
 
     mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, 2, prune_z=True)
-    mt1, keys1 = dolfiny.mesh.merge_meshtags(mts, 1)
-    mt2, keys2 = dolfiny.mesh.merge_meshtags(mts, 2)
+    mt1, keys1 = dolfiny.mesh.merge_meshtags(mesh, mts, 1)
+    mt2, keys2 = dolfiny.mesh.merge_meshtags(mesh, mts, 2)
 
     assert mesh.geometry.dim == 2
     assert mesh.topology.dim == 2
@@ -60,7 +60,7 @@ def test_simple_triangle():
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "mesh.xdmf", "w") as file:
         file.write_mesh(mesh)
         mesh.topology.create_connectivity(1, 2)
-        file.write_meshtags(mts["arc"])
+        file.write_meshtags(mts["arc"], mesh.geometry)
 
     ds = ufl.Measure("ds", subdomain_data=mt1, domain=mesh)
 

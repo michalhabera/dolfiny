@@ -11,15 +11,15 @@ from petsc4py import PETSc
 N = 10
 mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, N, N, N)
 
-DG0 = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
-DG1 = dolfinx.fem.FunctionSpace(mesh, ("DG", 1))
-CG1 = dolfinx.fem.FunctionSpace(mesh, ("CG", 1))
-TCG1 = dolfinx.fem.TensorFunctionSpace(mesh, ("CG", 1))
-TDG0 = dolfinx.fem.TensorFunctionSpace(mesh, ("DG", 0))
-TDG1s = dolfinx.fem.TensorFunctionSpace(mesh, ("DG", 1), symmetry=True)
-TDG2s = dolfinx.fem.TensorFunctionSpace(mesh, ("DG", 2), symmetry=True)
+DG0 = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+DG1 = dolfinx.fem.FunctionSpace(mesh, ("DP", 1))
+CG1 = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
+TCG1 = dolfinx.fem.TensorFunctionSpace(mesh, ("P", 1))
+TDG0 = dolfinx.fem.TensorFunctionSpace(mesh, ("DP", 0))
+TDG1s = dolfinx.fem.TensorFunctionSpace(mesh, ("DP", 1), symmetry=True)
+TDG2s = dolfinx.fem.TensorFunctionSpace(mesh, ("DP", 2), symmetry=True)
 
-CG2 = dolfinx.fem.FunctionSpace(mesh, ("CG", 2))
+CG2 = dolfinx.fem.FunctionSpace(mesh, ("P", 2))
 VCG1 = dolfinx.fem.FunctionSpace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
 
 f = dolfinx.fem.Function(TCG1)

@@ -4,6 +4,7 @@ import dolfinx
 import dolfiny
 import numpy as np
 import ufl
+import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -16,19 +17,19 @@ comm = MPI.COMM_WORLD
 # Geometry and mesh parameters
 L = 1.0  # member length
 θ = np.pi / 3  # angle
-N = 8  # number of nodes per member
 p = 1  # physics: polynomial order
 q = 1  # geometry: polynomial order
 
 # Create the regular mesh of a curve with given dimensions
-gmsh_model, tdim = mg.mesh_planartruss_gmshapi(name, L=L, nL=N, θ=θ, order=q)
+gmsh_model, tdim = mg.mesh_planartruss_gmshapi(name, L=L, nL=2, θ=θ, order=q)
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
+gdim = mesh.geometry.dim
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 support = interfaces_keys["support"]
@@ -43,7 +44,7 @@ ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 dS = ufl.Measure("dS", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ue = ufl.VectorElement("CG", mesh.ufl_cell(), p)
+Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=gdim, shape=(gdim,))
 
 # Define function spaces
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
@@ -193,7 +194,7 @@ if comm.size == 1:
     flip = (cycler(color=['tab:orange', 'tab:blue']))
     flip += (cycler(markeredgecolor=['tab:orange', 'tab:blue']))
     fig, ax1 = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=400)
-    ax1.set_title(f"3-member planar truss ($θ$ = {θ / np.pi:1.3f}$π$)", fontsize=12)
+    ax1.set_title(f"3-member planar truss, $θ$ = {θ / np.pi:1.3f}$π$", fontsize=12)
     ax1.set_xlabel('displacement $u / L$ $[-]$', fontsize=12)
     ax1.set_ylabel('load factor $λ$ $[-]$', fontsize=12)
     ax1.grid(linewidth=0.25)

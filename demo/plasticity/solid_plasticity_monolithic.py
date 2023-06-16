@@ -4,6 +4,8 @@ import dolfinx
 import dolfiny
 import numpy as np
 import ufl
+import basix
+import ffcx
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -38,8 +40,8 @@ with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "r") as ifile:
     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 domain_gauge = subdomains_keys["domain_gauge"]
@@ -68,9 +70,10 @@ quad_degree = p
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": quad_degree})
 
 # Function spaces
-Ve = ufl.VectorElement("CG", mesh.ufl_cell(), p)
-Te = ufl.TensorElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default", symmetry=True)
-Se = ufl.FiniteElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default")
+Ve = basix.ufl.element("P", mesh.basix_cell(), p, rank=1)
+Qe = ffcx.element_interface.QuadratureElement(mesh.basix_cell().name, (), degree=quad_degree, scheme="default")
+Te = basix.ufl.blocked_element(Qe, rank=2, symmetry=True)
+Se = basix.ufl.blocked_element(Qe, rank=0)
 
 Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
 Tf = dolfinx.fem.FunctionSpace(mesh, Te)
@@ -113,7 +116,7 @@ def rJ2(A):
 
 
 # Configuration gradient
-I = ufl.Identity(u.geometric_dimension())  # noqa: E741
+I = ufl.Identity(3)  # noqa: E741
 F = I + ufl.grad(u)  # deformation gradient as function of displacement
 
 # Strain measures
@@ -147,7 +150,7 @@ S, B, h = S.expression(), B.expression(), h.expression()
 δE = dolfiny.expression.derivative(E, m, δm)
 
 # Plastic multiplier (J2 plasticity: closed-form solution for return-map)
-dλ = ufl.Max(f, 0)  # ppos = MacAuley bracket
+dλ = ufl.max_value(f, 0)  # ppos = MacAuley bracket
 
 # Weak form (as one-form)
 F = + ufl.inner(δE, S) * dx \
@@ -195,7 +198,7 @@ cycles = np.concatenate([cycle] * Z)
 # Process load steps
 for step, factor in enumerate(cycles):
 
-    # Set current time
+    # Set current load factor
     μ.value = factor
 
     dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")

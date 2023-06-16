@@ -4,6 +4,7 @@ import dolfinx
 import dolfiny
 import numpy as np
 import ufl
+import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -40,8 +41,8 @@ mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
 #     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 ring_inner = interfaces_keys["ring_inner"]
@@ -92,8 +93,8 @@ def v_vector_o_(x):
 
 
 # Function spaces
-Ve = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
-Pe = ufl.FiniteElement("CG", mesh.ufl_cell(), 1)
+Ve = basix.ufl.element("P", mesh.basix_cell(), degree=2, rank=1)
+Pe = basix.ufl.element("P", mesh.basix_cell(), degree=1, rank=0)
 
 V = dolfinx.fem.FunctionSpace(mesh, Ve)
 P = dolfinx.fem.FunctionSpace(mesh, Pe)

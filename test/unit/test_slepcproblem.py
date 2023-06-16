@@ -11,7 +11,7 @@ def test_neohooke():
     V = dolfinx.fem.VectorFunctionSpace(mesh, ("P", 1))
     P = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
 
-    L = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
+    L = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
 
     u = dolfinx.fem.Function(V, name="u")
     v = ufl.TestFunction(V)

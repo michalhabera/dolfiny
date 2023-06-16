@@ -6,7 +6,7 @@ from dolfinx.cpp.mesh import CellType
 from dolfinx import cpp
 from dolfinx.mesh import create_mesh, meshtags_from_entities, meshtags
 from dolfinx.io.gmshio import ufl_mesh
-from dolfinx.cpp.io import distribute_entity_data
+from dolfinx.io import distribute_entity_data
 
 
 def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, prune_z=False):
@@ -280,14 +280,16 @@ def msh_to_gmsh(msh_file, order=1, comm=MPI.COMM_WORLD):
     return gmsh.model if comm.rank == 0 else None, tdim
 
 
-def locate_dofs_topological(V, meshtags, value):
-    """Identifes the degrees of freedom of a given function space associated with a given meshtags value.
+def locate_dofs_topological(V, meshtags, value, exclude_dofs=None, unroll=False):
+    """Identifies the degrees of freedom of a given function space associated with a given meshtags value.
 
     Parameters
     ----------
     V: FunctionSpace
     meshtags: MeshTags object
     value: mesh tag value
+    exclude_dofs: numpy array of dofs to exclude
+    unroll: unroll dofs
 
     Returns
     -------
@@ -296,13 +298,95 @@ def locate_dofs_topological(V, meshtags, value):
     """
 
     from dolfinx import fem
-    from numpy import where
+    from numpy import where, setdiff1d
+    from dolfiny import function
 
-    return fem.locate_dofs_topological(
-        V, meshtags.dim, meshtags.indices[where(meshtags.values == value)[0]])
+    if isinstance(value, list):
+        match = []
+        for v in value:
+            match.extend(where(meshtags.values == v)[0])
+    else:
+        match = where(meshtags.values == value)[0]
+
+    dofs = fem.locate_dofs_topological(V, meshtags.dim, meshtags.indices[match])
+
+    if exclude_dofs is not None:
+        dofs = setdiff1d(dofs, exclude_dofs)
+
+    if unroll:
+        dofs = function.unroll_dofs(dofs, V.dofmap.bs)
+
+    return dofs
 
 
-def merge_meshtags(mts, dim):
+def locate_dofs_geometrical(V, meshtags, value, exclude_dofs=None, unroll=False):
+    """Identifies the degrees of freedom of a given function space associated with a given meshtags value.
+
+    Parameters
+    ----------
+    V: FunctionSpace
+    meshtags: MeshTags object
+    value: mesh tag value
+    exclude_dofs: numpy array of dofs to exclude
+    unroll: unroll dofs
+
+    Returns
+    -------
+    The system dof indices.
+
+    """
+
+    from dolfinx import fem
+    from numpy import where, setdiff1d, isclose, empty, int32
+    from dolfiny import function
+
+    if isinstance(value, list):
+        match = []
+        for v in value:
+            match.extend(where(meshtags.values == v)[0])
+    else:
+        match = where(meshtags.values == value)[0]
+
+    if isinstance(V, tuple):
+        V_ = V[0]
+    else:
+        V_ = V
+
+    if meshtags.dim != 0:
+        raise RuntimeError(f"MeshTags of dimension {meshtags.dim} > 0 are not supported.")
+
+    def marker(x):
+        if match.size == 0:
+            return False
+        else:
+            # build vertex-to-node map
+            mesh = V_.mesh
+
+            connect_node_vertex = mesh.topology.connectivity(0, 0)
+            connect_cell_vertex = mesh.topology.connectivity(mesh.topology.dim, 0)
+
+            vertices_per_cell = mesh.geometry.dofmap.shape[1]
+            v2n = empty(connect_node_vertex.num_nodes, dtype=int32)
+            c2v = connect_cell_vertex.array.reshape(-1, vertices_per_cell)
+
+            v2n[c2v] = mesh.geometry.dofmap
+
+            local_dof_idx = v2n[meshtags.indices[match]]
+
+            return isclose(x.T, mesh.geometry.x[local_dof_idx]).all(axis=1)
+
+    dofs = fem.locate_dofs_geometrical(V, marker)
+
+    if exclude_dofs is not None:
+        dofs = setdiff1d(dofs, exclude_dofs)
+
+    if unroll:
+        dofs = function.unroll_dofs(dofs, V_.dofmap.bs)
+
+    return dofs
+
+
+def merge_meshtags(mesh, mts, dim):
     """ Merge multiple MeshTags into one.
 
     Parameters
@@ -324,7 +408,7 @@ def merge_meshtags(mts, dim):
 
     keys = {}
     for mt, name in mts:
-        comm = mt.mesh.comm
+        comm = mt.topology.comm
         # In some cases this process could receive a MeshTags which are empty
         # We need to return correct "keys" mapping on each process, so this
         # communicates the value from processes which don't have empty meshtags
@@ -339,6 +423,6 @@ def merge_meshtags(mts, dim):
         keys[name] = value
 
     indices, pos = numpy.unique(indices, return_index=True)
-    mt = meshtags(mts[0][0].mesh, dim, indices, values[pos])
+    mt = meshtags(mesh, dim, indices, values[pos])
 
     return mt, keys

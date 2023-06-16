@@ -1,6 +1,10 @@
+#!/usr/bin/env python3
+
 import numpy as np
 import dolfinx
 import ufl
+import basix
+import ffcx
 import dolfiny
 import mesh_notched
 from mpi4py import MPI
@@ -21,15 +25,17 @@ top_facets = dolfinx.mesh.locate_entities_boundary(
     mesh, 1, lambda x: np.logical_and(np.isclose(x[0], 0.0), np.greater_equal(x[1], 0.5)))
 bottom_facets = dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[1], 0.0))
 
-V = dolfinx.fem.VectorFunctionSpace(mesh, ("CG", 2))
+V = dolfinx.fem.VectorFunctionSpace(mesh, ("P", 2))
 
 quad_degree = 8
+Qe = ffcx.element_interface.QuadratureElement(mesh.basix_cell().name, (), degree=quad_degree, scheme="default")
+
 # Symmetric plastic strain space
-Pe = ufl.TensorElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default", symmetry=True)
+Pe = basix.ufl.blocked_element(Qe, rank=2, symmetry=True)
 P = dolfinx.fem.FunctionSpace(mesh, Pe)
 
 # Scalar space for plastic multiplier
-Le = ufl.FiniteElement("Quadrature", mesh.ufl_cell(), degree=quad_degree, quad_scheme="default")
+Le = basix.ufl.blocked_element(Qe, rank=0)
 L = dolfinx.fem.FunctionSpace(mesh, Le)
 
 u0 = dolfinx.fem.Function(V, name="u0")
@@ -44,21 +50,9 @@ l0 = dolfinx.fem.Function(L, name="l0")
 δdl = ufl.TestFunction(L)
 
 
-def eigvals(A):
-    eps = 3.0e-8
-    i1 = ufl.tr(A)
-    Δ = (A[0, 0] - A[1, 1])**2 + 4 * A[0, 1] * A[1, 0]  # = I1**2 - 4 * I2
-    # Avoid dp = 0 and disc = 0, both are known with absolute error of ~eps**2
-    # Required to avoid sqrt(0) derivatives and negative square roots
-    Δ += eps**2
-    λ = (i1 + ufl.sqrt(Δ)) / 2, (i1 - ufl.sqrt(Δ)) / 2
-
-    return λ
-
-
 def f(sigma):
-    max_eigtress = eigvals(sigma)[0]
-    return max_eigtress - Sy
+    (_, s_max), _ = dolfiny.invariants.eigenstate2(sigma)
+    return s_max - Sy
 
 
 # Strain measures
@@ -77,14 +71,14 @@ sigma = ufl.variable(sigma)
 dx = ufl.Measure("dx", domain=mesh, metadata={"quadrature_degree": quad_degree})
 F0 = ufl.inner(sigma, ufl.sym(ufl.grad(δu))) * dx  # Global momentum equilibrium
 F1 = ufl.inner(dP - dl * ufl.diff(f(sigma), sigma), δdP) * dx  # Plastic flow rule
-F2 = ufl.inner(ufl.Min(dl, -f(sigma)), δdl) * dx
+F2 = ufl.inner(ufl.min_value(dl, -f(sigma)), δdl) * dx
 
 # Alternative KKT complementarity functions are:
 # (Note: changes in these lead to changes in coefficient dofs ordering, needs
 # adjusting the kernels)
 #
 # F2 = ufl.inner(cn * dl - ufl.Max(0.0, cn*dl + f(sigma)), δdl) * dx
-# F2 = ufl.inner(ufl.Min(dl, -f(sigma)), δdl) * dx
+# F2 = ufl.inner(ufl.min_value(dl, -f(sigma)), δdl) * dx
 
 u_top = dolfinx.fem.Function(V, name="u_top")
 u_bottom = dolfinx.fem.Function(V, name="u_bottom")
@@ -262,14 +256,17 @@ def local_update(problem):
     dolfiny.function.vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
 
 
+cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
+
 ls = dolfiny.localsolver.LocalSolver([V, P, L], local_spaces_id=[1, 2],
                                      F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                   ([(-1, sc_F_cell)], None)}],
-                                     J_integrals=[[{dolfinx.fem.IntegralType.cell: ([(-1, sc_J)], None)}]],
+                                                   [(-1, sc_F_cell, cells[-1])]}],
+                                     J_integrals=[[{dolfinx.fem.IntegralType.cell:
+                                                    [(-1, sc_J, cells[-1])]}]],
                                      local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       ([(-1, solve_dP)], None)},
+                                                       [(-1, solve_dP, cells[-1])]},
                                                       {dolfinx.fem.IntegralType.cell:
-                                                       ([(-1, solve_dl)], None)}],
+                                                       [(-1, solve_dl, cells[-1])]}],
                                      local_update=local_update)
 
 
@@ -289,18 +286,21 @@ problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u0, dP, dl], 
 
 ls.view()
 
-steps = 50
-final = 0.005
-stepsize = final / steps
-for i in range(steps):
+K = 25
+du1 = 0.005
+load, unload = np.linspace(0.0, 1.0, num=K + 1), np.linspace(1.0, 0.0, num=K + 1)
+cycle = np.concatenate((load, unload))
 
-    print(f"STEP ------ {i}")
-    u_top.interpolate(lambda x: (np.zeros_like(x[0]), final / steps * i * np.ones_like(x[1])))
+for step, factor in enumerate(cycle):
+
+    dolfiny.utils.pprint(f"\n+++ Processing step {step:3d}, load factor = {factor:5.4f}")
+
+    u_top.interpolate(lambda x: (np.zeros_like(x[0]), du1 * factor * np.ones_like(x[1])))
 
     problem.solve()
 
-    if problem.snes.getConvergedReason() < 0:
-        raise RuntimeError(f"SNES failed {problem.snes.getConvergedReason()}")
+    # Assert convergence of nonlinear solver
+    assert problem.snes.getConvergedReason() > 0, "SNES Nonlinear solver did not converge!"
 
     # Store primal states
     for source, target in zip([dP, dl], [P0, l0]):
@@ -308,4 +308,4 @@ for i in range(steps):
             loct.axpy(1.0, locs)
 
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, f"{name}.xdmf", "a") as ofile:
-        ofile.write_function(u0, float(i))
+        ofile.write_function(u0, float(step))
