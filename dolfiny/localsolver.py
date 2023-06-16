@@ -109,9 +109,8 @@ class LocalSolver:
             V = self.function_spaces[i]
             integrals = self.F_integrals[gi]
             for celltype, integral in integrals.items():
-                itg = integral[0]
-                for k in range(len(itg)):
-                    itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype))
+                for k in range(len(integral)):
+                    integral[k] = (integral[k][0], self.wrap_kernel(integral[k][1], (i,), celltype), integral[k][2])
 
             cppform = Form([V._cpp_object], integrals, [c[0]
                            for c in self.stacked_coefficients], [c[0] for c in self.stacked_constants], False, None)
@@ -129,9 +128,9 @@ class LocalSolver:
                 V1 = self.function_spaces[j]
                 integrals = self.J_integrals[gi][gj]
                 for celltype, integral in integrals.items():
-                    itg = integral[0]
-                    for k in range(len(itg)):
-                        itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i, j), celltype))
+                    for k in range(len(integral)):
+                        integral[k] = (integral[k][0], self.wrap_kernel(integral[k][1], (i, j), celltype),
+                                       integral[k][2])
 
                 J_form[gi][gj] = Form([V0._cpp_object, V1._cpp_object], integrals, [c[0]
                                       for c in self.stacked_coefficients],
@@ -147,9 +146,8 @@ class LocalSolver:
 
             integrals = self.local_integrals[li]
             for celltype, integral in integrals.items():
-                itg = integral[0]
-                for k in range(len(itg)):
-                    itg[k] = (itg[k][0], self.wrap_kernel(itg[k][1], (i,), celltype))
+                for k in range(len(integral)):
+                    integral[k] = (integral[k][0], self.wrap_kernel(integral[k][1], (i,), celltype), integral[k][2])
 
             cppform = Form([V._cpp_object], integrals, [c[0]
                            for c in self.stacked_coefficients], [c[0] for c in self.stacked_constants], False, None)
@@ -192,7 +190,7 @@ class LocalSolver:
         stacked_coefficients_size = self.stacked_coefficients[-1][1][1] if len(self.stacked_coefficients) > 0 else 0
         stacked_constants_size = self.stacked_constants[-1][1][1] if len(self.stacked_constants) > 0 else 0
 
-        num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
+        num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.shape[1]
 
         # Extract number of coeffs/consts for later use in compile-time branch
         # elimination
@@ -321,7 +319,7 @@ class LocalSolver:
             shape = (sizes[indices[0]], sizes[indices[1]])
 
         code = ""
-        num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.offsets[1]
+        num_coordinate_dofs = self.function_spaces[0].mesh.geometry.dofmap.shape[1]
 
         alloc_code = ""
         copy_code = ""

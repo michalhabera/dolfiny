@@ -34,7 +34,7 @@ class XDMFFile(dolfinx.io.XDMFFile):
         logger.info("Writing meshtags")
         for mt in mts.values():
             mesh.topology.create_connectivity(mt.dim, mesh.topology.dim)
-            self.write_meshtags(mt)
+            self.write_meshtags(mt, mesh.geometry)
 
     def read_mesh_meshtags(self, mesh_name='mesh'):
         """Read mesh and meshtags from XDMFFile

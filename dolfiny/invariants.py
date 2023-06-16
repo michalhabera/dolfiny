@@ -53,7 +53,7 @@ def eigenstate3_legacy(A):
     #    phi_k = [acos(r) + (k + 1) * 2 * pi] / 3  for  k = 0, 1, 2
     p = 2 / ufl.sqrt(3) * ufl.sqrt(j + eps ** 2)  # eps: MMM
     r = 4 * b / p ** 3
-    r = ufl.Max(ufl.Min(r, +1 - eps), -1 + eps)  # eps: LMM, MMH
+    r = ufl.max_value(ufl.min_value(r, +1 - eps), -1 + eps)  # eps: LMM, MMH
     phi = ufl.acos(r) / 3
     # sorted eigenvalues: λ0 <= λ1 <= λ2
     λ0 = q + p * ufl.cos(phi + 2 / 3 * ufl.pi)  # low
@@ -171,7 +171,7 @@ def eigenstate2(A):
     # Required to avoid sqrt(0) derivatives and negative square roots
     Δ += eps**2
     # sorted eigenvalues: λ0 <= λ1
-    λ = (I1 + ufl.sqrt(Δ)) / 2, (I1 - ufl.sqrt(Δ)) / 2
+    λ = (I1 - ufl.sqrt(Δ)) / 2, (I1 + ufl.sqrt(Δ)) / 2
     #
     # --- determine eigenprojectors E0, E1
     #

@@ -46,8 +46,7 @@ class Plotter():
         # Extract mesh geometry nodal coordinates
         dm = mesh.geometry.dofmap
         oq = [0] + [*range(2, q + 1)] + [1]  # reorder lineX nodes: all ducks in a row...
-        x0_idx = [[dm.links(i).tolist()[k] for k in oq] for i in range(dm.num_nodes)]
-        x0_idx = [item for sublist in x0_idx for item in sublist]
+        x0_idx = dm[:, oq].flatten()
         x0 = mesh.geometry.x[x0_idx]
 
         # Interpolate solution at mesh geometry nodes

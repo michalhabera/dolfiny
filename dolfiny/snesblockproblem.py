@@ -151,11 +151,19 @@ class SNESBlockProblem():
         self.snes.setOptionsPrefix(prefix)
         self.snes.setFromOptions()
 
-    def update_functions(self, x):
+        # Set "active" vectors (= effective dofs)
+        if self.restriction is not None:
+            self.active_F = self.rF
+            self.active_x = self.rx
+        else:
+            self.active_F = self.F
+            self.active_x = self.x
+
+    def _update_functions(self, x):
         """Update solution functions from the stored vector x"""
 
         if self.restriction is not None:
-            self.restriction.update_functions([self.u[idx] for idx in self.global_spaces_id], x)
+            self.restriction.vec_to_functions(x, [self.u[idx] for idx in self.global_spaces_id])
             functions_to_vec([self.u[idx] for idx in self.global_spaces_id], self.x)
         else:
             vec_to_functions(x, [self.u[idx] for idx in self.global_spaces_id])
@@ -167,7 +175,7 @@ class SNESBlockProblem():
         with self.F.localForm() as f_local:
             f_local.set(0.0)
 
-        self.update_functions(x)
+        self._update_functions(x)
 
         if self.localsolver is not None:
             self.localsolver.local_update(self)
@@ -202,7 +210,7 @@ class SNESBlockProblem():
 
     def _J_block(self, snes, x, J, P):
         self.J.zeroEntries()
-        self.update_functions(x)
+        self._update_functions(x)
 
         dolfinx.fem.petsc.assemble_matrix_block(self.J, self.J_form, self.bcs, diagonal=1.0)
         self.J.assemble()
@@ -328,7 +336,7 @@ class SNESBlockProblem():
 
         if self.restriction is not None:
             self.snes.solve(None, self.rx)
-            self.restriction.update_functions([self.solution[idx] for idx in self.global_spaces_id], self.rx)
+            self.restriction.vec_to_functions(self.rx, [self.solution[idx] for idx in self.global_spaces_id])
         else:
             self.snes.solve(None, self.x)
             vec_to_functions(self.x, [self.solution[idx] for idx in self.global_spaces_id])

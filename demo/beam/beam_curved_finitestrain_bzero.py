@@ -4,6 +4,7 @@ import dolfinx
 import dolfiny
 import numpy as np
 import ufl
+import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -39,8 +40,8 @@ mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim)
 #     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 beg = interfaces_keys["beg"]
@@ -88,9 +89,9 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Function spaces
-Ue = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
-We = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
-Re = ufl.FiniteElement("CG", mesh.ufl_cell(), p)
+Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
+We = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
+Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
 
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 Wf = dolfinx.fem.FunctionSpace(mesh, We)
@@ -117,7 +118,7 @@ m, δm = [u, w, r], [δu, δw, δr]
 x0 = ufl.SpatialCoordinate(mesh)
 
 # Function spaces for geometric quantities extracted from mesh
-N = dolfinx.fem.VectorFunctionSpace(mesh, ("DG", q), mesh.geometry.dim)
+N = dolfinx.fem.VectorFunctionSpace(mesh, ("DP", q), mesh.geometry.dim)
 
 # Normal vector (gdim x 1)
 n0i = dolfinx.fem.Function(N)
@@ -140,7 +141,7 @@ dolfiny.interpolation.interpolate(gξ, n0i)
 P = ufl.Identity(mesh.geometry.dim) - ufl.outer(n0i, n0i)
 
 # Thickness variable
-X = dolfinx.fem.FunctionSpace(mesh, ("DG", q))
+X = dolfinx.fem.FunctionSpace(mesh, ("DP", q))
 ξ = dolfinx.fem.Function(X, name='ξ')
 
 # Undeformed configuration: director d0 and placement b0
@@ -192,7 +193,7 @@ T = S(Es) * A * sc_fac
 M = S(Eb) * I
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
-A = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
+A = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
 α = dolfinx.fem.Function(A)
 dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
 

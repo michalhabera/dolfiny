@@ -3,6 +3,7 @@
 import dolfinx
 import dolfiny
 import ufl
+import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
@@ -35,8 +36,8 @@ with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "r") as ifile:
     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
-subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 0)
-interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mts, tdim - 1)
+subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
+interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
 surface_left = interfaces_keys["surface_left"]
@@ -63,8 +64,8 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Function spaces
-Ve = ufl.VectorElement("CG", mesh.ufl_cell(), 2)
-Se = ufl.TensorElement("DG", mesh.ufl_cell(), 1, symmetry=True)
+Ve = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
+Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
 
 Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
 Sf = dolfinx.fem.FunctionSpace(mesh, Se)
@@ -95,7 +96,7 @@ odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=m, xt=mt, rho=0.95)
 u_expr = u + odeint.integral_dt(v)
 
 # Configuration gradient
-I = ufl.Identity(v.geometric_dimension())  # noqa: E741
+I = ufl.Identity(3)  # noqa: E741
 F = I + ufl.grad(u_expr)  # deformation gradient as function of time-integrated velocity
 dotF = ufl.grad(v)  # rate of deformation gradient as function of velocity
 
@@ -141,11 +142,9 @@ opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 # opts["ksp_view"] = "::ascii_info_detail"
 opts["pc_type"] = "lu"
-opts["pc_factor_mat_solver_type"] = "mumps"
-# opts["pc_factor_mat_solver_type"] = "superlu_dist"
+opts["pc_factor_mat_solver_type"] = "superlu_dist"
 
 opts_global = PETSc.Options()
-opts_global["mat_mumps_icntl_14"] = 150
 opts_global["mat_superlu_dist_rowperm"] = "norowperm"
 opts_global["mat_superlu_dist_fact"] = "samepattern_samerowperm"
 

@@ -76,11 +76,11 @@ class Restriction():
 
     def restrict_vector(self, x: PETSc.Vec):
         arr = x.array[self.bglobal_dofs_vec_stacked]
-        subx = PETSc.Vec().createWithArray(arr)
+        subx = PETSc.Vec().createGhostWithArray([], arr)
 
         return subx
 
-    def update_functions(self, f: typing.List, rx: PETSc.Vec):
+    def vec_to_functions(self, rx: PETSc.Vec, f: typing.List):
         """Update Functions using restricted DOF indices."""
         rdof_offset = 0
         for i, fi in enumerate(f):

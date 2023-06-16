@@ -14,11 +14,11 @@ class Crisfield():
 
         self.λ = λ
 
-        # copying from F or x picks up nest/block format, TODO: check handling of restriction
-        self.dFdλ = problem.F.copy()  # linear-in-λ terms of residual (assumption!)
-        self.dx = problem.x.copy()  # converged x increment towards last continuation step
-        self.Δx = problem.x.copy()  # accumulated x increment of current continuation step
-        self.δx_dFdλ = problem.x.copy()
+        # copying from F or x picks up nest/block format
+        self.dFdλ = problem.active_F.copy()  # linear-in-λ terms of residual (assumption!)
+        self.dx = problem.active_x.copy()  # converged x increment towards last continuation step
+        self.Δx = problem.active_x.copy()  # accumulated x increment of current continuation step
+        self.δx_dFdλ = problem.active_x.copy()
 
         self.dλ = dolfinx.fem.Constant(self.λ._ufl_domain, self.λ.value)  # converged λ increment towards last continuation step   # noqa: E501
         self.Δλ = dolfinx.fem.Constant(self.λ._ufl_domain, self.λ.value)  # accumulated λ increment of current continuation step   # noqa: E501
@@ -55,16 +55,19 @@ class Crisfield():
         # Δx
         if zero_x_predictor:
             # Δx = 0.0
-            self.Δx.set(0.0)
+            with self.Δx.localForm() as Δx_local:
+                Δx_local.set(0.0)
         else:
             # Δx = dx (saves about one Newton iterate over zeroed Δx)
-            self.dx.copy(self.Δx)
+            with self.dx.localForm() as dx_local, \
+                 self.Δx.localForm() as Δx_local:
+                dx_local.copy(Δx_local)
         # Δλ
         self.Δλ.value = self.dλ.value
 
         # set solution predictors according to step predictors
         # x += Δx
-        with self.problem.x.localForm() as x_local, \
+        with self.problem.active_x.localForm() as x_local, \
              self.Δx.localForm() as Δx_local:
             x_local += Δx_local
         # λ += Δλ
@@ -98,7 +101,9 @@ class Crisfield():
 
         # store converged accumulated increments of this continuation step
         # dx <- Δx
-        self.Δx.copy(self.dx)
+        with self.dx.localForm() as dx_local, \
+             self.Δx.localForm() as Δx_local:
+            Δx_local.copy(dx_local)
         # dλ <- Δλ
         self.dλ.value = self.Δλ.value
 
@@ -110,7 +115,7 @@ class Crisfield():
 
         for δλ_k when incremental updates
 
-            Δx_k = Δx_{k-1} + δx_k and
+            Δx_k = Δx_{k-1} + δx_k, with δx_k = δx_dFdλ * δλ_k, and
             Δλ_k = Δλ_{k-1} + δλ_k
 
         apply.
@@ -147,7 +152,7 @@ class Crisfield():
         # intermediate value
         dFdλ_inner = psi**2 * continuation.inner(dFdλ, dFdλ)
 
-        # coefficients of the quadratic equation: a1 * δλ**2 + 2 * δλ + a3 = 0
+        # coefficients of the quadratic equation: a1 * δλ**2 + 2 * a2 * δλ + a3 = 0
         a1 = continuation.inner(δx_dFdλ, δx_dFdλ) + dFdλ_inner
         a2 = continuation.inner(Δx, δx_dFdλ) + Δλ * dFdλ_inner
         a3 = continuation.inner(Δx, Δx) + Δλ**2 * dFdλ_inner - ds**2
@@ -166,7 +171,7 @@ class Crisfield():
             δλ2 = (-a2 + sqr) / a1
             # dolfiny.utils.pprint(f"δλ_1 = {δλ1:1.3e}, δλ_2 = {δλ2:1.3e}")
 
-            sign = lambda x: (x > 0) - (x < 0)  # noqa: E731
+            sign = lambda x: bool(x > 0) - bool(x < 0)  # noqa: E731
             sign = sign(δx_dFdλ.dot(dx) + dλ * dFdλ_inner)
 
             δλ = δλ1 if δλ1 * sign > δλ2 * sign else δλ2
@@ -185,17 +190,17 @@ class Crisfield():
         # update x
         snes.getSolution().axpy(δλ, δx_dFdλ)
 
-        # compute residuals for updated (x, λ), TODO: check handling of restriction
+        # compute residuals for updated (x, λ)
         λ_save = continuation.λ.value.copy()  # store λ value
         continuation.λ.value = 1.0  # evaluate F_1 = F(x, λ=1)
-        snes.computeFunction(continuation.problem.x, continuation.dFdλ)
+        snes.computeFunction(continuation.problem.active_x, continuation.dFdλ)
         continuation.λ.value = 0.0  # evaluate F_0 = F(x, λ=0)
-        snes.computeFunction(continuation.problem.x, continuation.problem.F)
+        snes.computeFunction(continuation.problem.active_x, continuation.problem.active_F)
         with continuation.dFdλ.localForm() as dFdλ_local, \
-             continuation.problem.F.localForm() as F_local:
+             continuation.problem.active_F.localForm() as F_local:
             dFdλ_local -= F_local  # dFdλ = F_1 - F_0
         continuation.λ.value = λ_save  # store λ value
-        snes.computeFunction(continuation.problem.x, continuation.problem.F)
+        snes.computeFunction(continuation.problem.active_x, continuation.problem.active_F)
 
         # monitor (default)
         dolfiny.utils.pprint("# arc    |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(

@@ -3,14 +3,15 @@ import dolfiny
 import numpy as np
 import pytest
 import ufl
+import basix
 from petsc4py import PETSc
 
 
 def test_monolithic(V1, V2, squaremesh_5):
     mesh = squaremesh_5
 
-    Wel = ufl.MixedElement([V1.ufl_element(), V2.ufl_element()])
-    W = dolfinx.fem.FunctionSpace(mesh, Wel)
+    We = basix.ufl.mixed_element([V1.ufl_element(), V2.ufl_element()])
+    W = dolfinx.fem.FunctionSpace(mesh, We)
 
     u = dolfinx.fem.Function(W)
     u0, u1 = ufl.split(u)
