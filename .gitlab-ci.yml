@@ -88,9 +88,7 @@ image release:
       - docker manifest create $DOCKERHUB_COMMIT_IMAGE $DOCKERHUB_COMMIT_IMAGE-amd64 $DOCKERHUB_COMMIT_IMAGE-arm64
       - docker manifest push $DOCKERHUB_COMMIT_IMAGE
       - echo "DockerHub registry -- pull and test"
-      - docker image ls $DOCKERHUB_COMMIT_IMAGE -aq | xargs docker rmi -f
-      - docker pull $DOCKERHUB_COMMIT_IMAGE
-      - docker image ls $DOCKERHUB_COMMIT_IMAGE --no-trunc
+      - docker manifest inspect $DOCKERHUB_COMMIT_IMAGE
       - docker run --platform linux/amd64 $DOCKERHUB_COMMIT_IMAGE uname -m > amd64.txt
       - grep -q "x86_64" amd64.txt
       - docker run --platform linux/arm64 $DOCKERHUB_COMMIT_IMAGE uname -m > arm64.txt
