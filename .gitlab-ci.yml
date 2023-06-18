@@ -32,16 +32,22 @@ flake8:
       - echo CONTAINER_COMMIT_IMAGE = "$CONTAINER_COMMIT_IMAGE"
       - echo CONTAINER_LATEST_IMAGE = "$CONTAINER_LATEST_IMAGE"
       - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
-      - docker buildx create --name multi --platform $PLATFORMS
-      - docker buildx build --build-arg BUILDKIT_INLINE_CACHE=1
-                     --build-arg DOLFINY_BUILD_TYPE=Release
-                     --cache-from $CONTAINER_COMMIT_IMAGE-$ARCH
-                     --cache-from $CONTAINER_LATEST_IMAGE-$ARCH
-                     --tag $CONTAINER_COMMIT_IMAGE-$ARCH
-                     --pull
-                     --push
-                     --builder multi --platform $PLATFORMS
-                     .
+      - docker buildx create 
+               --driver=docker-container 
+               --name=multi 
+               --platform="$PLATFORMS"
+               --bootstrap
+      - docker buildx build
+               --build-arg="BUILDKIT_INLINE_CACHE=1"
+               --build-arg="DOLFINY_BUILD_TYPE=RelWithDebInfo"
+               --cache-from="$CONTAINER_COMMIT_IMAGE-$ARCH"
+               --cache-from="$CONTAINER_LATEST_IMAGE-$ARCH"
+               --tag="$CONTAINER_COMMIT_IMAGE-$ARCH"
+               --pull
+               --load
+               --builder=multi --platform="$PLATFORMS"
+               .
+      - docker push "$CONTAINER_COMMIT_IMAGE-$ARCH"
 
 image build amd64:
    extends: .image build
