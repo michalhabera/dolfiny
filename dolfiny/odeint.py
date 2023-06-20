@@ -145,7 +145,7 @@ class ODEInt():
         """Returns the UFL expression for: integral over the time interval int_t0^t1 x(t) dt."""
 
         # return integrated polynomial of degree 3
-        return self.dt / 2 * (x0 + x1) + self.dt**2 / 10 * (x0t - x1t)
+        return self.dt / 2 * (x0 + x1) + self.dt**2 / 12 * (x0t - x1t)
 
     def integral_dt(self, y):
         """Returns the UFL expression for: time integral of given UFL function y registered in ODEInt."""

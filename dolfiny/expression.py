@@ -184,18 +184,19 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
     form where ``c_i`` could contain Constant must have first these nodes numerically evaluated.
 
     """
+
     from ufl.classes import Division, Product, ScalarValue, Sum
+    from ufl.classes import ComponentTensor, Indexed, Index
+
     if isinstance(e, dolfinx.fem.Function):
         linear_comb.append((e, scalar_weight))
     elif isinstance(e, (Product, Division)):
-        assert len(e.ufl_operands) == 2
+        e0, e1 = e.ufl_operands
 
-        if isinstance(e.ufl_operands[0], ScalarValue):
-            scalar = e.ufl_operands[0]
-            expr = e.ufl_operands[1]
-        elif isinstance(e.ufl_operands[1], ScalarValue):
-            scalar = e.ufl_operands[1]
-            expr = e.ufl_operands[0]
+        if isinstance(e0, ScalarValue):
+            scalar, expr = e0, e1
+        elif isinstance(e1, ScalarValue):
+            scalar, expr = e1, e0
         else:
             raise RuntimeError(f"One operand of {type(e)} must be ScalarValue")
 
@@ -206,10 +207,14 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
 
         extract_linear_combination(expr, linear_comb, scalar_weight)
     elif isinstance(e, Sum):
-        e0 = e.ufl_operands[0]
-        e1 = e.ufl_operands[1]
+        e0, e1 = e.ufl_operands
         extract_linear_combination(e0, linear_comb, scalar_weight)
         extract_linear_combination(e1, linear_comb, scalar_weight)
+    elif isinstance(e, (ComponentTensor, Indexed)):
+        expr, indices = e.ufl_operands
+        if not all(isinstance(i, Index) for i in indices):
+            raise RuntimeError("Expecting free index, not fixed index")
+        extract_linear_combination(expr, linear_comb, scalar_weight)
     else:
         raise RuntimeError(f"Expression type {type(e)} not handled")
 

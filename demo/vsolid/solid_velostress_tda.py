@@ -65,7 +65,7 @@ ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Function spaces
 Ve = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
-Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
+Se = basix.ufl.element("Regge", mesh.basix_cell(), 1)
 
 Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
 Sf = dolfinx.fem.FunctionSpace(mesh, Se)
@@ -111,7 +111,7 @@ dotEs = 1 / (2 * mu) * St - la / (2 * mu * (3 * la + 2 * mu)) * ufl.tr(St) * I
 
 # Weak form (as one-form)
 f = ufl.inner(δv, rho * vt) * dx + ufl.inner(δv, eta * v) * dx \
-    + ufl.inner(δdotE, S) * dx + ufl.inner(δS, dotEs - dotE) * dx \
+    + ufl.inner(δdotE, S) * dx + ufl.inner(δS, dotE - dotEs) * dx \
     - ufl.inner(δv, rho * b) * dx
 
 # Optional: linearise weak form
@@ -140,13 +140,12 @@ opts["snes_atol"] = 1.0e-12
 opts["snes_rtol"] = 1.0e-09
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
-# opts["ksp_view"] = "::ascii_info_detail"
+opts["ksp_error_if_not_converged"] = True
 opts["pc_type"] = "lu"
-opts["pc_factor_mat_solver_type"] = "superlu_dist"
+opts["pc_factor_mat_solver_type"] = "mumps"
 
 opts_global = PETSc.Options()
-opts_global["mat_superlu_dist_rowperm"] = "norowperm"
-opts_global["mat_superlu_dist_fact"] = "samepattern_samerowperm"
+opts_global["mat_mumps_icntl_14"] = 100  # workspace increase
 
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)

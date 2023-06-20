@@ -23,41 +23,44 @@ class CompiledExpression:
     def __init__(self, expr, target_el, comm=MPI.COMM_WORLD):
         self.expr = expr
         self.target_el = target_el
+        self.is_affine_map = False
 
         if target_el.value_size > 1:
-            # For mixed elements fetch only one element
-            # Saves computation for vector/tensor elements,
-            # no need to evaluate at same points for each vector
-            # component
-            #
-            # TODO: We can get unique subelements or unique
-            #       points for evaluation
-            sub_elements = target_el.sub_elements()
+            if isinstance(target_el, basix.ufl._BlockedElement) or \
+               isinstance(target_el, basix.ufl._MixedElement):
+                # For blocked/mixed elements fetch only one element
+                # Saves computation for vector/tensor elements,
+                # no need to evaluate at same points for each vector
+                # component
+                #
+                # TODO: We can get unique subelements or unique
+                #       points for evaluation
+                sub_elements = target_el.sub_elements()
 
-            # We can handle only all sub elements equal case
-            assert all([sub_elements[0] == x for x in sub_elements])
-            target_el = sub_elements[0]
+                # We can handle only all sub elements equal case
+                assert all([sub_elements[0] == x for x in sub_elements])
+                target_el = sub_elements[0]
 
         # Identify points at which to evaluate the expression
-        self.ffcx_element = ffcx.element_interface.convert_element(target_el)
+        self.basix_element = target_el
 
-        if isinstance(self.ffcx_element, basix.ufl._BlockedElement):
-            mapping_types = [self.ffcx_element.sub_element.element.map_type]
-            nodes = self.ffcx_element.sub_element.element.points
-        elif isinstance(self.ffcx_element, basix.ufl._MixedElement):
-            mapping_types = [e.element.map_type for e in self.ffcx_element.sub_elements]
-            nodes = self.ffcx_element.sub_elements[0].element.points
-        elif isinstance(self.ffcx_element, basix.ufl._BasixElement):
-            mapping_types = [self.ffcx_element.element.map_type]
-            nodes = self.ffcx_element.element.points
-        elif isinstance(self.ffcx_element, ffcx.element_interface.QuadratureElement):
+        if isinstance(self.basix_element, basix.ufl._BlockedElement):
+            mapping_types = [self.basix_element.sub_element.element.map_type]
+            nodes = self.basix_element.sub_element.element.points
+        elif isinstance(self.basix_element, basix.ufl._MixedElement):
+            mapping_types = [e.element.map_type for e in self.basix_element.sub_elements]
+            nodes = self.basix_element.sub_elements[0].element.points
+        elif isinstance(self.basix_element, basix.ufl._BasixElement):
+            mapping_types = [self.basix_element.element.map_type]
+            nodes = self.basix_element.element.points
+        elif isinstance(self.basix_element, ffcx.element_interface.QuadratureElement):
             mapping_types = [basix._basixcpp.MapType.identity]
-            nodes = self.ffcx_element._points
+            nodes = self.basix_element._points
         else:
             raise NotImplementedError("Unsupported element type")
 
-        if not all(x == basix._basixcpp.MapType.identity for x in mapping_types):
-            raise NotImplementedError("Only affine mapped function spaces supported")
+        if all(x == basix._basixcpp.MapType.identity for x in mapping_types):
+            self.is_affine_map = True
 
         module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))
         self.module = module
@@ -69,7 +72,7 @@ def interpolate(expr, target_func):
     Note
     ----
     This method decides if interpolation is possible purely as linear combination
-    of some underlying PETSc vectors. In such case this approach is chose.
+    of some underlying PETSc vectors. In such case this approach is chosen.
 
     """
 
@@ -123,6 +126,10 @@ def interpolate_compiled(compiled_expression, target_func):
     lagrange/discontinuous lagrange of arbitrary order.
 
     """
+
+    if not compiled_expression.is_affine_map:
+        raise NotImplementedError("Only affine mapped function spaces supported")
+
     kernel = compiled_expression.module[0].tabulate_tensor_float64
 
     # Register complex types
@@ -167,7 +174,7 @@ def interpolate_compiled(compiled_expression, target_func):
         constants_vector = np.hstack([c.value.flatten() for c in constants])
 
     value_size = int(np.product(compiled_expression.expr.ufl_shape))
-    basix_space_dim = compiled_expression.ffcx_element.dim
+    basix_space_dim = compiled_expression.basix_element.dim
     space_dim = target_func.function_space.element.space_dimension
 
     dofmap_bs = target_func.function_space.dofmap.bs
