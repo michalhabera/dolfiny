@@ -186,8 +186,8 @@ demo/vsolid:
       - cd vsolid
       - mpirun -n 2 python3 duffing.py
       - mpirun -n 4 python3 solid_disp_tda.py
-      # - mpirun -n 4 python3 solid_dispstress_tda.py
-      # - mpirun -n 4 python3 solid_velostress_tda.py
+      - mpirun -n 4 python3 solid_dispstress_tda.py
+      - mpirun -n 4 python3 solid_velostress_tda.py
 
 demo/plasticity:
    extends: .demo_template
