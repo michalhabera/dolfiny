@@ -141,7 +141,7 @@ opts["snes_rtol"] = 1.0e-09
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
 opts["ksp_error_if_not_converged"] = True
-opts["pc_type"] = "cholesky"
+opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 opts_global = PETSc.Options()
