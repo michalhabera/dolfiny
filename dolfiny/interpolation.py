@@ -42,7 +42,6 @@ class CompiledExpression:
                 target_el = sub_elements[0]
 
         # Identify points at which to evaluate the expression
-        # self.ffcx_element = ffcx.element_interface.convert_element(target_el)
         self.basix_element = target_el
 
         if isinstance(self.basix_element, basix.ufl._BlockedElement):
