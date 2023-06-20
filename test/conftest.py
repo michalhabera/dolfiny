@@ -45,3 +45,8 @@ def V2(squaremesh_5):
 @pytest.fixture(scope="module")
 def vV1(squaremesh_5):
     return dolfinx.fem.VectorFunctionSpace(squaremesh_5, ("P", 1))
+
+
+@pytest.fixture(scope="module")
+def vV2(squaremesh_5):
+    return dolfinx.fem.VectorFunctionSpace(squaremesh_5, ("P", 2))

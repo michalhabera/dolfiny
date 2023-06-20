@@ -129,3 +129,17 @@ def test_expression_assemble(V1, vV1, squaremesh_5):
 
     assert numpy.isclose(dolfiny.expression.assemble(ufl.grad(u1), dx), 0.0).all()
     assert numpy.isclose(dolfiny.expression.assemble(ufl.grad(u2), dx), 0.0).all()
+
+
+def test_extract_linear_combination(V1, V2, vV1, vV2):
+
+    for U1, U2 in [(V1, V1), (V1, V2), (V2, V2), (vV1, vV1), (vV1, vV2), (vV2, vV2)]:
+
+        u1, u2 = dolfinx.fem.Function(U1), dolfinx.fem.Function(U2)
+
+        for expr in [u1, u2, u1 + 2 * u1, u1 + 2 * u2, u1 / 3 + 3 * u2 / 2]:
+
+            linc = []
+            dolfiny.expression.extract_linear_combination(expr, linc)
+
+            assert len(linc) > 0
