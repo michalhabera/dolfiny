@@ -26,3 +26,8 @@ def project(v, target_func, bcs=[]):
     solver = PETSc.KSP().create(A.getComm())
     solver.setOperators(A)
     solver.solve(b, target_func.vector)
+
+    # Destroy PETSc linear algebra objects and solver
+    solver.destroy()
+    A.destroy()
+    b.destroy()
