@@ -94,7 +94,7 @@ class Crisfield():
         self.problem.solve()
 
         # Assert convergence of nonlinear solver
-        assert self.problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+        self.problem.status(verbose=True, error_on_failure=True)
 
         # call update once again
         Crisfield.update(self.problem.snes, self.problem.snes.getIterationNumber(), self)
@@ -203,11 +203,10 @@ class Crisfield():
         snes.computeFunction(continuation.problem.active_x, continuation.problem.active_F)
 
         # monitor (default)
-        dolfiny.utils.pprint("# arc    |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(
-            abs(continuation.λ.value),
-            abs(δλ),
-            abs(continuation.inner(Δx, Δx) + Δλ**2 * dFdλ_inner - ds**2),
-            "λ"))
+        x, dx, r = abs(continuation.λ.value), abs(δλ), abs(continuation.inner(Δx, Δx) + Δλ**2 * dFdλ_inner - ds**2)
+        name = "λ"
+        message = f"# arc           |x|={x:9.3e} |dx|={dx:9.3e} |r|={r:9.3e} ({name:s})"
+        dolfiny.utils.pprint(message)
 
         # monitor (custom)
         if continuation.monitor is not None:
