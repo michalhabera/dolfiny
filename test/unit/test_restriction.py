@@ -323,9 +323,6 @@ def test_pipes_stokes():
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
 
-    opts_global = PETSc.Options()
-    opts_global['mat_mumps_icntl_24'] = 1
-
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
         [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="pipes")
     s0, s1, s2 = problem.solve()
