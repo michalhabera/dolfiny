@@ -69,12 +69,13 @@ def u_bar(x):
 quad_degree = p
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": quad_degree})
 
-# Function spaces
+# Define elements
 Ve = basix.ufl.element("P", mesh.basix_cell(), p, rank=1)
 Qe = ffcx.element_interface.QuadratureElement(mesh.basix_cell().name, (), degree=quad_degree, scheme="default")
 Te = basix.ufl.blocked_element(Qe, rank=2, symmetry=True)
 Se = basix.ufl.blocked_element(Qe, rank=0)
 
+# Define function spaces
 Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
 Tf = dolfinx.fem.FunctionSpace(mesh, Te)
 Sf = dolfinx.fem.FunctionSpace(mesh, Se)
@@ -216,7 +217,7 @@ for step, factor in enumerate(cycles):
     problem.solve()
 
     # Assert convergence of nonlinear solver
-    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    problem.status(verbose=True, error_on_failure=True)
 
     # Post-process data
     dxg = dx(domain_gauge)

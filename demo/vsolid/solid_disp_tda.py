@@ -72,9 +72,10 @@ nT = 200
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
-# Function spaces
+# Define elements
 Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
 
+# Define function spaces
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 
 # Define functions
@@ -134,7 +135,7 @@ opts["snes_atol"] = 1.0e-12
 opts["snes_rtol"] = 1.0e-09
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
-opts["pc_type"] = "lu"
+opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
@@ -146,7 +147,7 @@ surface_left_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surf
 # Process time steps
 for time_step in range(1, nT + 1):
 
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}")
+    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}\n")
 
     # Stage next time step
     odeint.stage()
@@ -160,7 +161,7 @@ for time_step in range(1, nT + 1):
     problem.solve()
 
     # Assert convergence of nonlinear solver
-    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    problem.status(verbose=True, error_on_failure=True)
 
     # Update solution states for time integration
     odeint.update()

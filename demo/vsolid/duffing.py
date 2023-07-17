@@ -107,7 +107,7 @@ v_[0], vt_[0], s_[0], st_[0], u_[0] = [w.vector.sum() / w.vector.getSize() for w
 # Process time steps
 for ts in range(1, nT + 1):
 
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {t.value + dt.value:7.3f} in step {ts:d}")
+    dolfiny.utils.pprint(f"\n+++ Processing time instant = {t.value + dt.value:7.3f} in step {ts:d}\n")
 
     # Stage next time step
     odeint.stage()
@@ -116,7 +116,7 @@ for ts in range(1, nT + 1):
     problem.solve()
 
     # Assert convergence of nonlinear solver
-    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    problem.status(verbose=True, error_on_failure=True)
 
     # Update solution states for time integration
     odeint.update()

@@ -133,7 +133,7 @@ opts["snes_rtol"] = 1.0e-09
 opts["snes_stol"] = 1.0e-09
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
-opts["pc_type"] = "lu"
+opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 monitor_history = []

@@ -63,10 +63,11 @@ nT = 200
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
-# Function spaces
+# Define elements
 Ve = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
 Se = basix.ufl.element("Regge", mesh.basix_cell(), 1)
 
+# Define function spaces
 Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
 Sf = dolfinx.fem.FunctionSpace(mesh, Se)
 
@@ -77,7 +78,7 @@ S = dolfinx.fem.Function(Sf, name="S")
 vt = dolfinx.fem.Function(Vf, name="vt")
 St = dolfinx.fem.Function(Sf, name="St")
 
-v_ = dolfinx.fem.Function(Vf, name="u_")  # boundary conditions
+v_ = dolfinx.fem.Function(Vf, name="v_")  # boundary conditions
 
 δv = ufl.TestFunction(Vf)
 δS = ufl.TestFunction(Sf)
@@ -106,8 +107,8 @@ dotE = 1 / 2 * (dotF.T * F + F.T * dotF)
 # dot E = dot E(S) elastic strain rate
 dotEs = 1 / (2 * mu) * St - la / (2 * mu * (3 * la + 2 * mu)) * ufl.tr(St) * I
 
-# Variation of rate of Green-Lagrange strain
-δdotE = dolfiny.expression.derivative(dotE, m, δm)
+# Variation of rate of Green-Lagrange strain (discretised in time to ensure proper variation)
+δdotE = dolfiny.expression.derivative(odeint.discretise_in_time(dotE), m, δm)
 
 # Weak form (as one-form)
 f = ufl.inner(δv, rho * vt) * dx + ufl.inner(δv, eta * v) * dx \
@@ -140,12 +141,8 @@ opts["snes_atol"] = 1.0e-12
 opts["snes_rtol"] = 1.0e-09
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
-opts["ksp_error_if_not_converged"] = True
-opts["pc_type"] = "lu"
+opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
-
-opts_global = PETSc.Options()
-opts_global["mat_mumps_icntl_14"] = 100  # workspace increase
 
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
@@ -156,7 +153,7 @@ surface_left_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surf
 # Process time steps
 for time_step in range(1, nT + 1):
 
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}")
+    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}\n")
 
     # Stage next time step
     odeint.stage()
@@ -170,7 +167,7 @@ for time_step in range(1, nT + 1):
     problem.solve()
 
     # Assert convergence of nonlinear solver
-    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    problem.status(verbose=True, error_on_failure=True)
 
     # Update solution states for time integration
     odeint.update()

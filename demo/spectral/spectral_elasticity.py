@@ -38,9 +38,10 @@ surface_back = interfaces_keys["surface_back"]
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 3})
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 3})
 
-# Function spaces
+# Define elements
 Ue = basix.ufl.element("P", mesh.basix_cell(), 1, rank=1)
 
+# Define function spaces
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 
 # Define functions
@@ -132,7 +133,7 @@ opts["snes_atol"] = 1.0e-12
 opts["snes_rtol"] = 1.0e-08
 opts["snes_max_it"] = 10
 opts["ksp_type"] = "preonly"
-opts["pc_type"] = "lu"
+opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
@@ -149,10 +150,10 @@ problem.bcs = [
 ]
 
 # Solve nonlinear problem
-m = problem.solve()
+problem.solve()
 
 # Assert convergence of nonlinear solver
-assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+problem.status(verbose=True, error_on_failure=True)
 
 ofile.write_function(u)
 
