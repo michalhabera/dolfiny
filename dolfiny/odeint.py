@@ -1,6 +1,6 @@
 import dolfinx
-
 import dolfiny
+import ufl
 
 
 def _copy_entries(source, target):
@@ -74,7 +74,6 @@ class ODEInt():
         self.x1t = xt
 
         if isinstance(self.x1, list):
-            self.x0 = []
             for x1, x1t in zip(self.x1, self.x1t):
                 if x1.function_space is not x1t.function_space:
                     raise RuntimeError("Incompatible function spaces for state and rate.")
@@ -84,38 +83,32 @@ class ODEInt():
 
         # Set state x0
         if isinstance(self.x1, list):
-            self.x0 = []
-            for x1i in self.x1:
-                self.x0.append(dolfinx.fem.Function(x1i.function_space))
+            self.x0 = [x1i.copy() for x1i in self.x1]
         else:
-            self.x0 = dolfinx.fem.Function(self.x1.function_space)
+            self.x0 = self.x1.copy()
 
         # Set rate of state x0t
         if isinstance(self.x1t, list):
-            self.x0t = []
-            for x1ti in self.x1t:
-                self.x0t.append(dolfinx.fem.Function(x1ti.function_space))
+            self.x0t = [x1ti.copy() for x1ti in self.x1t]
         else:
-            self.x0t = dolfinx.fem.Function(self.x1t.function_space)
+            self.x0t = self.x1t.copy()
 
         # Set *auxiliary* rate of state x1t_aux and x0t_aux
         if isinstance(self.x1t, list):
-            self.x1t_aux = []
-            self.x0t_aux = []
-            for x1ti in self.x1t:
-                self.x1t_aux.append(dolfinx.fem.Function(x1ti.function_space))
-                self.x0t_aux.append(dolfinx.fem.Function(x1ti.function_space))
+            self.x1t_aux = [x1ti.copy() for x1ti in self.x1t]
+            self.x0t_aux = [x0ti.copy() for x0ti in self.x0t]
         else:
-            self.x1t_aux = dolfinx.fem.Function(self.x1t.function_space)
-            self.x0t_aux = dolfinx.fem.Function(self.x1t.function_space)
+            self.x1t_aux = self.x1t.copy()
+            self.x0t_aux = self.x0t.copy()
 
         # Initialise values of auxiliary state
         dolfiny.odeint._copy_entries(self.x1t, self.x1t_aux)
 
         # Default values: Crank-Nicolson
-        self.alpha_f = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
-        self.alpha_m = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
-        self.gamma = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
+        domain = ufl.domain.extract_unique_domain(self.t)
+        self.alpha_f = dolfinx.fem.Constant(domain, 0.5)
+        self.alpha_m = dolfinx.fem.Constant(domain, 0.5)
+        self.gamma = dolfinx.fem.Constant(domain, 0.5)
 
         # Parameters from given rho
         if "rho" in kwargs:
@@ -292,7 +285,6 @@ class ODEInt2():
         self.x1tt = xtt
 
         if isinstance(self.x1, list):
-            self.x0 = []
             for x1, x1t, x1tt in zip(self.x1, self.x1t, self.x1tt):
                 if x1.function_space is not x1t.function_space \
                    or x1.function_space is not x1tt.function_space:
@@ -304,47 +296,39 @@ class ODEInt2():
 
         # Set state x0
         if isinstance(self.x1, list):
-            self.x0 = []
-            for x1i in self.x1:
-                self.x0.append(dolfinx.fem.Function(x1i.function_space))
+            self.x0 = [x1i.copy() for x1i in self.x1]
         else:
-            self.x0 = dolfinx.fem.Function(self.x1.function_space)
+            self.x0 = self.x1.copy()
 
         # Set rate of state x0t
         if isinstance(self.x1t, list):
-            self.x0t = []
-            for x1ti in self.x1t:
-                self.x0t.append(dolfinx.fem.Function(x1ti.function_space))
+            self.x0t = [x1ti.copy() for x1ti in self.x1t]
         else:
-            self.x0t = dolfinx.fem.Function(self.x1t.function_space)
+            self.x0t = self.x1t.copy()
 
         # Set rate of rate of state x0tt
         if isinstance(self.x1tt, list):
-            self.x0tt = []
-            for x1tti in self.x1tt:
-                self.x0tt.append(dolfinx.fem.Function(x1tti.function_space))
+            self.x0tt = [x1tti.copy() for x1tti in self.x1tt]
         else:
-            self.x0tt = dolfinx.fem.Function(self.x1tt.function_space)
+            self.x0tt = self.x1tt.copy()
 
         # Set *auxiliary* of rate of rate of state x1tt_aux and x0tt_aux
         if isinstance(self.x1tt, list):
-            self.x1tt_aux = []
-            self.x0tt_aux = []
-            for x1tti in self.x1tt:
-                self.x1tt_aux.append(dolfinx.fem.Function(x1tti.function_space))
-                self.x0tt_aux.append(dolfinx.fem.Function(x1tti.function_space))
+            self.x1tt_aux = [x1tti.copy() for x1tti in self.x1tt]
+            self.x0tt_aux = [x0tti.copy() for x0tti in self.x0tt]
         else:
-            self.x1tt_aux = dolfinx.fem.Function(self.x1tt.function_space)
-            self.x0tt_aux = dolfinx.fem.Function(self.x1tt.function_space)
+            self.x1tt_aux = self.x1tt.copy()
+            self.x0tt_aux = self.x0tt.copy()
 
         # Initialise values of auxiliary state
         dolfiny.odeint._copy_entries(self.x1tt, self.x1tt_aux)
 
         # Default values: Newmark
-        self.alpha_f = dolfinx.fem.Constant(self.t.ufl_domain(), 1.0)
-        self.alpha_m = dolfinx.fem.Constant(self.t.ufl_domain(), 1.0)
-        self.gamma = dolfinx.fem.Constant(self.t.ufl_domain(), 0.5)
-        self.beta = dolfinx.fem.Constant(self.t.ufl_domain(), 0.25)
+        domain = ufl.domain.extract_unique_domain(self.t)
+        self.alpha_f = dolfinx.fem.Constant(domain, 1.0)
+        self.alpha_m = dolfinx.fem.Constant(domain, 1.0)
+        self.gamma = dolfinx.fem.Constant(domain, 0.5)
+        self.beta = dolfinx.fem.Constant(domain, 0.25)
 
         # Parameters from given rho
         if "rho" in kwargs:
