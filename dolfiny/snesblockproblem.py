@@ -7,13 +7,17 @@ from mpi4py import MPI
 from petsc4py import PETSc
 
 from dolfiny.function import functions_to_vec, vec_to_functions
-import dolfiny
-from dolfiny.utils import pprint
+from dolfiny.utils import pprint, attributes_to_dict, prefixify
+from dolfiny.localsolver import LocalSolver
 
 
 class SNESBlockProblem():
+
+    reasons_ksp = attributes_to_dict(PETSc.KSP.ConvergedReason, invert=True)
+    reasons_snes = attributes_to_dict(PETSc.SNES.ConvergedReason, invert=True)
+
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
-                 nest=False, restriction=None, prefix=None, localsolver: dolfiny.localsolver.LocalSolver = None):
+                 nest=False, restriction=None, prefix=None, localsolver: LocalSolver = None):
         """SNES problem and solver wrapper
 
         Parameters
@@ -71,7 +75,10 @@ class SNESBlockProblem():
         self.J_form = self.J_form_all_ufc.copy()
         self.global_spaces_id = range(len(self.u))
 
+        self.nest = nest
+        self.restriction = restriction
         self.localsolver = localsolver
+
         if self.localsolver is not None:
             # Set UFL and compiled forms to localsolver
             self.localsolver.F_ufl = F_form.copy()
@@ -100,11 +107,11 @@ class SNESBlockProblem():
         self.norm_r = {}
         self.norm_dx = {}
         self.norm_x = {}
+        self.size_x = {}
 
         self.snes = PETSc.SNES().create(self.comm)
 
-        self.restriction = restriction
-        if nest:
+        if self.nest:
             if self.restriction is not None:
                 raise RuntimeError("Restriction for MATNEST not yet supported.")
 
@@ -117,7 +124,6 @@ class SNESBlockProblem():
 
             self.snes.setFunction(self._F_nest, self.F)
             self.snes.setJacobian(self._J_nest, self.J)
-            self.snes.setMonitor(self._monitor_nest)
 
         else:
             if self.localsolver is not None:
@@ -145,8 +151,7 @@ class SNESBlockProblem():
                 self.snes.setFunction(self._F_block, self.F)
                 self.snes.setJacobian(self._J_block, self.J)
 
-            self.snes.setMonitor(self._monitor_block)
-
+        self.snes.setMonitor(self._monitor_snes)
         self.snes.setConvergenceTest(self._converged)
         self.snes.setOptionsPrefix(prefix)
         self.snes.setFromOptions()
@@ -218,7 +223,7 @@ class SNESBlockProblem():
         if self.restriction is not None:
             self.restriction.restrict_matrix(self.J).copy(self.rJ)
 
-    def _J_nest(self, snes, u, J, P):
+    def _J_nest(self, snes, x, J, P):
         self.J.zeroEntries()
         dolfinx.fem.petsc.assemble_matrix_nest(self.J, self.J_form, self.bcs, diagonal=1.0)
         self.J.assemble()
@@ -257,32 +262,106 @@ class SNESBlockProblem():
         elif all(rtol_dx):
             return 4
 
-    def _monitor_block(self, snes, it, norm):
-        self.compute_norms_block(snes)
-        self.print_norms(it)
+    def _info_ksp(self, ksp):
 
-    def _monitor_nest(self, snes, it, norm):
-        self.compute_norms_nest(snes)
-        self.print_norms(it)
+        ksp_info = ""
 
-    def print_norms(self, it):
-        pprint("\n### SNES iteration {}".format(it))
+        if ksp.reason < 0:
+            ksp_info += "\033[91m"  # bright red
+            ksp_info += f"failure = {SNESBlockProblem.reasons_ksp[ksp.reason]:s}"
+            ksp_info += "\033[00m"
+
+        return ksp_info
+
+    def _info_snes(self, snes):
+
+        snes_info = ""
+
+        if snes.reason < 0:
+            snes_info = "\033[31m"  # red
+            snes_info += f"failure = {SNESBlockProblem.reasons_snes[snes.reason]:s}"
+            snes_info += "\033[00m"
+
+        return snes_info
+
+    def _monitor_ksp(self, ksp, ksp_it, ksp_norm):
+
+        ksp_info = self._info_ksp(ksp)
+
+        snes_it = self.snes.getIterationNumber()
+
+        message = "\033[90m"  # bright black
+        message += f"# SNES iteration {snes_it:2d}, KSP iteration {ksp_it:3d}       |r|={ksp_norm:9.3e} {ksp_info:s}"
+        message += "\033[00m"
+
+        pprint(message)
+
+    def _monitor_snes(self, snes, snes_it, snes_norm):
+
+        snes_info = self._info_snes(snes)
+
+        message = "\033[00m"  # normal
+        message += f"# SNES iteration {snes_it:2d} {snes_info:s}"
+        message += "\033[00m"
+
+        pprint(message)
+
+        if self.nest:
+            self.compute_norms_nest(snes)
+        else:
+            self.compute_norms_block(snes)
+
+        states = [self.size_x, self.norm_x, self.norm_dx, self.norm_r]
+
         for gi, i in enumerate(self.global_spaces_id):
-            pprint("# sub {:2d} |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e} ({})".format(
-                gi, self.norm_x[it][gi], self.norm_dx[it][gi], self.norm_r[it][gi], self.u[i].name))
-        pprint("# all    |x|={:1.3e} |dx|={:1.3e} |r|={:1.3e}".format(
-            np.linalg.norm(np.asarray(self.norm_x[it])),
-            np.linalg.norm(np.asarray(self.norm_dx[it])),
-            np.linalg.norm(np.asarray(self.norm_r[it]))))
+
+            s, x, dx, r = [w[snes_it][gi] for w in states]
+            name = self.u[i].name
+
+            message = f"# sub {gi:2d} [{prefixify(s):s}] |x|={x:9.3e} |dx|={dx:9.3e} |r|={r:9.3e} ({name:s})"
+            pprint(message)
+
+        _, x, dx, r = [np.linalg.norm(v) for v in [w[snes_it] for w in states]]
+
+        message = f"# all           |x|={x:9.3e} |dx|={dx:9.3e} |r|={r:9.3e}"
+        pprint(message)
+
+    def status(self, verbose=False, error_on_failure=False):
+
+        if self.snes.getKSP().reason < 0:
+
+            if verbose:
+                ksp_info = self._info_ksp(self.snes.getKSP())
+                message = f"# SNES -> KSP {ksp_info:s}"
+                pprint(message)
+
+            if error_on_failure:
+                raise RuntimeError("Linear solver failed!")
+
+        if self.snes.reason < 0:
+
+            if verbose:
+                snes_info = self._info_snes(self.snes)
+                message = f"# SNES {snes_info:s}"
+                pprint(message)
+
+            if error_on_failure:
+                raise RuntimeError("Nonlinear solver failed!")
+
+        return self.snes.reason
 
     def compute_norms_block(self, snes):
+
         r = snes.getFunction()[0].getArray(readonly=True)
         dx = snes.getSolutionUpdate().getArray(readonly=True)
         x = snes.getSolution().getArray(readonly=True)
 
-        ei_r = []
-        ei_dx = []
-        ei_x = []
+        # Error per space
+        ei_r = np.zeros_like(self.global_spaces_id, dtype=np.float64)
+        ei_dx = np.zeros_like(self.global_spaces_id, dtype=np.float64)
+        ei_x = np.zeros_like(self.global_spaces_id, dtype=np.float64)
+        # Size per space
+        si_x = np.zeros_like(self.global_spaces_id, dtype=np.int64)
 
         offset = 0
 
@@ -300,9 +379,12 @@ class SNESBlockProblem():
 
             # Need first apply square, only then sum over processes
             # i.e. norm is not a linear function
-            ei_r.append(np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_r) ** 2, op=MPI.SUM)))
-            ei_dx.append(np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_dx) ** 2, op=MPI.SUM)))
-            ei_x.append(np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_x) ** 2, op=MPI.SUM)))
+            ei_r[i] = np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_r) ** 2, op=MPI.SUM))
+            ei_dx[i] = np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_dx) ** 2, op=MPI.SUM))
+            ei_x[i] = np.sqrt(self.comm.allreduce(np.linalg.norm(subvec_x) ** 2, op=MPI.SUM))
+
+            # Store effective global size as sum of locals
+            si_x[i] = self.comm.allreduce(size_local, op=MPI.SUM)
 
             offset += size_local
 
@@ -310,29 +392,39 @@ class SNESBlockProblem():
         self.norm_r[it] = ei_r
         self.norm_dx[it] = ei_dx
         self.norm_x[it] = ei_x
+        self.size_x[it] = si_x
 
     def compute_norms_nest(self, snes):
+
         r = snes.getFunction()[0].getNestSubVecs()
         dx = snes.getSolutionUpdate().getNestSubVecs()
         x = snes.getSolution().getNestSubVecs()
 
-        ei_r = []
-        ei_dx = []
-        ei_x = []
+        # Error per space
+        ei_r = np.zeros_like(self.global_spaces_id, dtype=np.float64)
+        ei_dx = np.zeros_like(self.global_spaces_id, dtype=np.float64)
+        ei_x = np.zeros_like(self.global_spaces_id, dtype=np.float64)
+        # Size per space
+        si_x = np.zeros_like(self.global_spaces_id, dtype=np.int64)
 
-        for i in range(len(self.u)):
-            ei_r.append(r[i].norm())
-            ei_dx.append(dx[i].norm())
-            ei_x.append(x[i].norm())
+        for i in self.global_spaces_id:
+            ei_r[i] = r[i].norm()
+            ei_dx[i] = dx[i].norm()
+            ei_x[i] = x[i].norm()
+            si_x[i] = x[i].getSize()
 
         it = snes.getIterationNumber()
         self.norm_r[it] = ei_r
         self.norm_dx[it] = ei_dx
         self.norm_x[it] = ei_x
+        self.size_x[it] = si_x
 
     def solve(self, u_init=None):
+
         if u_init is not None:
             functions_to_vec(u_init, self.x)
+
+        self.snes.getKSP().setMonitor(self._monitor_ksp)
 
         if self.restriction is not None:
             self.snes.solve(None, self.rx)
@@ -343,5 +435,7 @@ class SNESBlockProblem():
 
         if self.localsolver is not None:
             vec_to_functions(self.xloc, [self.solution[idx] for idx in self.localsolver.local_spaces_id])
+
+        self.snes.getKSP().cancelMonitor()
 
         return self.solution
