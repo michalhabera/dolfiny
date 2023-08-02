@@ -56,15 +56,15 @@ class LocalSolver:
 
         ```python
         F_integrals = [{dolfinx.fem.IntegralType.cell:
-                         ([(-1, sc_F_cell)], None),
+                         [(-1, sc_F_cell, cell_entities)],
                          dolfinx.fem.IntegralType.exterior_facet:
-                         ([(1, sc_F_exterior_facet)], mt)}]
+                         [(1, sc_F_exterior_facet, exterior_facet_entities)]}]
         ```
 
         defines an integral ``sc_F_cell`` which will be assembled over cells, has default
-        marker ID -1 and no MeshTags used for marking,
+        marker ID ``-1`` and cell entities given by ``cell_entities``,
         and integral ``sc_F_exterior_facet`` which is assembled over exterior facets which are
-        marked 1 based on provided MeshTags ``mt``.
+        marked ``1`` and associated with facet entities in ``exterior_facet_entities``.
 
         C++ kernels
         -----
@@ -114,6 +114,7 @@ class LocalSolver:
 
             cppform = Form([V._cpp_object], integrals, [c[0]
                            for c in self.stacked_coefficients], [c[0] for c in self.stacked_constants], False, None)
+            cppform = dolfinx.fem.Form(cppform)
             F_form += [cppform]
 
         return F_form
@@ -135,6 +136,7 @@ class LocalSolver:
                 J_form[gi][gj] = Form([V0._cpp_object, V1._cpp_object], integrals, [c[0]
                                       for c in self.stacked_coefficients],
                                       [c[0] for c in self.stacked_constants], False, None)
+                J_form[gi][gj] = dolfinx.fem.Form(J_form[gi][gj])
 
         return J_form
 
@@ -151,6 +153,7 @@ class LocalSolver:
 
             cppform = Form([V._cpp_object], integrals, [c[0]
                            for c in self.stacked_coefficients], [c[0] for c in self.stacked_constants], False, None)
+            cppform = dolfinx.fem.Form(cppform)
             local_form += [cppform]
 
         return local_form

@@ -96,14 +96,15 @@ def test_coupled_poisson():
     assert problem.snes.getIterationNumber() == 1
 
     # Evaluate the solution -0.5*x*(x-1) at x=0.5
-    bb_tree = dolfinx.geometry.BoundingBoxTree(mesh, mesh.topology.dim, 0.0)
+    bb_tree = dolfinx.geometry.bb_tree(mesh, mesh.topology.dim)
     p = numpy.array([0.5, 0.5, 0.0], dtype=numpy.float64)
 
-    cell_candidates = dolfinx.geometry.compute_collisions(bb_tree, p)
-    cell = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, p)
-    if len(cell) > 0:
-        value_s0 = s0.eval(p, cell)
-        value_s1 = s1.eval(p, cell)
+    cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, p)
+    cells = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, p)
+
+    if len(cells) > 0:
+        value_s0 = s0.eval(p, cells[0])
+        value_s1 = s1.eval(p, cells[0])
 
         assert (numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
         assert (numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
@@ -322,9 +323,6 @@ def test_pipes_stokes():
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
-
-    opts_global = PETSc.Options()
-    opts_global['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
         [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="pipes")

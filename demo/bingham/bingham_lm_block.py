@@ -78,11 +78,12 @@ def v_inner_(t=0.0, vt=v_inner_max, g=5, a=1, b=3):
     return vt * 0.25 * (np.tanh(g * (t - a)) + 1) * (np.tanh(-g * (t - b)) + 1)
 
 
-# Function spaces
+# Define elements
 Ve = basix.ufl.element("P", mesh.basix_cell(), degree=2, rank=1)
 Pe = basix.ufl.element("P", mesh.basix_cell(), degree=1, rank=0)
 Le = basix.ufl.element("P", mesh.basix_cell(), degree=2, rank=0)
 
+# Define function spaces
 V = dolfinx.fem.FunctionSpace(mesh, Ve)
 P = dolfinx.fem.FunctionSpace(mesh, Pe)
 N = dolfinx.fem.FunctionSpace(mesh, Le)
@@ -191,10 +192,6 @@ opts["ksp_type"] = "preonly"
 opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
-opts_global = PETSc.Options()
-opts_global["mat_mumps_icntl_14"] = 500
-opts_global["mat_mumps_icntl_24"] = 1
-
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="bingham", restriction=restrc)
 
@@ -223,7 +220,7 @@ for time_step in range(1, nT + 1):
     problem.solve()
 
     # Assert convergence of nonlinear solver
-    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    problem.status(verbose=True, error_on_failure=True)
 
     # Update solution states for time integration
     odeint.update()

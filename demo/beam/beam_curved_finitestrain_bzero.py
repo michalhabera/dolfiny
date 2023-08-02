@@ -88,11 +88,12 @@ M_y = μ * dolfinx.fem.Constant(mesh, (2.0 * np.pi / L)**1 * E * I * 1)  # presc
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
-# Function spaces
+# Define elements
 Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
 We = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
 Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
 
+# Define function spaces
 Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
 Wf = dolfinx.fem.FunctionSpace(mesh, We)
 Rf = dolfinx.fem.FunctionSpace(mesh, Re)
@@ -230,7 +231,7 @@ opts["snes_rtol"] = 1.0e-07
 opts["snes_stol"] = 1.0e-06
 opts["snes_max_it"] = 60
 opts["ksp_type"] = "preonly"
-opts["pc_type"] = "lu"
+opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
@@ -264,10 +265,10 @@ for factor in np.linspace(0, 1, num=20 + 1):
     dolfiny.utils.pprint(f"\n+++ Processing load factor μ = {μ.value:5.4f}")
 
     # Solve nonlinear problem
-    m = problem.solve()
+    problem.solve()
 
     # Assert convergence of nonlinear solver
-    assert problem.snes.getConvergedReason() > 0, "Nonlinear solver did not converge!"
+    problem.status(verbose=True, error_on_failure=True)
 
     # Add to plot
     if comm.size == 1:
