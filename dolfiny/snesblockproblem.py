@@ -164,6 +164,9 @@ class SNESBlockProblem():
             self.active_F = self.F
             self.active_x = self.x
 
+        # Default monitoring verbosity
+        self.verbose = dict(snes=True, ksp=True)
+
     def _update_functions(self, x):
         """Update solution functions from the stored vector x"""
 
@@ -294,7 +297,7 @@ class SNESBlockProblem():
         message += f"# SNES iteration {snes_it:2d}, KSP iteration {ksp_it:3d}       |r|={ksp_norm:9.3e} {ksp_info:s}"
         message += "\033[00m"
 
-        pprint(message)
+        pprint(message) if self.verbose["ksp"] else None
 
     def _monitor_snes(self, snes, snes_it, snes_norm):
 
@@ -304,7 +307,7 @@ class SNESBlockProblem():
         message += f"# SNES iteration {snes_it:2d} {snes_info:s}"
         message += "\033[00m"
 
-        pprint(message)
+        pprint(message) if self.verbose["snes"] else None
 
         if self.nest:
             self.compute_norms_nest(snes)
@@ -319,12 +322,12 @@ class SNESBlockProblem():
             name = self.u[i].name
 
             message = f"# sub {gi:2d} [{prefixify(s):s}] |x|={x:9.3e} |dx|={dx:9.3e} |r|={r:9.3e} ({name:s})"
-            pprint(message)
+            pprint(message) if self.verbose["snes"] else None
 
         _, x, dx, r = [np.linalg.norm(v) for v in [w[snes_it] for w in states]]
 
         message = f"# all           |x|={x:9.3e} |dx|={dx:9.3e} |r|={r:9.3e}"
-        pprint(message)
+        pprint(message) if self.verbose["snes"] else None
 
     def status(self, verbose=False, error_on_failure=False):
 
@@ -434,6 +437,9 @@ class SNESBlockProblem():
             vec_to_functions(self.x, [self.solution[idx] for idx in self.global_spaces_id])
 
         if self.localsolver is not None:
+            with self.snes.getSolutionUpdate().localForm() as dx_local:
+                dx_local.set(0.0)  # converged solution (fix for single step solves)
+            self.localsolver.local_update(self)  # ensure final local update
             vec_to_functions(self.xloc, [self.solution[idx] for idx in self.localsolver.local_spaces_id])
 
         self.snes.getKSP().cancelMonitor()
