@@ -18,7 +18,8 @@ c_signature = numba.types.void(
     numba.types.CPointer(numba.types.uint8))
 
 
-def test_linear(squaremesh_5):
+def test_linear_elasticity(squaremesh_5):
+
     mesh = squaremesh_5
 
     # Stress and displacement elements
@@ -130,26 +131,31 @@ def test_linear(squaremesh_5):
 
     ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
                                          F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       [(-1, sc_F_cell, cells[-1])],
+                                                       [(-1, sc_F_cell, cells.get(-1, []))],
                                                        dolfinx.fem.IntegralType.exterior_facet:
-                                                       [(1, sc_F_exterior_facet, exterior_facets[1])]}],
+                                                       [(1, sc_F_exterior_facet, exterior_facets.get(1, []))]}],
                                          J_integrals=[[{dolfinx.fem.IntegralType.cell:
-                                                        [(-1, sc_J, cells[-1])]}]],
+                                                        [(-1, sc_J, cells.get(-1, []))]}]],
                                          local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           [(-1, solve_stress, cells[-1])]}],
+                                                           [(-1, solve_stress, cells.get(-1, []))]}],
                                          local_update=local_update)
 
-    opts = PETSc.Options("linear")
+    opts = PETSc.Options("linear_elasticity")
 
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
     opts["snes_rtol"] = 1.0e-08
+    opts["ksp_type"] = "preonly"
+    opts["pc_type"] = "cholesky"
+    opts["pc_factor_mat_solver_type"] = "mumps"
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc],
+                                                        prefix="linear_elasticity",
+                                                        localsolver=ls)
     sigma1, u1 = problem.solve()
 
-    assert np.isclose(u1.vector.norm(), 2.8002831339894887)
-    assert np.isclose(sigma1.vector.norm(), 1.8884853905348435)
+    assert np.isclose(u1.vector.norm(), 2.80028313)
+    assert np.isclose(sigma1.vector.norm(), 1.88848539)
 
 
 def test_nonlinear_elasticity_schur(squaremesh_5):
@@ -269,26 +275,31 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
 
     ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
                                          F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       [(-1, sc_F_cell, cells[-1])],
+                                                       [(-1, sc_F_cell, cells.get(-1, []))],
                                                        dolfinx.fem.IntegralType.exterior_facet:
-                                                       [(1, sc_F_exterior_facet, exterior_facets[1])]}],
+                                                       [(1, sc_F_exterior_facet, exterior_facets.get(1, []))]}],
                                          J_integrals=[[{dolfinx.fem.IntegralType.cell:
-                                                        [(-1, sc_J, cells[-1])]}]],
+                                                        [(-1, sc_J, cells.get(-1, []))]}]],
                                          local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           [(-1, solve_stress, cells[-1])]}],
+                                                           [(-1, solve_stress, cells.get(-1, []))]}],
                                          local_update=local_update)
 
-    opts = PETSc.Options("linear")
+    opts = PETSc.Options("nonlinear_elasticity_schur")
 
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
     opts["snes_rtol"] = 1.0e-08
+    opts["ksp_type"] = "preonly"
+    opts["pc_type"] = "cholesky"
+    opts["pc_factor_mat_solver_type"] = "mumps"
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc],
+                                                        prefix="nonlinear_elasticity_schur",
+                                                        localsolver=ls)
     sigma1, u1 = problem.solve()
 
-    assert np.isclose(u1.vector.norm(), 1.2419671416042748)
-    assert np.isclose(sigma1.vector.norm(), 0.9835175347552177)
+    assert np.isclose(u1.vector.norm(), 1.24196714)
+    assert np.isclose(sigma1.vector.norm(), 0.98351753)
 
 
 def test_nonlinear_elasticity_nonlinear(squaremesh_5):
@@ -403,28 +414,33 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
 
     ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
                                          F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       [(-1, sc_F_cell, cells[-1])],
+                                                       [(-1, sc_F_cell, cells.get(-1, []))],
                                                        dolfinx.fem.IntegralType.exterior_facet:
-                                                       [(1, sc_F_exterior_facet, exterior_facets[1])]}],
+                                                       [(1, sc_F_exterior_facet, exterior_facets.get(1, []))]}],
                                          J_integrals=[[{dolfinx.fem.IntegralType.cell:
-                                                        [(-1, sc_J, cells[-1])]}]],
+                                                        [(-1, sc_J, cells.get(-1, []))]}]],
                                          local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           [(-1, solve_stress, cells[-1])]}],
+                                                           [(-1, solve_stress, cells.get(-1, []))]}],
                                          local_update=local_update)
 
-    opts = PETSc.Options("linear")
+    opts = PETSc.Options("nonlinear_elasticity_nonlinear")
 
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
     opts["snes_rtol"] = 1.0e-08
+    opts["ksp_type"] = "preonly"
+    opts["pc_type"] = "cholesky"
+    opts["pc_factor_mat_solver_type"] = "mumps"
 
     Usize = U.dofmap.index_map_bs * U.dofmap.index_map.size_local
     rdofsU = np.arange(Usize, dtype=np.int32)
     r = dolfiny.restriction.Restriction([U], [rdofsU])
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc], prefix="linear", localsolver=ls,
+    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc],
+                                                        prefix="nonlinear_elasticity_nonlinear",
+                                                        localsolver=ls,
                                                         restriction=r)
     sigma1, u1 = problem.solve()
 
-    assert np.isclose(u1.vector.norm(), 1.2419671416042748)
-    assert np.isclose(sigma1.vector.norm(), 0.9835175347552177)
+    assert np.isclose(u1.vector.norm(), 1.24196714)
+    assert np.isclose(sigma1.vector.norm(), 0.98351753)
