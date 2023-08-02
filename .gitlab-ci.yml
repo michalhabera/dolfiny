@@ -124,6 +124,7 @@ test/unit/parallel:
    script:
       - cd unit
       - mpirun -n 2 python3 -u -m pytest -vsx .
+      - mpirun -n 4 python3 -u -m pytest -vsx .
 
 test/convergence:
    extends: .test_template
