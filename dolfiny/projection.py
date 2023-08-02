@@ -1,9 +1,18 @@
 import dolfinx
 import ufl
 from petsc4py import PETSc
+from dolfinx.fem.petsc import (apply_lifting, assemble_matrix, assemble_vector, set_bc)
 
 
 def project(v, target_func, bcs=[]):
+    """Project UFL expression.
+
+    Note
+    ----
+    This method solves a linear system (using KSP defaults).
+
+    """
+
     # Ensure we have a mesh and attach to measure
     V = target_func.function_space
     dx = ufl.dx(V.mesh)
@@ -15,12 +24,12 @@ def project(v, target_func, bcs=[]):
     L = dolfinx.fem.form(ufl.inner(v, w) * dx)
 
     # Assemble linear system
-    A = dolfinx.fem.petsc.assemble_matrix(a, bcs)
+    A = assemble_matrix(a, bcs)
     A.assemble()
-    b = dolfinx.fem.petsc.assemble_vector(L)
-    dolfinx.fem.petsc.apply_lifting(b, [a], [bcs])
+    b = assemble_vector(L)
+    apply_lifting(b, [a], [bcs])
     b.ghostUpdate(addv=PETSc.InsertMode.ADD, mode=PETSc.ScatterMode.REVERSE)
-    dolfinx.fem.petsc.set_bc(b, bcs)
+    set_bc(b, bcs)
 
     # Solve linear system
     solver = PETSc.KSP().create(A.getComm())
