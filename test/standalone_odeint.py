@@ -51,11 +51,11 @@ def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01, **kwargs):
     # Overall form (as list of forms)
     F = dolfiny.function.extract_blocks(F, [δu])
 
-    # Silence SNES monitoring during test
-    dolfiny.snesblockproblem.SNESBlockProblem.print_norms = lambda self, it: 1
-
     # Create problem (although having a linear ODE we use the dolfiny.snesblockproblem API)
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, [u])
+
+    # Silence SNES monitoring during test
+    problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
     u_, ut_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1)
@@ -136,11 +136,11 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
     opts["snes_atol"] = 1.0e-09
     opts["snes_rtol"] = 1.0e-12
 
-    # Silence SNES monitoring during test
-    dolfiny.snesblockproblem.SNESBlockProblem.print_norms = lambda self, it: 1
-
     # Create nonlinear problem
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, [u])
+
+    # Silence SNES monitoring during test
+    problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
     u_, ut_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1)
@@ -219,11 +219,11 @@ def ode_2nd_linear_odeint(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
     # Overall form (as list of forms)
     F = dolfiny.function.extract_blocks(F, [δu])
 
-    # Silence SNES monitoring during test
-    dolfiny.snesblockproblem.SNESBlockProblem.print_norms = lambda self, it: 1
-
     # Create problem (although having a linear ODE we use the dolfiny.snesblockproblem API)
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, [u])
+
+    # Silence SNES monitoring during test
+    problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
     u_, ut_, utt_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1), numpy.zeros(nT + 1)
@@ -307,11 +307,11 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
     opts["snes_atol"] = 1.0e-09
     opts["snes_rtol"] = 1.0e-12
 
-    # Silence SNES monitoring during test
-    dolfiny.snesblockproblem.SNESBlockProblem.print_norms = lambda self, it: 1
-
     # Create nonlinear problem
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, [u])
+
+    # Silence SNES monitoring during test
+    problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
     u_, ut_, utt_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1), numpy.zeros(nT + 1)
@@ -432,11 +432,11 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
     opts["snes_atol"] = 1.0e-09
     opts["snes_rtol"] = 1.0e-12
 
-    # Silence SNES monitoring during test
-    dolfiny.snesblockproblem.SNESBlockProblem.print_norms = lambda self, it: 1
-
     # Create nonlinear problem
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m)
+
+    # Silence SNES monitoring during test
+    problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
     u_, v_, vt_ = [numpy.zeros(nT + 1) for w in [u, v, vt]]
