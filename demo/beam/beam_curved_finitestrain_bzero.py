@@ -89,14 +89,14 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
-We = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
-Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim, rank=0)
+Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
+We = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
+Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
 
 # Define function spaces
-Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
-Wf = dolfinx.fem.FunctionSpace(mesh, We)
-Rf = dolfinx.fem.FunctionSpace(mesh, Re)
+Uf = dolfinx.fem.functionspace(mesh, Ue)
+Wf = dolfinx.fem.functionspace(mesh, We)
+Rf = dolfinx.fem.functionspace(mesh, Re)
 
 # Define functions
 u = dolfinx.fem.Function(Uf, name='u')
@@ -119,7 +119,7 @@ m, δm = [u, w, r], [δu, δw, δr]
 x0 = ufl.SpatialCoordinate(mesh)
 
 # Function spaces for geometric quantities extracted from mesh
-N = dolfinx.fem.VectorFunctionSpace(mesh, ("DP", q), mesh.geometry.dim)
+N = dolfinx.fem.functionspace(mesh, ("DP", q, (mesh.geometry.dim,)))
 
 # Normal vector (gdim x 1)
 n0i = dolfinx.fem.Function(N)
@@ -142,7 +142,7 @@ dolfiny.interpolation.interpolate(gξ, n0i)
 P = ufl.Identity(mesh.geometry.dim) - ufl.outer(n0i, n0i)
 
 # Thickness variable
-X = dolfinx.fem.FunctionSpace(mesh, ("DP", q))
+X = dolfinx.fem.functionspace(mesh, ("DP", q))
 ξ = dolfinx.fem.Function(X, name='ξ')
 
 # Undeformed configuration: director d0 and placement b0
@@ -194,7 +194,7 @@ T = S(Es) * A * sc_fac
 M = S(Eb) * I
 
 # Partial selective reduced integration of membrane/shear virtual work, see Arnold/Brezzi (1997)
-A = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+A = dolfinx.fem.functionspace(mesh, ("DP", 0))
 α = dolfinx.fem.Function(A)
 dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
 
@@ -246,7 +246,7 @@ beg_dofs_Rf = dolfiny.mesh.locate_dofs_topological(Rf, interfaces, beg)
 plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{0}$)')
 
 # Create vector function space and vector function for writing the displacement vector
-Z = dolfinx.fem.VectorFunctionSpace(mesh, ("CG", p), mesh.geometry.dim)
+Z = dolfinx.fem.functionspace(mesh, ("CG", p, (mesh.geometry.dim,)))
 z = dolfinx.fem.Function(Z)
 
 # Process load steps

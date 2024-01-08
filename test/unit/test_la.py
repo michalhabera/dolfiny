@@ -1,9 +1,11 @@
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import dolfiny
 import numpy as np
 import pytest
 import scipy.sparse
-from mpi4py import MPI
-from petsc4py import PETSc
+
 
 skip_in_parallel = pytest.mark.skipif(
     MPI.COMM_WORLD.size > 1,

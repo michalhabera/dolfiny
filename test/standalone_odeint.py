@@ -1,8 +1,8 @@
+from mpi4py import MPI
 import dolfinx
 import dolfiny
 import numpy
 import ufl
-from mpi4py import MPI
 
 # === ODEInt-based solutions =================================================
 
@@ -16,7 +16,7 @@ def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01, **kwargs):
     """
 
     mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
-    U = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+    U = dolfinx.fem.functionspace(mesh, ("DP", 0))
 
     u = dolfinx.fem.Function(U, name="u")
     ut = dolfinx.fem.Function(U, name="ut")
@@ -93,7 +93,7 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
     """
 
     mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
-    U = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+    U = dolfinx.fem.functionspace(mesh, ("DP", 0))
 
     u = dolfinx.fem.Function(U, name="u")
     ut = dolfinx.fem.Function(U, name="ut")
@@ -181,7 +181,7 @@ def ode_2nd_linear_odeint(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
     """
 
     mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
-    U = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+    U = dolfinx.fem.functionspace(mesh, ("DP", 0))
 
     u = dolfinx.fem.Function(U, name="u")
     ut = dolfinx.fem.Function(U, name="ut")
@@ -261,7 +261,7 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
     """
 
     mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
-    U = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+    U = dolfinx.fem.functionspace(mesh, ("DP", 0))
 
     u = dolfinx.fem.Function(U, name="u")
     ut = dolfinx.fem.Function(U, name="ut")
@@ -371,8 +371,8 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
     def _st(u, v):
         return (a + 3 * b * u**2) * v  # rate of constitutive law
 
-    V = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
-    S = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+    V = dolfinx.fem.functionspace(mesh, ("DP", 0))
+    S = dolfinx.fem.functionspace(mesh, ("DP", 0))
 
     v = dolfinx.fem.Function(V, name="v")
     s = dolfinx.fem.Function(S, name="s")

@@ -52,7 +52,7 @@ class Plotter():
         # Interpolate solution at mesh geometry nodes
         import dolfinx
         import dolfiny
-        Q = dolfinx.fem.FunctionSpace(mesh, ("P", q))
+        Q = dolfinx.fem.functionspace(mesh, ("P", q))
         uf = dolfinx.fem.Function(Q)
 
         if isinstance(u, list):

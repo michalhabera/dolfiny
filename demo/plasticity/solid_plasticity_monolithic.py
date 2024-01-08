@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import dolfinx
 import dolfiny
 import numpy as np
 import ufl
 import basix
-import ffcx
-from mpi4py import MPI
-from petsc4py import PETSc
 
 import mesh_iso6892_gmshapi as mg
+
+# references:
+# https://doi.org/10.1007/978-94-011-2860-5_66
+# https://doi.org/10.1016/j.commatsci.2012.05.062
+# https://doi.org/10.24355/dbbs.084-202112170722-0
 
 # Basic settings
 name = "solid_plasticity_monolithic"
@@ -70,40 +75,39 @@ quad_degree = p
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": quad_degree})
 
 # Define elements
-Ve = basix.ufl.element("P", mesh.basix_cell(), p, rank=1)
-Qe = ffcx.element_interface.QuadratureElement(mesh.basix_cell().name, (), degree=quad_degree, scheme="default")
-Te = basix.ufl.blocked_element(Qe, rank=2, symmetry=True)
-Se = basix.ufl.blocked_element(Qe, rank=0)
+Ue = basix.ufl.element("P", mesh.basix_cell(), p, shape=(mesh.geometry.dim,))
+He = basix.ufl.quadrature_element(mesh.basix_cell(), value_shape=(), degree=quad_degree)
+Te = basix.ufl.blocked_element(He, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True)
 
 # Define function spaces
-Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
-Tf = dolfinx.fem.FunctionSpace(mesh, Te)
-Sf = dolfinx.fem.FunctionSpace(mesh, Se)
+Uf = dolfinx.fem.functionspace(mesh, Ue)
+Tf = dolfinx.fem.functionspace(mesh, Te)
+Hf = dolfinx.fem.functionspace(mesh, He)
 
 # Define functions
-u = dolfinx.fem.Function(Vf, name="u")  # displacement
+u = dolfinx.fem.Function(Uf, name="u")  # displacement
 P = dolfinx.fem.Function(Tf, name="P")  # plastic strain
-h = dolfinx.fem.Function(Sf, name="h")  # isotropic hardening
+h = dolfinx.fem.Function(Hf, name="h")  # isotropic hardening
 B = dolfinx.fem.Function(Tf, name="B")  # kinematic hardening
 
-u0 = dolfinx.fem.Function(Vf, name="u0")
+u0 = dolfinx.fem.Function(Uf, name="u0")  # displacement, previous converged solution (load step)
 P0 = dolfinx.fem.Function(Tf, name="P0")
-h0 = dolfinx.fem.Function(Sf, name="h0")
+h0 = dolfinx.fem.Function(Hf, name="h0")
 B0 = dolfinx.fem.Function(Tf, name="B0")
 
-S0 = dolfinx.fem.Function(Tf, name="S0")
+S0 = dolfinx.fem.Function(Tf, name="S0")  # stress, previous converged solution (load step)
 
-u_ = dolfinx.fem.Function(Vf, name="u_")  # boundary displacement
+u_ = dolfinx.fem.Function(Uf, name="u_")  # displacement, defines state at boundary
 
-Po = dolfinx.fem.Function(dolfinx.fem.TensorFunctionSpace(mesh, ('DG', 0)), name="P")  # for output
-Bo = dolfinx.fem.Function(dolfinx.fem.TensorFunctionSpace(mesh, ('DG', 0)), name="B")
-So = dolfinx.fem.Function(dolfinx.fem.TensorFunctionSpace(mesh, ('DG', 0)), name="S")
-ho = dolfinx.fem.Function(dolfinx.fem.FunctionSpace(mesh, ('DG', 0)), name="h")
+Po = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0, (3, 3))), name="P")  # for output
+Bo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0, (3, 3))), name="B")
+So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0, (3, 3))), name="S")
+ho = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0)), name="h")
 
-δu = ufl.TestFunction(Vf)
+δu = ufl.TestFunction(Uf)
 δP = ufl.TestFunction(Tf)
-δh = ufl.TestFunction(Sf)
-δB = ufl.TestFunction(dolfinx.fem.FunctionSpace(mesh, Te))  # to be distinct from δP
+δh = ufl.TestFunction(Hf)
+δB = ufl.TestFunction(Tf.clone())  # to be distinct from δP
 
 # Define state and variation of state as (ordered) list of functions
 m, δm = [u, P, h, B], [δu, δP, δh, δB]
@@ -122,7 +126,7 @@ F = I + ufl.grad(u)  # deformation gradient as function of displacement
 
 # Strain measures
 E = 1 / 2 * (F.T * F - I)  # E = E(F), total Green-Lagrange strain
-E_el = E - P  # E_el = E(F) - P, elastic strain
+E_el = E - P  # E_el = E - P, elastic strain = total strain - plastic strain
 
 # Stress
 S = 2 * mu * E_el + la * ufl.tr(E_el) * I  # S = S(E_el), PK2, St.Venant-Kirchhoff
@@ -131,18 +135,18 @@ S = 2 * mu * E_el + la * ufl.tr(E_el) * I  # S = S(E_el), PK2, St.Venant-Kirchho
 S, B, h = ufl.variable(S), ufl.variable(B), ufl.variable(h)
 
 # Yield function
-f = ufl.sqrt(3) * rJ2(ufl.dev(S) - ufl.dev(B)) - (Sy + h)
+f = ufl.sqrt(3) * rJ2(ufl.dev(S - B)) - (Sy + h)  # von Mises criterion (J2), with hardening
 
 # Plastic potential
 g = f
 
-# Total differential of yield function
+# Derivative of plastic potential wrt stress
+dgdS = ufl.diff(g, S)
+
+# Total differential of yield function, used for checks only
 df = + ufl.inner(ufl.diff(f, S), S - S0) \
      + ufl.inner(ufl.diff(f, h), h - h0) \
      + ufl.inner(ufl.diff(f, B), B - B0)
-
-# Derivative of plastic potential wrt stress
-dgdS = ufl.diff(g, S)
 
 # Unwrap expression from variable
 S, B, h = S.expression(), B.expression(), h.expression()
@@ -176,15 +180,15 @@ opts["snes_atol"] = 1.0e-12
 opts["snes_rtol"] = 1.0e-09
 opts["snes_max_it"] = 12
 opts["ksp_type"] = "preonly"
-opts["pc_type"] = "lu"
+opts["pc_type"] = "lu"  # NOTE: this monolithic formulation is not symmetric
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
-surface_1_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surface_1)
-surface_2_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surface_2)
+surface_1_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_1)
+surface_2_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_2)
 
 # Book-keeping of results
 results = {'E': [], 'S': [], 'P': [], 'μ': []}
@@ -209,8 +213,8 @@ for step, factor in enumerate(cycles):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.dirichletbc(u_, surface_1_dofs_Vf),  # disp left
-        dolfinx.fem.dirichletbc(u_, surface_2_dofs_Vf),  # disp right
+        dolfinx.fem.dirichletbc(u_, surface_1_dofs_Uf),  # disp left
+        dolfinx.fem.dirichletbc(u_, surface_2_dofs_Uf),  # disp right
     ]
 
     # Solve nonlinear problem
@@ -239,11 +243,11 @@ for step, factor in enumerate(cycles):
     # Write output
     ofile.write_function(u, step)
 
-    # Project and write output
-    dolfiny.projection.project(P, Po)
-    dolfiny.projection.project(B, Bo)
-    dolfiny.projection.project(S, So)
-    dolfiny.projection.project(h, ho)
+    # Interpolate and write output
+    dolfiny.interpolation.interpolate(P, Po)
+    dolfiny.interpolation.interpolate(B, Bo)
+    dolfiny.interpolation.interpolate(S, So)
+    dolfiny.interpolation.interpolate(h, ho)
     ofile.write_function(Po, step)
     ofile.write_function(Bo, step)
     ofile.write_function(So, step)

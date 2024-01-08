@@ -64,12 +64,12 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
+Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(3,))
 Se = basix.ufl.element("Regge", mesh.basix_cell(), 1)
 
 # Define function spaces
-Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
-Sf = dolfinx.fem.FunctionSpace(mesh, Se)
+Uf = dolfinx.fem.functionspace(mesh, Ue)
+Sf = dolfinx.fem.functionspace(mesh, Se)
 
 # Define functions
 u = dolfinx.fem.Function(Uf, name="u")
@@ -88,6 +88,10 @@ u_ = dolfinx.fem.Function(Uf, name="u_")  # boundary conditions
 
 # Define state and rate as (ordered) list of functions
 m, mt, mtt, δm = [u, S], [ut, St], [utt, Stt], [δu, δS]
+
+# Create other functions
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3,))), name="u")  # for output
+So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3, 3), True)), name="S")  # for output
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt2(t=time, dt=dt, x=m, xt=mt, xtt=mtt, rho=0.95)
@@ -123,8 +127,10 @@ ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 # Write mesh, meshtags
 ofile.write_mesh_meshtags(mesh, mts)
 # Write initial state
-ofile.write_function(u, time.value)
-ofile.write_function(S, time.value)
+dolfiny.interpolation.interpolate(u, uo)
+dolfiny.interpolation.interpolate(S, So)
+ofile.write_function(uo, time.value)
+ofile.write_function(So, time.value)
 
 # Options for PETSc backend
 opts = PETSc.Options(name)
@@ -167,7 +173,9 @@ for time_step in range(1, nT + 1):
     odeint.update()
 
     # Write output
-    ofile.write_function(u, time.value)
-    ofile.write_function(S, time.value)
+    dolfiny.interpolation.interpolate(u, uo)
+    dolfiny.interpolation.interpolate(S, So)
+    ofile.write_function(uo, time.value)
+    ofile.write_function(So, time.value)
 
 ofile.close()

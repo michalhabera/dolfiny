@@ -1,26 +1,29 @@
 import time
 
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import dolfinx
 import dolfiny
 import numpy
 import pytest
 import ufl
-from mpi4py import MPI
-from petsc4py import PETSc
+
 
 N = 10
 mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, N, N, N)
+gdim = mesh.geometry.dim
 
-DG0 = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
-DG1 = dolfinx.fem.FunctionSpace(mesh, ("DP", 1))
-CG1 = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
-TCG1 = dolfinx.fem.TensorFunctionSpace(mesh, ("P", 1))
-TDG0 = dolfinx.fem.TensorFunctionSpace(mesh, ("DP", 0))
-TDG1s = dolfinx.fem.TensorFunctionSpace(mesh, ("DP", 1), symmetry=True)
-TDG2s = dolfinx.fem.TensorFunctionSpace(mesh, ("DP", 2), symmetry=True)
+DG0 = dolfinx.fem.functionspace(mesh, ("DP", 0))
+DG1 = dolfinx.fem.functionspace(mesh, ("DP", 1))
+CG1 = dolfinx.fem.functionspace(mesh, ("P", 1))
+TCG1 = dolfinx.fem.functionspace(mesh, ("P", 1, (gdim, gdim)))
+TDG0 = dolfinx.fem.functionspace(mesh, ("DP", 0, (gdim, gdim)))
+TDG1s = dolfinx.fem.functionspace(mesh, ("DP", 1, (gdim, gdim), True))
+TDG2s = dolfinx.fem.functionspace(mesh, ("DP", 2, (gdim, gdim), True))
 
-CG2 = dolfinx.fem.FunctionSpace(mesh, ("P", 2))
-VCG1 = dolfinx.fem.FunctionSpace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
+CG2 = dolfinx.fem.functionspace(mesh, ("P", 2))
+VCG1 = dolfinx.fem.functionspace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
 
 f = dolfinx.fem.Function(TCG1)
 f.vector.set(1.0)
@@ -72,8 +75,8 @@ def test_perf():
     N = 500
     mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, N, N)
 
-    P1 = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
-    P2 = dolfinx.fem.FunctionSpace(mesh, ("P", 2))
+    P1 = dolfinx.fem.functionspace(mesh, ("P", 1))
+    P2 = dolfinx.fem.functionspace(mesh, ("P", 2))
 
     u1 = dolfinx.fem.Function(P1)
     u2 = dolfinx.fem.Function(P2)
@@ -91,7 +94,7 @@ def test_linear_combination():
     N = 100
     mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, N, N)
 
-    P1 = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
+    P1 = dolfinx.fem.functionspace(mesh, ("P", 1))
 
     u1 = dolfinx.fem.Function(P1)
     u2 = dolfinx.fem.Function(P1)
