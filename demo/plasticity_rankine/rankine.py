@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 
+from mpi4py import MPI
+from petsc4py import PETSc
 import numpy as np
+
 import dolfinx
 import ufl
 import basix
-import ffcx
 import dolfiny
 import mesh_notched
-from mpi4py import MPI
-from petsc4py import PETSc
 
 
 name = "notched"
@@ -25,29 +25,27 @@ top_facets = dolfinx.mesh.locate_entities_boundary(
     mesh, 1, lambda x: np.logical_and(np.isclose(x[0], 0.0), np.greater_equal(x[1], 0.5)))
 bottom_facets = dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[1], 0.0))
 
-V = dolfinx.fem.VectorFunctionSpace(mesh, ("P", 2))
-
 quad_degree = 8
-Qe = ffcx.element_interface.QuadratureElement(mesh.basix_cell().name, (), degree=quad_degree, scheme="default")
+Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(2,))
+Qe = basix.ufl.quadrature_element(mesh.basix_cell(), value_shape=(), degree=quad_degree)
+Pe = basix.ufl.blocked_element(Qe, shape=(2, 2), symmetry=True)
 
-# Symmetric plastic strain space
-Pe = basix.ufl.blocked_element(Qe, rank=2, symmetry=True)
-P = dolfinx.fem.FunctionSpace(mesh, Pe)
+Uf = dolfinx.fem.functionspace(mesh, Ue)
+Pf = dolfinx.fem.functionspace(mesh, Pe)
+Lf = dolfinx.fem.functionspace(mesh, Qe)
 
-# Scalar space for plastic multiplier
-Le = basix.ufl.blocked_element(Qe, rank=0)
-L = dolfinx.fem.FunctionSpace(mesh, Le)
+u = dolfinx.fem.Function(Uf, name="u")  # displacement
+dP = dolfinx.fem.Function(Pf, name="dP")  # increment of plastic strain, symmetric
+dl = dolfinx.fem.Function(Lf, name="dl")  # increment of plastic multiplier
 
-u0 = dolfinx.fem.Function(V, name="u0")
-dP = dolfinx.fem.Function(P, name="dP")
-dl = dolfinx.fem.Function(L, name="dl")
+P0 = dolfinx.fem.Function(Pf, name="P0")  # total plastic strain, symmetric
+l0 = dolfinx.fem.Function(Lf, name="l0")  # total plastic multiplier
 
-P0 = dolfinx.fem.Function(P, name="P0")
-l0 = dolfinx.fem.Function(L, name="l0")
+δu = ufl.TestFunction(Uf)
+δdP = ufl.TestFunction(Pf)
+δdl = ufl.TestFunction(Lf)
 
-δu = ufl.TestFunction(V)
-δdP = ufl.TestFunction(P)
-δdl = ufl.TestFunction(L)
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (2,))), name="u")  # for output
 
 
 def f(sigma):
@@ -56,15 +54,13 @@ def f(sigma):
 
 
 # Strain measures
-E = ufl.sym(ufl.grad(u0))
-E_el = E - (P0 + dP)  # E_el = E(F) - P, elastic strain
+E = ufl.sym(ufl.grad(u))  # linearised total strain
+E_el = E - (P0 + dP)  # E_el = E - P, elastic strain
 
 mu = 100
 la = 10
 Sy = 0.3
 sigma = 2 * mu * E_el + la * ufl.tr(E_el) * ufl.Identity(2)
-young = 4 * mu * (la + mu) / (la + 2 * mu)
-cn = 1 / young
 
 sigma = ufl.variable(sigma)
 
@@ -79,12 +75,17 @@ F2 = ufl.inner(ufl.min_value(dl, -f(sigma)), δdl) * dx
 #
 # F2 = ufl.inner(cn * dl - ufl.Max(0.0, cn*dl + f(sigma)), δdl) * dx
 # F2 = ufl.inner(ufl.min_value(dl, -f(sigma)), δdl) * dx
+#
+# with
+# young = 4 * mu * (la + mu) / (la + 2 * mu)
+# cn = 1 / young
 
-u_top = dolfinx.fem.Function(V, name="u_top")
-u_bottom = dolfinx.fem.Function(V, name="u_bottom")
 
-bcs = [dolfinx.fem.dirichletbc(u_top, dolfinx.fem.locate_dofs_topological(V, 1, top_facets)),
-       dolfinx.fem.dirichletbc(u_bottom, dolfinx.fem.locate_dofs_topological(V, 1, bottom_facets))]
+u_top = dolfinx.fem.Function(Uf, name="u_top")
+u_bottom = dolfinx.fem.Function(Uf, name="u_bottom")
+
+bcs = [dolfinx.fem.dirichletbc(u_top, dolfinx.fem.locate_dofs_topological(Uf, 1, top_facets)),
+       dolfinx.fem.dirichletbc(u_bottom, dolfinx.fem.locate_dofs_topological(Uf, 1, bottom_facets))]
 
 sc_J = dolfiny.localsolver.UserKernel(
     name="sc_J",
@@ -258,7 +259,7 @@ def local_update(problem):
 
 cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
 
-ls = dolfiny.localsolver.LocalSolver([V, P, L], local_spaces_id=[1, 2],
+ls = dolfiny.localsolver.LocalSolver([Uf, Pf, Lf], local_spaces_id=[1, 2],
                                      F_integrals=[{dolfinx.fem.IntegralType.cell:
                                                    [(-1, sc_F_cell, cells[-1])]}],
                                      J_integrals=[[{dolfinx.fem.IntegralType.cell:
@@ -278,10 +279,10 @@ opts["snes_atol"] = 1.0e-12
 opts["snes_rtol"] = 1.0e-8
 opts["snes_max_it"] = 20
 opts["ksp_type"] = "preonly"
-opts["pc_type"] = "lu"
+opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
-problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u0, dP, dl], bcs=bcs,
+problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, dP, dl], bcs=bcs,
                                                     prefix=name, localsolver=ls)
 
 ls.view()
@@ -295,17 +296,21 @@ for step, factor in enumerate(cycle):
 
     dolfiny.utils.pprint(f"\n+++ Processing step {step:3d}, load factor = {factor:5.4f}")
 
+    # Update values for given boundary displacement
     u_top.interpolate(lambda x: (np.zeros_like(x[0]), du1 * factor * np.ones_like(x[1])))
 
+    # Solve nonlinear problem
     problem.solve()
 
     # Assert convergence of nonlinear solver
-    assert problem.snes.getConvergedReason() > 0, "SNES Nonlinear solver did not converge!"
+    problem.status(verbose=True, error_on_failure=True)
 
-    # Store primal states
+    # Accumulate plastic states from increments
     for source, target in zip([dP, dl], [P0, l0]):
         with source.vector.localForm() as locs, target.vector.localForm() as loct:
             loct.axpy(1.0, locs)
 
+    # Interpolate and write output
+    dolfiny.interpolation.interpolate(u, uo)
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, f"{name}.xdmf", "a") as ofile:
-        ofile.write_function(u0, float(step))
+        ofile.write_function(uo, step)

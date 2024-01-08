@@ -1,8 +1,8 @@
 import gc
 
+from mpi4py import MPI
 import dolfinx
 import pytest
-from mpi4py import MPI
 
 
 def pytest_runtest_teardown(item):
@@ -34,19 +34,19 @@ def squaremesh_5():
 
 @pytest.fixture(scope="module")
 def V1(squaremesh_5):
-    return dolfinx.fem.FunctionSpace(squaremesh_5, ("P", 1))
+    return dolfinx.fem.functionspace(squaremesh_5, ("P", 1))
 
 
 @pytest.fixture(scope="module")
 def V2(squaremesh_5):
-    return dolfinx.fem.FunctionSpace(squaremesh_5, ("P", 2))
+    return dolfinx.fem.functionspace(squaremesh_5, ("P", 2))
 
 
 @pytest.fixture(scope="module")
 def vV1(squaremesh_5):
-    return dolfinx.fem.VectorFunctionSpace(squaremesh_5, ("P", 1))
+    return dolfinx.fem.functionspace(squaremesh_5, ("P", 1, (squaremesh_5.geometry.dim,)))
 
 
 @pytest.fixture(scope="module")
 def vV2(squaremesh_5):
-    return dolfinx.fem.VectorFunctionSpace(squaremesh_5, ("P", 2))
+    return dolfinx.fem.functionspace(squaremesh_5, ("P", 2, (squaremesh_5.geometry.dim,)))

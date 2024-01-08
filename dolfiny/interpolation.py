@@ -3,7 +3,6 @@ import logging
 import basix
 import cffi
 import dolfinx
-import ffcx.element_interface
 import numba
 import numba.core.typing.cffi_utils as cffi_support
 import numpy as np
@@ -35,7 +34,7 @@ class CompiledExpression:
                 #
                 # TODO: We can get unique subelements or unique
                 #       points for evaluation
-                sub_elements = target_el.sub_elements()
+                sub_elements = target_el.sub_elements
 
                 # We can handle only all sub elements equal case
                 assert all([sub_elements[0] == x for x in sub_elements])
@@ -45,16 +44,16 @@ class CompiledExpression:
         self.basix_element = target_el
 
         if isinstance(self.basix_element, basix.ufl._BlockedElement):
-            mapping_types = [self.basix_element.sub_element.element.map_type]
-            nodes = self.basix_element.sub_element.element.points
+            mapping_types = [self.basix_element._sub_element._element.map_type]
+            nodes = self.basix_element._sub_element._element.points
         elif isinstance(self.basix_element, basix.ufl._MixedElement):
-            mapping_types = [e.element.map_type for e in self.basix_element.sub_elements]
-            nodes = self.basix_element.sub_elements[0].element.points
+            mapping_types = [e._element.map_type for e in self.basix_element._sub_elements]
+            nodes = self.basix_element._sub_elements[0]._element.points
         elif isinstance(self.basix_element, basix.ufl._BasixElement):
-            mapping_types = [self.basix_element.element.map_type]
-            nodes = self.basix_element.element.points
-        elif isinstance(self.basix_element, ffcx.element_interface.QuadratureElement):
-            mapping_types = [basix._basixcpp.MapType.identity]
+            mapping_types = [self.basix_element.basix_element.map_type]
+            nodes = self.basix_element.basix_element.points
+        elif isinstance(self.basix_element, basix.ufl._QuadratureElement):
+            mapping_types = [self.basix_element.map_type]
             nodes = self.basix_element._points
         else:
             raise NotImplementedError("Unsupported element type")
@@ -173,7 +172,7 @@ def interpolate_compiled(compiled_expression, target_func):
     if len(constants) > 0:
         constants_vector = np.hstack([c.value.flatten() for c in constants])
 
-    value_size = int(np.product(compiled_expression.expr.ufl_shape))
+    value_size = int(np.prod(compiled_expression.expr.ufl_shape))
     basix_space_dim = compiled_expression.basix_element.dim
     space_dim = target_func.function_space.element.space_dimension
 
@@ -183,9 +182,10 @@ def interpolate_compiled(compiled_expression, target_func):
     # Prepare mapping of subelements into the parent finite element
     # This mapping stores also how dofs are collapsed when symmetry to a TensorElement
     # is applied
-    if hasattr(compiled_expression.target_el, "flattened_sub_element_mapping") and \
-       compiled_expression.target_el._has_symmetry:
-        subel_map = np.array(compiled_expression.target_el.flattened_sub_element_mapping())
+    if isinstance(compiled_expression.target_el._pullback, ufl.pullback.SymmetricPullback):
+        sub_element_mapping = compiled_expression.target_el._pullback._symmetry
+        shape = compiled_expression.expr.ufl_shape
+        subel_map = np.array([sub_element_mapping[(i, j)] for i in range(shape[0]) for j in range(shape[1])])
     else:
         subel_map = np.array(range(value_size))
 

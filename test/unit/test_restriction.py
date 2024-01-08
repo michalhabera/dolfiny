@@ -21,7 +21,9 @@ def test_coupled_poisson():
         ghost_mode = dolfinx.mesh.GhostMode.shared_facet
 
     mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 16, 16, ghost_mode=ghost_mode)
-    mesh.topology.create_connectivity(0, 1)
+
+    mesh.topology.create_connectivity(mesh.topology.dim, mesh.topology.dim)
+    mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
 
     left_half = dolfinx.mesh.locate_entities(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
     right_half = dolfinx.mesh.locate_entities(mesh, mesh.topology.dim, lambda x: numpy.greater_equal(x[0], 0.5))
@@ -39,9 +41,9 @@ def test_coupled_poisson():
     indices = numpy.unique(interface_facets)
     mt_interface = dolfinx.mesh.meshtags(mesh, mesh.topology.dim - 1, indices, 1)
 
-    U0 = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
-    U1 = dolfinx.fem.FunctionSpace(mesh, ("P", 2))
-    L = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
+    U0 = dolfinx.fem.functionspace(mesh, ("P", 1))
+    U1 = dolfinx.fem.functionspace(mesh, ("P", 2))
+    L = dolfinx.fem.functionspace(mesh, ("P", 1))
 
     v0 = ufl.TestFunction(U0)
     v1 = ufl.TestFunction(U1)
@@ -84,9 +86,7 @@ def test_coupled_poisson():
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
-
-    opts_glob = PETSc.Options()
-    opts_glob['mat_mumps_icntl_24'] = 1
+    opts['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
         [F0, F1, F2], [w0, w1, lam], bcs=bcs, restriction=r, prefix="poisson")
@@ -100,7 +100,7 @@ def test_coupled_poisson():
     p = numpy.array([0.5, 0.5, 0.0], dtype=numpy.float64)
 
     cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, p)
-    cells = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, p)
+    cells = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, p).array
 
     if len(cells) > 0:
         value_s0 = s0.eval(p, cells[0])
@@ -118,14 +118,14 @@ def test_sloped_stokes():
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD,
                              os.path.join(path, "data", "sloped_triangle_mesh.xdmf"), "r") as infile:
         mesh = infile.read_mesh(name="Grid")
-        mesh.topology.create_connectivity(0, 1)
+        mesh.topology.create_connectivity(1, mesh.topology.dim)
 
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, os.path.join(path, "data", "sloped_line_mvc.xdmf"), "r") as infile:
         boundaries = infile.read_meshtags(mesh, name="Grid")
 
-    V = dolfinx.fem.VectorFunctionSpace(mesh, ("P", 2))
-    P = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
-    L = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
+    V = dolfinx.fem.functionspace(mesh, ("P", 2, (mesh.geometry.dim,)))
+    P = dolfinx.fem.functionspace(mesh, ("P", 1))
+    L = dolfinx.fem.functionspace(mesh, ("P", 1))
 
     u = dolfinx.fem.Function(V, name="u")
     v = ufl.TestFunction(V)
@@ -189,9 +189,7 @@ def test_sloped_stokes():
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
-
-    opts_glob = PETSc.Options()
-    opts_glob['mat_mumps_icntl_24'] = 1
+    opts['mat_mumps_icntl_24'] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
         [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="stokes")
@@ -254,9 +252,9 @@ def test_pipes_stokes():
     with dolfinx.io.XDMFFile(MPI.COMM_WORLD, "mesh.xdmf", "w") as out:
         out.write_mesh(mesh)
 
-    V = dolfinx.fem.VectorFunctionSpace(mesh, ("P", 2))
-    P = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
-    L = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
+    V = dolfinx.fem.functionspace(mesh, ("P", 2, (mesh.geometry.dim,)))
+    P = dolfinx.fem.functionspace(mesh, ("P", 1))
+    L = dolfinx.fem.functionspace(mesh, ("P", 1))
 
     u = dolfinx.fem.Function(V, name="u")
     v = ufl.TestFunction(V)

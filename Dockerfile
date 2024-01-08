@@ -2,10 +2,10 @@ FROM dolfinx/dev-env:current
 
 ARG DOLFINY_BUILD_TYPE="RelWithDebInfo"
 
-ARG UFL_GIT_COMMIT="4e32e8617ac9f08938af4d66455453bc37fd45e3"
-ARG BASIX_GIT_COMMIT="0fc130f7d790f793ffa57bf8d056232ff6f12be8"
-ARG FFCX_GIT_COMMIT="c9831436449eeae702acf3855efc90a5327fd4d9"
-ARG DOLFINX_GIT_COMMIT="84d598ffded8b488ca75bc9717c9f5658a2cd631"
+ARG UFL_GIT_COMMIT="7277fd1"
+ARG BASIX_GIT_COMMIT="73d848e"
+ARG FFCX_GIT_COMMIT="a22c679"
+ARG DOLFINX_GIT_COMMIT="90b47de"
 
 ARG PYPI_PACKAGE_REPO="https://gitlab.uni.lu/api/v4/projects/3415/packages/pypi/simple"
 
@@ -33,4 +33,4 @@ RUN git clone --branch main https://github.com/FEniCS/dolfinx.git \
         && cmake --install build \
         && python3 -m pip install ./python
 
-RUN pip3 install --index-url ${PYPI_PACKAGE_REPO} cppyy==3.0.0
+RUN pip3 install --index-url ${PYPI_PACKAGE_REPO} cppyy==3.1.2

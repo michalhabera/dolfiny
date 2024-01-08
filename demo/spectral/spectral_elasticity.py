@@ -39,10 +39,10 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadra
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 3})
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), 1, rank=1)
+Ue = basix.ufl.element("P", mesh.basix_cell(), 1, shape=(mesh.geometry.dim,))
 
 # Define function spaces
-Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
+Uf = dolfinx.fem.functionspace(mesh, Ue)
 
 # Define functions
 u = dolfinx.fem.Function(Uf, name='u')

@@ -64,12 +64,12 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ve = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
+Ve = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(3,))
 Se = basix.ufl.element("Regge", mesh.basix_cell(), 1)
 
 # Define function spaces
-Vf = dolfinx.fem.FunctionSpace(mesh, Ve)
-Sf = dolfinx.fem.FunctionSpace(mesh, Se)
+Vf = dolfinx.fem.functionspace(mesh, Ve)
+Sf = dolfinx.fem.functionspace(mesh, Se)
 
 # Define functions
 v = dolfinx.fem.Function(Vf, name="v")
@@ -89,6 +89,10 @@ m, mt, δm = [v, S], [vt, St], [δv, δS]
 # Create other functions
 u = dolfinx.fem.Function(Vf, name="u")
 d = dolfinx.fem.Function(Vf, name="d")  # dummy
+
+vo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3,))), name="v")  # for output
+So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3, 3), True)), name="S")  # for output
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3,))), name="u")  # for output
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=m, xt=mt, rho=0.95)
@@ -128,9 +132,12 @@ ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 # Write mesh, meshtags
 ofile.write_mesh_meshtags(mesh, mts)
 # Write initial state
-ofile.write_function(v, time.value)
-ofile.write_function(S, time.value)
-ofile.write_function(u, time.value)
+dolfiny.interpolation.interpolate(v, vo)
+dolfiny.interpolation.interpolate(S, So)
+dolfiny.interpolation.interpolate(u, uo)
+ofile.write_function(vo, time.value)
+ofile.write_function(So, time.value)
+ofile.write_function(uo, time.value)
 
 # Options for PETSc backend
 opts = PETSc.Options(name)
@@ -177,8 +184,11 @@ for time_step in range(1, nT + 1):
     dolfiny.interpolation.interpolate(d, u)
 
     # Write output
-    ofile.write_function(v, time.value)
-    ofile.write_function(S, time.value)
-    ofile.write_function(u, time.value)
+    dolfiny.interpolation.interpolate(v, vo)
+    dolfiny.interpolation.interpolate(S, So)
+    dolfiny.interpolation.interpolate(u, uo)
+    ofile.write_function(vo, time.value)
+    ofile.write_function(So, time.value)
+    ofile.write_function(uo, time.value)
 
 ofile.close()

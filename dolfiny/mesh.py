@@ -3,7 +3,7 @@ import logging
 from mpi4py import MPI
 import numpy
 from dolfinx.cpp.mesh import CellType
-from dolfinx import cpp
+from dolfinx import cpp, default_real_type
 from dolfinx.mesh import create_mesh, meshtags_from_entities, meshtags
 from dolfinx.io.gmshio import ufl_mesh
 from dolfinx.io import distribute_entity_data
@@ -93,13 +93,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
                  #  'hexahedron64': 64,
                  }
 
-        # node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
-
-        # FIXME: This silences the RuntimeWarning (ctypes / PEP3118 format string) caused by Gmsh/numpy
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
+        node_tags, coord, param_coords = gmsh_model.mesh.getNodes()
 
         # Fetch elements for the mesh
         cell_types, cell_tags, cell_node_tags = gmsh_model.mesh.getElements(dim=tdim)
@@ -179,7 +173,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         cells = numpy.empty((0, cells_shape[1]))
         points = numpy.empty((0, pts_shape[1]))
 
-    mesh = create_mesh(comm, cells, points, ufl_mesh(celltype, pts_shape[1]))
+    mesh = create_mesh(comm, cells, points, ufl_mesh(celltype, pts_shape[1], dtype=default_real_type))
     mts = {}
 
     # Get physical groups (dimension, tag)
@@ -234,10 +228,13 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
 
         local_entities, local_values = distribute_entity_data(mesh, pgdim, _mt_cells, _mt_values)
 
-        mesh.topology.create_connectivity(pgdim, 0)
+        # compute full connectivity for convenience
+        for d in range(mesh.topology.dim + 1):
+            mesh.topology.create_connectivity(pgdim, d)
 
-        mt = meshtags_from_entities(mesh, pgdim, cpp.graph.AdjacencyList_int32(
-            local_entities), numpy.int32(local_values))
+        mt = meshtags_from_entities(mesh, pgdim,
+                                    cpp.graph.AdjacencyList_int32(local_entities),
+                                    numpy.int32(local_values))
         mt.name = pg_tag_name
 
         mts[pg_tag_name] = mt

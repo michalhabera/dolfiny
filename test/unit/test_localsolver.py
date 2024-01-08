@@ -23,11 +23,11 @@ def test_linear_elasticity(squaremesh_5):
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
-    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
+    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True)
+    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(mesh.geometry.dim,))
 
-    S = dolfinx.fem.FunctionSpace(mesh, Se)
-    U = dolfinx.fem.FunctionSpace(mesh, Ue)
+    S = dolfinx.fem.functionspace(mesh, Se)
+    U = dolfinx.fem.functionspace(mesh, Ue)
 
     sigma0, tau = dolfinx.fem.Function(S, name="sigma"), ufl.TestFunction(S)
     u0, v = dolfinx.fem.Function(U, name="u"), ufl.TestFunction(U)
@@ -163,11 +163,11 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
-    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
+    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True)
+    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(mesh.geometry.dim,))
 
-    S = dolfinx.fem.FunctionSpace(mesh, Se)
-    U = dolfinx.fem.FunctionSpace(mesh, Ue)
+    S = dolfinx.fem.functionspace(mesh, Se)
+    U = dolfinx.fem.functionspace(mesh, Ue)
 
     sigma0, tau = dolfinx.fem.Function(S, name="sigma"), ufl.TestFunction(S)
     u0, v = dolfinx.fem.Function(U, name="u"), ufl.TestFunction(U)
@@ -307,11 +307,11 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, rank=2, symmetry=True)
-    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, rank=1)
+    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True)
+    Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(mesh.geometry.dim,))
 
-    S = dolfinx.fem.FunctionSpace(mesh, Se)
-    U = dolfinx.fem.FunctionSpace(mesh, Ue)
+    S = dolfinx.fem.functionspace(mesh, Se)
+    U = dolfinx.fem.functionspace(mesh, Ue)
 
     sigma0, tau = dolfinx.fem.Function(S, name="sigma"), ufl.TestFunction(S)
     u0, v = dolfinx.fem.Function(U, name="u"), ufl.TestFunction(U)

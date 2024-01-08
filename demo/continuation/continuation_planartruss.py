@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import dolfinx
 import dolfiny
 import numpy as np
 import ufl
 import basix
-from mpi4py import MPI
-from petsc4py import PETSc
 
 import mesh_planartruss_gmshapi as mg
 
@@ -47,7 +48,7 @@ dS = ufl.Measure("dS", domain=mesh, subdomain_data=interfaces)
 Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=gdim, shape=(gdim,))
 
 # Define function spaces
-Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
+Uf = dolfinx.fem.functionspace(mesh, Ue)
 
 # Define functions
 u = dolfinx.fem.Function(Uf, name='u')

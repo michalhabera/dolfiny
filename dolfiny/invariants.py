@@ -136,7 +136,7 @@ def eigenstate3(A):
     dp += eps**2
     Δ += eps**2
 
-    phi3 = ufl.atan_2(ufl.sqrt(27) * ufl.sqrt(Δ), dq)
+    phi3 = ufl.atan2(ufl.sqrt(27) * ufl.sqrt(Δ), dq)
 
     # sorted eigenvalues: λ0 <= λ1 <= λ2
     λ = [(I1 + 2 * ufl.sqrt(dp) * ufl.cos((phi3 + 2 * ufl.pi * k) / 3)) / 3 for k in range(1, 4)]

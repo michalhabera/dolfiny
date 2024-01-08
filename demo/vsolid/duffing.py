@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import dolfinx
 import dolfiny
 import numpy
 import ufl
-from mpi4py import MPI
-from petsc4py import PETSc
 
 """
 First order nonlinear system of ODEs: (Duffing oscillator, undamped, unforced)
@@ -37,8 +38,8 @@ def _st(u, v):
     return (a + 3 * b * u**2) * v  # rate of constitutive law
 
 
-V = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
-S = dolfinx.fem.FunctionSpace(mesh, ("DG", 0))
+V = dolfinx.fem.functionspace(mesh, ("DP", 0))
+S = dolfinx.fem.functionspace(mesh, ("DP", 0))
 
 v = dolfinx.fem.Function(V, name="v")
 s = dolfinx.fem.Function(S, name="s")

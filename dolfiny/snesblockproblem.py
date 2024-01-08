@@ -241,6 +241,11 @@ class SNESBlockProblem():
         atol_r = []
         rtol_r = []
 
+        if self.nest:
+            self.compute_norms_nest(self.snes)
+        else:
+            self.compute_norms_block(self.snes)
+
         for gi, i in enumerate(self.global_spaces_id):
             atol_x.append(self.norm_x[it][gi] < snes.atol)
             atol_dx.append(self.norm_dx[it][gi] < snes.atol)
@@ -257,13 +262,15 @@ class SNESBlockProblem():
             rtol_r.append(self.norm_r[it][gi] < rtol_r0 * snes.rtol)
 
         if it > snes.max_it:
-            return -5
+            return PETSc.SNES.ConvergedReason.DIVERGED_MAX_IT
         elif all(atol_r) and it > 0:
-            return 2
+            return PETSc.SNES.ConvergedReason.CONVERGED_FNORM_ABS
         elif all(rtol_r):
-            return 3
+            return PETSc.SNES.ConvergedReason.CONVERGED_FNORM_RELATIVE
         elif all(rtol_dx):
-            return 4
+            return PETSc.SNES.ConvergedReason.CONVERGED_SNORM_RELATIVE
+        else:
+            return PETSc.SNES.ConvergedReason.ITERATING
 
     def _info_ksp(self, ksp):
 

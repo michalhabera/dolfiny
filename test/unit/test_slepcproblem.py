@@ -8,10 +8,10 @@ from petsc4py import PETSc
 
 def test_neohooke():
     mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 7, 7, 7)
-    V = dolfinx.fem.VectorFunctionSpace(mesh, ("P", 1))
-    P = dolfinx.fem.FunctionSpace(mesh, ("P", 1))
+    V = dolfinx.fem.functionspace(mesh, ("P", 1, (mesh.geometry.dim,)))
+    P = dolfinx.fem.functionspace(mesh, ("P", 1))
 
-    L = dolfinx.fem.FunctionSpace(mesh, ("DP", 0))
+    L = dolfinx.fem.functionspace(mesh, ("DP", 0))
 
     u = dolfinx.fem.Function(V, name="u")
     v = ufl.TestFunction(V)

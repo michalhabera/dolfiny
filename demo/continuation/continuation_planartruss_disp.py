@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import dolfinx
 import dolfiny
 import numpy as np
 import ufl
 import basix
-from mpi4py import MPI
-from petsc4py import PETSc
 
 import mesh_planartruss_gmshapi as mg
 
@@ -49,10 +50,10 @@ Ke = basix.ufl.element("DP", mesh.basix_cell(), degree=0, gdim=2)
 Se = basix.ufl.element("DP", mesh.basix_cell(), degree=p, gdim=2, shape=(2,))
 
 # Define function spaces
-Uf = dolfinx.fem.FunctionSpace(mesh, Ue)
-Rf = dolfinx.fem.FunctionSpace(mesh, Re)
-Kf = dolfinx.fem.FunctionSpace(mesh, Ke)
-Sf = dolfinx.fem.FunctionSpace(mesh, Se)
+Uf = dolfinx.fem.functionspace(mesh, Ue)
+Rf = dolfinx.fem.functionspace(mesh, Re)
+Kf = dolfinx.fem.functionspace(mesh, Ke)
+Sf = dolfinx.fem.functionspace(mesh, Se)
 
 # Define functions
 u = dolfinx.fem.Function(Uf, name='u')  # displacement

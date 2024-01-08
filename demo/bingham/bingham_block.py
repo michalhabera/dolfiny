@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
+from mpi4py import MPI
+from petsc4py import PETSc
+
 import dolfinx
 import dolfiny
 import numpy as np
 import ufl
 import basix
-from mpi4py import MPI
-from petsc4py import PETSc
 
 import mesh_annulus_gmshapi as mg
 
@@ -93,12 +94,12 @@ def v_vector_o_(x):
 
 
 # Define elements
-Ve = basix.ufl.element("P", mesh.basix_cell(), degree=2, rank=1)
-Pe = basix.ufl.element("P", mesh.basix_cell(), degree=1, rank=0)
+Ve = basix.ufl.element("P", mesh.basix_cell(), degree=2, shape=(mesh.geometry.dim,))
+Pe = basix.ufl.element("P", mesh.basix_cell(), degree=1)
 
 # Define function spaces
-V = dolfinx.fem.FunctionSpace(mesh, Ve)
-P = dolfinx.fem.FunctionSpace(mesh, Pe)
+V = dolfinx.fem.functionspace(mesh, Ve)
+P = dolfinx.fem.functionspace(mesh, Pe)
 
 # Define functions
 v = dolfinx.fem.Function(V, name="v")
@@ -156,7 +157,7 @@ def T(v, p):
 f = ufl.inner(δv, rho * vt + rho * ufl.grad(v) * v) * dx \
     + ufl.inner(ufl.grad(δv), T(v, p)) * dx \
     + ufl.inner(δp, ufl.div(v)) * dx \
-    + dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(p, δp) * dx  # Zero pressure block for BCs
+    + dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(δp, p) * dx  # Zero pressure block for BCs
 
 # Overall form (as one-form)
 F = odeint.discretise_in_time(f)
@@ -168,8 +169,8 @@ ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 # Write mesh, meshtags
 ofile.write_mesh_meshtags(mesh, mts)
 # Write initial state
-ofile.write_function(v, time.value)
-ofile.write_function(p, time.value)
+# ofile.write_function(v, time.value)
+# ofile.write_function(p, time.value)
 
 # Options for PETSc backend
 opts = PETSc.Options("bingham")
@@ -219,7 +220,7 @@ for time_step in range(1, nT + 1):
     odeint.update()
 
     # Write output
-    ofile.write_function(v, time.value)
-    ofile.write_function(p, time.value)
+    # ofile.write_function(v, time.value)
+    # ofile.write_function(p, time.value)
 
 ofile.close()
