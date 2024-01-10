@@ -3,14 +3,13 @@ FROM dolfinx/dev-env:current
 ARG DOLFINY_BUILD_TYPE="RelWithDebInfo"
 
 ARG UFL_GIT_COMMIT="7277fd1"
-ARG BASIX_GIT_COMMIT="73d848e"
-ARG FFCX_GIT_COMMIT="a22c679"
-ARG DOLFINX_GIT_COMMIT="90b47de"
+ARG BASIX_GIT_COMMIT="b935d2d"
+ARG FFCX_GIT_COMMIT="2d60a8b"
+ARG DOLFINX_GIT_COMMIT="75ba784"
 
 ARG PYPI_PACKAGE_REPO="https://gitlab.uni.lu/api/v4/projects/3415/packages/pypi/simple"
 
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV CLING_REBUILD_PCH=1
 ENV PETSC_ARCH="linux-gnu-real64-32"
 
 RUN git clone --branch main https://github.com/FEniCS/basix.git \
