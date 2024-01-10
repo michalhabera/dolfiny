@@ -16,7 +16,7 @@ name = "solid_stressbased"
 comm = MPI.COMM_WORLD
 
 # discretisation
-e = 5
+e = 6
 p = 1
 c = dolfinx.cpp.mesh.CellType.hexahedron
 
@@ -60,8 +60,8 @@ la = E * nu / (1 + nu) / (1 - 2 * nu)
 mu = E / 2 / (1 + nu)
 
 # stabilisation
-psi_1 = dolfinx.fem.Constant(mesh, 0.25)  # 0.15/0.53, 0.25/0.31
-psi_2 = dolfinx.fem.Constant(mesh, 0.05)
+# psi_1 = dolfinx.fem.Constant(mesh, 0.25)  # 0.15/0.53, 0.25/0.31
+# psi_2 = dolfinx.fem.Constant(mesh, 0.05)
 
 
 # strain
@@ -188,13 +188,13 @@ opts["pc_type"] = "bjacobi"
 problem_stress = dolfiny.snesblockproblem.SNESBlockProblem(F_stress, [S], prefix=name, bcs=bcs_stress)
 problem_stress.solve()
 # check symmetry
-dolfiny.utils.pprint(f"(stress) discrete operator is symmetric = {problem_stress.J.isSymmetric(tol=1e-8)}")
+dolfiny.utils.pprint(f"(stress) discrete operator is symmetric = {problem_stress.J.isSymmetric(tol=1.0e-12)}")
 
 # displm problem (nonlinear problem, for convenience)
 problem_displm = dolfiny.snesblockproblem.SNESBlockProblem(F_displm, [u], prefix=name, bcs=bcs_displm)
 problem_displm.solve()
 # check symmetry
-dolfiny.utils.pprint(f"(displm) discrete operator is symmetric = {problem_displm.J.isSymmetric(tol=1e-8)}")
+dolfiny.utils.pprint(f"(displm) discrete operator is symmetric = {problem_displm.J.isSymmetric(tol=1.0e-12)}")
 
 # output
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
@@ -243,7 +243,7 @@ Su_vs_S0_error = dolfiny.expression.assemble(error(Su, S0_expr), dx)
 dolfiny.utils.pprint(f"relative Su error norm = {Su_vs_S0_error:.3e}")
 
 u_vs_u0_error = dolfiny.expression.assemble(error(u, u0_expr), dx)
-dolfiny.utils.pprint(f"relative u  error norm = {u_vs_u0_error:.3e}")
+dolfiny.utils.pprint(f"relative u  error norm = {u_vs_u0_error:.3e}")  # NOTE: could blow (for zero u0)
 
 incE_norm = dolfiny.expression.assemble(norm(inc(strain_from_stress(S))), dx)
 dolfiny.utils.pprint(f"inc(E(S )) norm = {incE_norm:.3e}")
