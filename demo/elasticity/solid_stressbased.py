@@ -259,9 +259,11 @@ A = dolfinx.fem.petsc.assemble_matrix_block(problem_stress.J_form, bcs=[])
 A.assemble()
 assert A.isSymmetric(tol=1.0e-12)
 nev = 20
+opts["eps_type"] = "krylovschur"
 opts["eps_hermitian"] = True
 opts["eps_smallest_real"] = True
 opts["eps_nev"] = nev
+opts["eps_ncv"] = nev * 3
 opts["eps_tol"] = 1.0e-12
 opts["eps_max_it"] = 1000
 eps = SLEPc.EPS().create()
@@ -272,7 +274,7 @@ eps.solve()
 assert eps.getConverged() >= nev
 eigenvalues = np.array([eps.getEigenvalue(i).real for i in range(nev)])
 dolfiny.utils.pprint(eigenvalues[:nev])
-
+dolfiny.utils.pprint(f"eps :: niter = {eps.getIterationNumber()}, reason = {eps.getConvergedReason()}")
 exit()
 
 # detailed error study
