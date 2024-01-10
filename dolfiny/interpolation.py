@@ -44,7 +44,7 @@ class CompiledExpression:
         self.basix_element = target_el
 
         if isinstance(self.basix_element, basix.ufl._BlockedElement):
-            mapping_types = [self.basix_element._sub_element._element.map_type]
+            mapping_types = [self.basix_element.map_type]
             nodes = self.basix_element._sub_element._element.points
         elif isinstance(self.basix_element, basix.ufl._MixedElement):
             mapping_types = [e._element.map_type for e in self.basix_element._sub_elements]
@@ -58,7 +58,7 @@ class CompiledExpression:
         else:
             raise NotImplementedError("Unsupported element type")
 
-        if all(x == basix._basixcpp.MapType.identity for x in mapping_types):
+        if all(x == basix.MapType.identity for x in mapping_types):
             self.is_affine_map = True
 
         module = dolfinx.jit.ffcx_jit(comm, (expr, nodes))

@@ -31,6 +31,7 @@ flake8:
    script:
       - echo CONTAINER_COMMIT_IMAGE = "$CONTAINER_COMMIT_IMAGE"
       - echo CONTAINER_LATEST_IMAGE = "$CONTAINER_LATEST_IMAGE"
+      - echo CI_DOCKER_BUILDARGS = "$CI_DOCKER_BUILDARGS"
       - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
       - docker buildx create 
                --driver=docker-container 
@@ -38,14 +39,13 @@ flake8:
                --platform="$PLATFORMS"
                --bootstrap
       - docker buildx build
-               --build-arg="BUILDKIT_INLINE_CACHE=1"
-               --build-arg="DOLFINY_BUILD_TYPE=RelWithDebInfo"
-               --cache-from="$CONTAINER_COMMIT_IMAGE-$ARCH"
-               --cache-from="$CONTAINER_LATEST_IMAGE-$ARCH"
+               --cache-to=type=inline
+               --cache-from=type=registry,ref="$CONTAINER_COMMIT_IMAGE-$ARCH"
+               --cache-from=type=registry,ref="$CONTAINER_LATEST_IMAGE-$ARCH"
                --tag="$CONTAINER_COMMIT_IMAGE-$ARCH"
                --pull
                --load
-               --builder=multi --platform="$PLATFORMS"
+               --builder=multi --platform="$PLATFORMS" $CI_DOCKER_BUILDARGS
                .
       - docker push "$CONTAINER_COMMIT_IMAGE-$ARCH"
 
@@ -94,6 +94,8 @@ image release:
       - docker run --platform linux/arm64 $DOCKERHUB_COMMIT_IMAGE uname -m > arm64.txt
       - grep -q "aarch64" arm64.txt
    rules:
+      - if: $CI_DOCKER_NORELEASE == "1"
+        when: never
       - if: ($CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "master")
         variables:
            DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:nightly
