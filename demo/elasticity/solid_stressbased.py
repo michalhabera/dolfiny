@@ -59,9 +59,9 @@ nu = dolfinx.fem.Constant(mesh, 0.25)
 la = E * nu / (1 + nu) / (1 - 2 * nu)
 mu = E / 2 / (1 + nu)
 
-# stabilisation
-# psi_1 = dolfinx.fem.Constant(mesh, 0.25)  # 0.15/0.53, 0.25/0.31
-# psi_2 = dolfinx.fem.Constant(mesh, 0.05)
+# stabilisation, if needed by chosen stress form
+psi_1 = dolfinx.fem.Constant(mesh, 0.31)  # 0.15/0.53, 0.25/0.31
+psi_2 = dolfinx.fem.Constant(mesh, 0.05)  # 0.25/0.05
 
 
 # strain
