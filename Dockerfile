@@ -3,7 +3,7 @@ FROM dolfinx/dev-env:current
 ARG DOLFINY_BUILD_TYPE="RelWithDebInfo"
 
 ARG UFL_GIT_COMMIT="7277fd1"
-ARG BASIX_GIT_COMMIT="b935d2d"
+ARG BASIX_GIT_COMMIT="925edb9"
 ARG FFCX_GIT_COMMIT="2d60a8b"
 ARG DOLFINX_GIT_COMMIT="75ba784"
 
@@ -36,7 +36,7 @@ RUN git clone --branch main https://github.com/FEniCS/basix.git \
     && \
     pip3 install --no-cache-dir --index-url ${PYPI_PACKAGE_REPO} \
         cppyy==${CPPYY_VERSION} \
-        pyvista[trame]==${PYVISTA_VERSION} \
+        pyvista==${PYVISTA_VERSION} \
     && \
     pip3 cache purge \
     && \
