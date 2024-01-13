@@ -12,3 +12,6 @@ __pycache__
 *.json
 *.pvsm
 *.pth
+
+# gitlab
+.gitlab-ci-local
