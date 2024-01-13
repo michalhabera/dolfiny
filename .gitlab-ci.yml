@@ -13,6 +13,7 @@ variables:
    CONTAINER_COMMIT_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
    CONTAINER_LATEST_IMAGE: $CI_REGISTRY_IMAGE:latest
    CI_RUNNER_ARCHITECTURE: amd64
+   CI_RUNNER_JOBMAXNPROCS: 8
 
 # jobs
 
@@ -26,46 +27,40 @@ flake8:
    stage: image
    image: docker:latest
    variables:
-      PLATFORMS: linux/$CI_RUNNER_ARCHITECTURE
-      ARCH: $CI_RUNNER_ARCHITECTURE
+      TARGET_PLATFORM: linux/$TARGET_ARCH
    script:
       - echo CONTAINER_COMMIT_IMAGE = "$CONTAINER_COMMIT_IMAGE"
       - echo CONTAINER_LATEST_IMAGE = "$CONTAINER_LATEST_IMAGE"
-      - echo CI_DOCKER_BUILDARGS = "$CI_DOCKER_BUILDARGS"
+      - echo DOLFINY_IMAGE_BUILDARGS = "$DOLFINY_IMAGE_BUILDARGS"
       - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
       - docker buildx create 
                --driver=docker-container 
                --name=multi 
-               --platform="$PLATFORMS"
+               --platform="$TARGET_PLATFORM"
                --bootstrap
       - docker buildx build
                --cache-to=type=inline
-               --cache-from=type=registry,ref="$CONTAINER_COMMIT_IMAGE-$ARCH"
-               --cache-from=type=registry,ref="$CONTAINER_LATEST_IMAGE-$ARCH"
-               --tag="$CONTAINER_COMMIT_IMAGE-$ARCH"
+               --cache-from=type=registry,ref="$CONTAINER_COMMIT_IMAGE-$TARGET_ARCH"
+               --cache-from=type=registry,ref="$CONTAINER_LATEST_IMAGE-$TARGET_ARCH"
+               --tag="$CONTAINER_COMMIT_IMAGE-$TARGET_ARCH"
                --pull
                --load
-               --builder=multi --platform="$PLATFORMS" $CI_DOCKER_BUILDARGS
+               --builder=multi --platform="$TARGET_PLATFORM" $DOLFINY_IMAGE_BUILDARGS
                .
-      - docker push "$CONTAINER_COMMIT_IMAGE-$ARCH"
-
-image build amd64:
-   extends: .image build
-   variables:
-      PLATFORMS: linux/amd64
-      ARCH: amd64
-
-image build arm64:
-   extends: .image build
-   variables:
-      PLATFORMS: linux/arm64
-      ARCH: arm64
+      - docker push "$CONTAINER_COMMIT_IMAGE-$TARGET_ARCH"
    rules:
-      - if: ($CI_COMMIT_BRANCH == "master" || $CI_PIPELINE_SOURCE == "schedule")
+      - if: ($CI_RUNNER_ARCHITECTURE == $TARGET_ARCH)
+      - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule")
       - exists: 
-         - Dockerfile
+          - Dockerfile
         when: manual
         allow_failure: true
+
+image build:
+   extends: .image build
+   parallel:
+      matrix:
+        - TARGET_ARCH: [amd64, arm64]
 
 image release:
    stage: release
@@ -94,12 +89,12 @@ image release:
       - docker run --platform linux/arm64 $DOCKERHUB_COMMIT_IMAGE uname -m > arm64.txt
       - grep -q "aarch64" arm64.txt
    rules:
-      - if: $CI_DOCKER_NORELEASE == "1"
+      - if: $DOLFINY_IMAGE_RELEASE == "no"
         when: never
-      - if: ($CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == "master")
+      - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule")
         variables:
            DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:nightly
-      - if: ($CI_COMMIT_BRANCH == "master")
+      - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH)
         variables:
            DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:latest
 
@@ -113,36 +108,31 @@ image release:
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
-         - test/*/*
+         - "test/*/*"
       expire_in: 1 week
 
 test/unit/serial:
    extends: .test_template
    script:
       - cd unit
-      - python3 -u -m pytest -n 8 -vsx .
+      - python3 -u -m pytest -n $CI_RUNNER_JOBMAXNPROCS -vsx .
 
 test/unit/parallel:
    extends: .test_template
    script:
       - cd unit
-      - mpirun -n 2 python3 -u -m pytest -vsx .
-      - mpirun -n 4 python3 -u -m pytest -vsx .
+      - mpirun -n $CI_RUNNER_JOBMAXNPROCS python3 -u -m pytest -vsx .
 
 test/convergence:
    extends: .test_template
    script:
       - cd convergence
-      - python3 -u -m pytest -n 8 -m 'convergence' -vsx .
-      - python3 -u -m pytest -n 8 -m 'postprocess' -vsx .
+      - python3 -u -m pytest -n $CI_RUNNER_JOBMAXNPROCS -m 'convergence' -vsx .
+      - python3 -u -m pytest -n $CI_RUNNER_JOBMAXNPROCS -m 'postprocess' -vsx .
    rules:
-      - if: ($CI_RUN_TEST_CONVERGENCE == "yes")
-      - if: ($CI_COMMIT_BRANCH)
-        changes:
-         - test/convergence/*.py
-        when: always
-      - exists: 
-         - test/convergence/*.py
+      - if: ($DOLFINY_TEST_CONVERGENCE == "yes")
+      - exists:
+         - "test/convergence/*.py"
         when: manual
         allow_failure: true
 
@@ -155,40 +145,40 @@ test/convergence:
    rules:
       - if: ($CI_PIPELINE_SOURCE == "merge_request_event")
       - if: ($CI_PIPELINE_SOURCE == "schedule")
-      - if: ($CI_COMMIT_BRANCH)
+      - if: ($CI_PIPELINE_SOURCE == "push")
         changes:
-         - demo/*/*
+         - "demo/*/*.py"
       - exists: 
-         - demo/*/*.py
+         - "demo/*/*.py"
         when: manual
         allow_failure: true
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
-         - demo/*/*
+         - "demo/*/*"
       expire_in: 1 week
 
 demo/bingham:
    extends: .demo_template
    script:
       - cd bingham
-      - mpirun -n 2 python3 bingham_block.py
-      - mpirun -n 2 python3 bingham_lm_block.py
+      - mpirun -n 4 python3 bingham_block.py
+      - mpirun -n 4 python3 bingham_lm_block.py
 
 demo/beam:
    extends: .demo_template
    script:
       - cd beam
-      - mpirun -n 2 python3 beam_curved_finitestrain_bstar.py
+      - mpirun -n 4 python3 beam_curved_finitestrain_bstar.py
       - mpirun -n 1 python3 beam_curved_finitestrain_bstar.py
-      - mpirun -n 2 python3 beam_curved_finitestrain_bzero.py
+      - mpirun -n 4 python3 beam_curved_finitestrain_bzero.py
       - mpirun -n 1 python3 beam_curved_finitestrain_bzero.py
 
 demo/vsolid:
    extends: .demo_template
    script:
       - cd vsolid
-      - mpirun -n 2 python3 duffing.py
+      - mpirun -n 4 python3 duffing.py
       - mpirun -n 4 python3 solid_disp_tda.py
       - mpirun -n 4 python3 solid_dispstress_tda.py
       - mpirun -n 4 python3 solid_velostress_tda.py
@@ -197,19 +187,19 @@ demo/plasticity:
    extends: .demo_template
    script:
       - cd plasticity 
-      - mpirun -n 8 python3 solid_plasticity_monolithic.py
+      - mpirun -n 4 python3 solid_plasticity_monolithic.py
 
 demo/plasticity_rankine:
    extends: .demo_template
    script:
       - cd plasticity_rankine
-      - mpirun -n 8 python3 rankine.py
+      - mpirun -n 4 python3 rankine.py
 
 demo/spectral:
    extends: .demo_template
    script:
       - cd spectral 
-      - mpirun -n 8 python3 spectral_elasticity.py
+      - mpirun -n 4 python3 spectral_elasticity.py
 
 demo/continuation:
    extends: .demo_template
