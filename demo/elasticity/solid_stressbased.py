@@ -30,8 +30,9 @@ for d in range(mesh.geometry.dim):
     for k, kx in enumerate((minx, maxx)):
         facets = dolfinx.mesh.locate_entities(mesh, mesh.topology.dim - 1, lambda x: np.isclose(x[d], kx))
         mt = dolfinx.mesh.meshtags(mesh, mesh.topology.dim - 1, np.unique(facets), 2 * d + k)
-        mts[f"face{2 * d + k}"] = mt
+        mts[f"face_x{d}={kx:+.2f}"] = mt
 
+# merge meshtags, see `boundary_keys` for identifiers of outer faces
 boundary, boundary_keys = dolfiny.mesh.merge_meshtags(mesh, mts, mesh.topology.dim - 1)
 mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
 
@@ -113,8 +114,10 @@ dx = ufl.Measure("dx", domain=mesh)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=boundary)
 
 # boundaries (via mesh tags)
-dirichlet = [0, 1, 2, 3, 4, 5]
-neumann = []
+dirichlet = [0, 1, 2, 3, 4, 5]  # faces = all
+# dirichlet = [0, 2, 4]  # faces = {x0 = xmin, x1 = xmin, x2 = xmin}
+# dirichlet = [1, 3, 5]  # faces = {x0 = xmax, x1 = xmax, x2 = xmax}
+neumann = list(set(boundary_keys.values()) - set(dirichlet))  # boolean difference of dirichlet
 
 # forms
 
@@ -136,7 +139,7 @@ f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
     + ufl.inner(ufl.grad(ufl.tr(δS)), ufl.div(S)) * dx \
     - (1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.div(b(S0_expr)) * dx \
     \
-    - ufl.inner(δS, T(S0_expr)) * ds
+    - sum(ufl.inner(δS, T(S0_expr)) * ds(k) for k in neumann)
 
 # # form: stress-based, additional integration-by-parts on b-terms
 # f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
@@ -145,14 +148,14 @@ f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
 #     \
 #     + ufl.inner(ufl.grad(ufl.tr(δS)), ufl.div(S) + (1 + nu**2) / (1 - nu) * b(S0_expr)) * dx \
 #     \
-#     - ufl.inner(δS, T(S0_expr)) * ds \
-#     - (1 + nu) * 2 * ufl.inner(ufl.dot(δS, n), b(S0_expr)) * ds \
-#     - (1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.inner(b(S0_expr), n) * ds
+#     - sum(ufl.inner(δS, T(S0_expr)) * ds(k) for k in neumann) \
+#     - sum((1 + nu) * 2 * ufl.inner(ufl.dot(δS, n), b(S0_expr)) * ds(k) for k in neumann) \
+#     - sum((1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.inner(b(S0_expr), n) * ds(k) for k in neumann) 
 
 # form: displacement-based
 f_displm = ufl.inner(strain_from_displm(δu), stress_from_strain(strain_from_displm(u))) * dx \
     - ufl.inner(δu, b(S0_expr)) * dx \
-    - ufl.inner(δu, t(S0_expr)) * ds
+    - sum(ufl.inner(δu, t(S0_expr)) * ds(k) for k in neumann)
 
 # block form
 F_stress = dolfiny.function.extract_blocks(f_stress, [δS])
@@ -175,24 +178,26 @@ opts["snes_atol"] = 1.0e-10
 opts["snes_rtol"] = 1.0e-08
 opts["snes_max_it"] = 1
 # direct solver
-# opts["ksp_type"] = "preonly"
-# opts["pc_type"] = "cholesky"
-# opts["pc_factor_mat_solver_type"] = "mumps"
+opts["ksp_type"] = "preonly"
+opts["pc_type"] = "cholesky"
+opts["pc_factor_mat_solver_type"] = "mumps"
 # iterative solver
-opts["ksp_type"] = "cg"
-opts["ksp_atol"] = 1.0e-12
-opts["ksp_rtol"] = 1.0e-10
-opts["pc_type"] = "bjacobi"
+# opts["ksp_type"] = "cg"
+# opts["ksp_atol"] = 1.0e-12
+# opts["ksp_rtol"] = 1.0e-10
+# opts["pc_type"] = "bjacobi"
 
 # stress problem (nonlinear problem, for convenience)
 problem_stress = dolfiny.snesblockproblem.SNESBlockProblem(F_stress, [S], prefix=name, bcs=bcs_stress)
 problem_stress.solve()
+problem_stress.status(verbose=True, error_on_failure=True)
 # check symmetry
 dolfiny.utils.pprint(f"(stress) discrete operator is symmetric = {problem_stress.J.isSymmetric(tol=1.0e-12)}")
 
 # displm problem (nonlinear problem, for convenience)
 problem_displm = dolfiny.snesblockproblem.SNESBlockProblem(F_displm, [u], prefix=name, bcs=bcs_displm)
 problem_displm.solve()
+problem_displm.status(verbose=True, error_on_failure=True)
 # check symmetry
 dolfiny.utils.pprint(f"(displm) discrete operator is symmetric = {problem_displm.J.isSymmetric(tol=1.0e-12)}")
 
@@ -229,8 +234,10 @@ def inc(A):
 
 # Statistics
 dolfiny.utils.pprint(f"SUMMARY :: cell = {mesh.topology.cell_name()}, e = {e:2d}")
-dolfiny.utils.pprint(f"        :: p(S) = {p} [{len(S.x.array)}]")
-dolfiny.utils.pprint(f"        :: p(u) = {p + 1} [{len(u.x.array)}]")
+dolfiny.utils.pprint(f"        :: p(S) = {p} [ndof = {S.vector.getSize()}]")
+dolfiny.utils.pprint(f"        :: p(u) = {p + 1} [ndof = {u.vector.getSize()}]")
+dolfiny.utils.pprint(f"        :: bc D = {dirichlet} = {[k for k, v in boundary_keys.items() for i in dirichlet if v == i]})")
+dolfiny.utils.pprint(f"        :: bc N = {neumann} = {[k for k, v in boundary_keys.items() for i in neumann if v == i]})")
 
 # Solution errors
 dolfiny.utils.pprint("*** Errors ***")
@@ -243,7 +250,7 @@ Su_vs_S0_error = dolfiny.expression.assemble(error(Su, S0_expr), dx)
 dolfiny.utils.pprint(f"relative Su error norm = {Su_vs_S0_error:.3e}")
 
 u_vs_u0_error = dolfiny.expression.assemble(error(u, u0_expr), dx)
-dolfiny.utils.pprint(f"relative u  error norm = {u_vs_u0_error:.3e}")  # NOTE: could blow (for zero u0)
+dolfiny.utils.pprint(f"relative u  error norm = {u_vs_u0_error:.3e}")  # NOTE: could blow up (for zero-valued u0)
 
 incE_norm = dolfiny.expression.assemble(norm(inc(strain_from_stress(S))), dx)
 dolfiny.utils.pprint(f"inc(E(S )) norm = {incE_norm:.3e}")
@@ -255,7 +262,13 @@ dolfiny.utils.pprint(f"inc(E(S0)) norm = {incE_norm:.3e}")
 # Spectral properties
 dolfiny.utils.pprint("*** Spectrum ***")
 
-A = dolfinx.fem.petsc.assemble_matrix_block(problem_stress.J_form, bcs=[])
+# dirichlet = []
+bcsdofs_Sf = dolfiny.mesh.locate_dofs_topological(Sf, boundary, dirichlet)
+bcs_stress = [dolfinx.fem.dirichletbc(S0, bcsdofs_Sf)]
+
+dolfiny.utils.pprint(f"stress operator bc D = {dirichlet}")
+
+A = dolfinx.fem.petsc.assemble_matrix_block(problem_stress.J_form, bcs=bcs_stress)
 A.assemble()
 assert A.isSymmetric(tol=1.0e-12)
 nev = 20
