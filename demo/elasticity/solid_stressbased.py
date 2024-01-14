@@ -86,7 +86,7 @@ x = ufl.SpatialCoordinate(mesh)
 n = ufl.FacetNormal(mesh)
 
 # manufactured solution
-u0_expr = ufl.as_vector([ufl.sin(x[0] + x[1]), ufl.sin(2 * x[1] + x[2]), ufl.sin(x[2] + x[0])])
+u0_expr = ufl.as_vector([ufl.sin(x[0] + x[1]), ufl.sin(x[1] + x[2]), ufl.sin(x[2] + x[0])])
 
 E0_expr = strain_from_displm(u0_expr)
 S0_expr = stress_from_strain(E0_expr)
@@ -103,6 +103,10 @@ def t(S):
 def T(S):
     return (1 + nu) * ufl.dot(ufl.grad(S), n) + ufl.outer(ufl.grad(ufl.tr(S)), n) \
         + ufl.inner(ufl.div(S), n) * ufl.Identity(3)  # boundary stress tensor
+
+
+def D(u):  # alternative form, based on given (extensional) boundary displacement
+    return E / (1 - 2 * nu) * ufl.dot(ufl.grad(ufl.div(u)), n) * ufl.Identity(3)  # boundary stress tensor
 
 
 # interpolate expression on function space
@@ -140,6 +144,8 @@ f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
     - (1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.div(b(S0_expr)) * dx \
     \
     - sum(ufl.inner(δS, T(S0_expr)) * ds(k) for k in neumann)
+# - sum(0 * ufl.inner(δS, D(u0_expr)) * ds(k) for k in neumann) \
+# CHECK: - (1 + nu) * ufl.inner(δS, ufl.outer(-b(S0_expr), n)) * ds - ufl.tr(δS) * ufl.dot(-b(S0_expr), n) * ds
 
 # # form: stress-based, additional integration-by-parts on b-terms
 # f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
