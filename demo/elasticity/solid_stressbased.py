@@ -150,7 +150,7 @@ f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
 #     \
 #     - sum(ufl.inner(δS, T(S0_expr)) * ds(k) for k in neumann) \
 #     - sum((1 + nu) * 2 * ufl.inner(ufl.dot(δS, n), b(S0_expr)) * ds(k) for k in neumann) \
-#     - sum((1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.inner(b(S0_expr), n) * ds(k) for k in neumann) 
+#     - sum((1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.inner(b(S0_expr), n) * ds(k) for k in neumann)
 
 # form: displacement-based
 f_displm = ufl.inner(strain_from_displm(δu), stress_from_strain(strain_from_displm(u))) * dx \
@@ -236,8 +236,8 @@ def inc(A):
 dolfiny.utils.pprint(f"SUMMARY :: cell = {mesh.topology.cell_name()}, e = {e:2d}")
 dolfiny.utils.pprint(f"        :: p(S) = {p} [ndof = {S.vector.getSize()}]")
 dolfiny.utils.pprint(f"        :: p(u) = {p + 1} [ndof = {u.vector.getSize()}]")
-dolfiny.utils.pprint(f"        :: bc D = {dirichlet} = {[k for k, v in boundary_keys.items() for i in dirichlet if v == i]})")
-dolfiny.utils.pprint(f"        :: bc N = {neumann} = {[k for k, v in boundary_keys.items() for i in neumann if v == i]})")
+dolfiny.utils.pprint(f"        :: bc D = {dirichlet} = {[k for k, v in boundary_keys.items() for i in dirichlet if v == i]})")  # noqa: E501
+dolfiny.utils.pprint(f"        :: bc N = {neumann} = {[k for k, v in boundary_keys.items() for i in neumann if v == i]})")  # noqa: E501
 
 # Solution errors
 dolfiny.utils.pprint("*** Errors ***")
