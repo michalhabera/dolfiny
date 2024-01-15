@@ -217,6 +217,53 @@ ofile.write_function(uo)
 ofile.close()
 
 
+# plot
+if comm.rank == 0:
+
+    import pyvista
+
+    comm_self = MPI.COMM_SELF
+
+    class XdmfReader(pyvista.XdmfReader):
+        _vtk_module_name = "vtkIOXdmf3"
+        _vtk_class_name = "vtkXdmfReader"
+
+    reader = XdmfReader(path=f"{name}.xdmf")
+    print(reader)
+
+    pixels = 2048
+    plotter = pyvista.Plotter(off_screen=True, window_size=[pixels, pixels], image_scale=1)
+    plotter.add_axes(labels_off=True)
+
+    vorder = p + 1
+
+    So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3, 3), True)), name="S")
+    uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), name="u")
+    so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="von mises")
+    dolfiny.interpolation.interpolate(S, So)
+    dolfiny.interpolation.interpolate(u, uo)
+    dolfiny.interpolation.interpolate(ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S))), so)
+
+    vtkm = dolfinx.plot.vtk_mesh(uo.function_space)
+    grid = pyvista.UnstructuredGrid(*vtkm)
+    grid.point_data["u"] = uo.x.array.reshape(-1, uo.function_space.dofmap.index_map_bs)
+    grid.point_data["S"] = So.x.array.reshape(-1, So.function_space.dofmap.index_map_bs)
+    grid.point_data["s"] = so.x.array.reshape(-1, so.function_space.dofmap.index_map_bs)
+
+    sargs = dict(height=0.05, width=0.8, position_x=0.1, position_y=0.90,
+                 font_family='courier', fmt="%1.2f", color="black",
+                 title_font_size=pixels // 50, label_font_size=pixels // 50)
+
+    grid_warped = grid.warp_by_vector("u", factor=1.0)
+    grid_warped = grid_warped.extract_surface(nonlinear_subdivision=2)
+    plotter.add_mesh(grid_warped, scalars="s", scalar_bar_args=sargs, cmap="coolwarm",
+                     specular=0.5, specular_power=20, smooth_shading=True, split_sharp_edges=True)
+
+    plotter.screenshot(f"{name}_solution.png", transparent_background=False)
+
+exit()
+
+
 # expressions
 def norm(A):
     return ufl.sqrt(ufl.inner(A, A))
