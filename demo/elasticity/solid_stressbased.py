@@ -16,7 +16,7 @@ name = "solid_stressbased"
 comm = MPI.COMM_WORLD
 
 # discretisation
-e = 6
+e = 12
 p = 1
 c = dolfinx.cpp.mesh.CellType.hexahedron
 
@@ -51,8 +51,10 @@ u = dolfinx.fem.Function(Uf, name='u')
 u0 = dolfinx.fem.Function(Uf, name='u0')
 
 # output / visualisation
-So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3, 3), True)), name="S")  # for output
-uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3,))), name="u")  # for output
+vorder = mesh.geometry.cmap.degree
+So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3, 3), True)), name="S")  # for output
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), name="u")  # for output
+so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="s")  # for output
 
 # material
 E = dolfinx.fem.Constant(mesh, 1.00)
@@ -91,6 +93,9 @@ u0_expr = ufl.as_vector([ufl.sin(x[0] + x[1]), ufl.sin(x[1] + x[2]), ufl.sin(x[2
 E0_expr = strain_from_displm(u0_expr)
 S0_expr = stress_from_strain(E0_expr)
 
+# von Mises stress (output)
+s = ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S)))
+
 
 def b(S):
     return -ufl.div(S)  # volume force
@@ -121,7 +126,7 @@ ds = ufl.Measure("ds", domain=mesh, subdomain_data=boundary)
 dirichlet = [0, 1, 2, 3, 4, 5]  # faces = all
 # dirichlet = [0, 2, 4]  # faces = {x0 = xmin, x1 = xmin, x2 = xmin}
 # dirichlet = [1, 3, 5]  # faces = {x0 = xmax, x1 = xmax, x2 = xmax}
-neumann = list(set(boundary_keys.values()) - set(dirichlet))  # boolean difference of dirichlet
+neumann = list(set(boundary_keys.values()) - set(dirichlet))  # complement to dirichlet
 
 # forms
 
@@ -214,54 +219,48 @@ dolfiny.interpolation.interpolate(S, So)
 ofile.write_function(So)
 dolfiny.interpolation.interpolate(u, uo)
 ofile.write_function(uo)
+dolfiny.interpolation.interpolate(s, so)
+ofile.write_function(so)
 ofile.close()
 
-
-# plot
+# plot using pyvista
 if comm.rank == 0:
 
     import pyvista
 
-    comm_self = MPI.COMM_SELF
-
-    class XdmfReader(pyvista.XdmfReader):
+    class Xdmf3Reader(pyvista.XdmfReader):
         _vtk_module_name = "vtkIOXdmf3"
-        _vtk_class_name = "vtkXdmfReader"
+        _vtk_class_name = "vtkXdmf3Reader"
 
-    reader = XdmfReader(path=f"{name}.xdmf")
-    print(reader)
+    reader = Xdmf3Reader(path=f"./{name}.xdmf")
+    multiblock = reader.read()
+
+    grid = multiblock[-1]
+    grid.point_data["S"] = multiblock[0].point_data["S"]
+    grid.point_data["u"] = multiblock[1].point_data["u"]
+    grid.point_data["s"] = multiblock[2].point_data["s"]
 
     pixels = 2048
     plotter = pyvista.Plotter(off_screen=True, window_size=[pixels, pixels], image_scale=1)
     plotter.add_axes(labels_off=True)
 
-    vorder = p + 1
-
-    So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3, 3), True)), name="S")
-    uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), name="u")
-    so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="von mises")
-    dolfiny.interpolation.interpolate(S, So)
-    dolfiny.interpolation.interpolate(u, uo)
-    dolfiny.interpolation.interpolate(ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S))), so)
-
-    vtkm = dolfinx.plot.vtk_mesh(uo.function_space)
-    grid = pyvista.UnstructuredGrid(*vtkm)
-    grid.point_data["u"] = uo.x.array.reshape(-1, uo.function_space.dofmap.index_map_bs)
-    grid.point_data["S"] = So.x.array.reshape(-1, So.function_space.dofmap.index_map_bs)
-    grid.point_data["s"] = so.x.array.reshape(-1, so.function_space.dofmap.index_map_bs)
-
     sargs = dict(height=0.05, width=0.8, position_x=0.1, position_y=0.90,
-                 font_family='courier', fmt="%1.2f", color="black",
+                 title="von Mises stress", font_family="courier", fmt="%1.2f", color="black",
                  title_font_size=pixels // 50, label_font_size=pixels // 50)
 
     grid_warped = grid.warp_by_vector("u", factor=1.0)
-    grid_warped = grid_warped.extract_surface(nonlinear_subdivision=2)
+
+    if not grid.get_cell(0).is_linear:
+        grid_warped = grid_warped.extract_surface(nonlinear_subdivision=3)
+
     plotter.add_mesh(grid_warped, scalars="s", scalar_bar_args=sargs, cmap="coolwarm",
                      specular=0.5, specular_power=20, smooth_shading=True, split_sharp_edges=True)
 
-    plotter.screenshot(f"{name}_solution.png", transparent_background=False)
+    plotter.add_mesh(grid_warped, style="wireframe", color="black", line_width=pixels // 500)
 
-exit()
+    plotter.zoom_camera(1.2)
+
+    plotter.screenshot(f"{name}_solution.png", transparent_background=False)
 
 
 # expressions
