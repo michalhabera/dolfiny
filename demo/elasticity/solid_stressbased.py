@@ -57,15 +57,16 @@ uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), 
 so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="s")  # for output
 
 # material
-E = dolfinx.fem.Constant(mesh, 1.00)
+E = dolfinx.fem.Constant(mesh, 200.0)
 nu = dolfinx.fem.Constant(mesh, 0.25)
 la = E * nu / (1 + nu) / (1 - 2 * nu)
 mu = E / 2 / (1 + nu)
 
-# stabilisation, if needed by chosen stress form
-psi_1 = dolfinx.fem.Constant(mesh, 0.31)  # 0.15/0.53, 0.25/0.31
-psi_2 = dolfinx.fem.Constant(mesh, 0.05)  # 0.25/0.05
+# stabilisation factor, if needed by chosen stress form
+ω = dolfinx.fem.Constant(mesh, 0.0)  # CHECK: 1 / sqrt(2)
 
+# factor enabling the Neumann term
+β = dolfinx.fem.Constant(mesh, 1.0)
 
 # strain
 def strain_from_displm(u):
@@ -89,12 +90,17 @@ n = ufl.FacetNormal(mesh)
 
 # manufactured solution
 u0_expr = ufl.as_vector([ufl.sin(x[0] + x[1]), ufl.sin(x[1] + x[2]), ufl.sin(x[2] + x[0])])
+# u0_expr = ufl.as_vector([x[0]**5 + x[1]**5, x[1]**5 + x[2]**5, x[2]**5 + x[0]**5])
+u0_expr -= ufl.as_vector([x[0], -x[1], x[2]])
+u0_expr /= 10
 
 E0_expr = strain_from_displm(u0_expr)
 S0_expr = stress_from_strain(E0_expr)
 
-# von Mises stress (output)
-s = ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S)))
+# scalar measure (output)
+# s_title, s = "von Mises stress", ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S)))
+# s_title, s = "mean stress", ufl.tr(S) / 3
+s_title, s = "L2 relative stress error", ufl.sqrt(ufl.inner(S - S0_expr, S - S0_expr)) / ufl.sqrt(ufl.inner(S0_expr, S0_expr))
 
 
 def b(S):
@@ -123,8 +129,8 @@ dx = ufl.Measure("dx", domain=mesh)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=boundary)
 
 # boundaries (via mesh tags)
-dirichlet = [0, 1, 2, 3, 4, 5]  # faces = all
-# dirichlet = [0, 2, 4]  # faces = {x0 = xmin, x1 = xmin, x2 = xmin}
+# dirichlet = [0, 1, 2, 3, 4, 5]  # faces = all
+dirichlet = [0, 2, 4]  # faces = {x0 = xmin, x1 = xmin, x2 = xmin}
 # dirichlet = [1, 3, 5]  # faces = {x0 = xmax, x1 = xmax, x2 = xmax}
 neumann = list(set(boundary_keys.values()) - set(dirichlet))  # complement to dirichlet
 
@@ -148,7 +154,9 @@ f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
     + ufl.inner(ufl.grad(ufl.tr(δS)), ufl.div(S)) * dx \
     - (1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.div(b(S0_expr)) * dx \
     \
-    - sum(ufl.inner(δS, T(S0_expr)) * ds(k) for k in neumann)
+    + ω * (ufl.inner(ufl.div(δS), ufl.div(S)) - ufl.inner(δS, ufl.sym(ufl.grad(b(S0_expr))))) * dx \
+    \
+    - β * sum(ufl.inner(δS, T(S0_expr)) * ds(k) for k in neumann)
 # - sum(0 * ufl.inner(δS, D(u0_expr)) * ds(k) for k in neumann) \
 # CHECK: - (1 + nu) * ufl.inner(δS, ufl.outer(-b(S0_expr), n)) * ds - ufl.tr(δS) * ufl.dot(-b(S0_expr), n) * ds
 
@@ -245,8 +253,8 @@ if comm.rank == 0:
     plotter.add_axes(labels_off=True)
 
     sargs = dict(height=0.05, width=0.8, position_x=0.1, position_y=0.90,
-                 title="von Mises stress", font_family="courier", fmt="%1.2f", color="black",
-                 title_font_size=pixels // 50, label_font_size=pixels // 50)
+                 title=s_title, font_family="courier", fmt="%1.2e", color="black",
+                 n_labels=3, title_font_size=pixels // 50, label_font_size=pixels // 50)
 
     grid_warped = grid.warp_by_vector("u", factor=1.0)
 
@@ -258,7 +266,9 @@ if comm.rank == 0:
 
     plotter.add_mesh(grid_warped, style="wireframe", color="black", line_width=pixels // 500)
 
-    plotter.zoom_camera(1.2)
+    # plotter.add_mesh(grid, style="wireframe", color="red", line_width=pixels // 500)
+
+    plotter.zoom_camera(1.0)
 
     plotter.screenshot(f"{name}_solution.png", transparent_background=False)
 
