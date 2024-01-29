@@ -1,107 +1,93 @@
 import time
 
 from mpi4py import MPI
-from petsc4py import PETSc
 
 import dolfinx
 import dolfiny
 import numpy
 import pytest
 import ufl
+import basix
 
 
-N = 10
-mesh = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, N, N, N)
-gdim = mesh.geometry.dim
+mesh3d = dolfinx.mesh.create_unit_cube(MPI.COMM_WORLD, 10, 10, 10)
+mesh2d = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 1000, 1000)
 
-DG0 = dolfinx.fem.functionspace(mesh, ("DP", 0))
-DG1 = dolfinx.fem.functionspace(mesh, ("DP", 1))
-CG1 = dolfinx.fem.functionspace(mesh, ("P", 1))
-TCG1 = dolfinx.fem.functionspace(mesh, ("P", 1, (gdim, gdim)))
-TDG0 = dolfinx.fem.functionspace(mesh, ("DP", 0, (gdim, gdim)))
-TDG1s = dolfinx.fem.functionspace(mesh, ("DP", 1, (gdim, gdim), True))
-TDG2s = dolfinx.fem.functionspace(mesh, ("DP", 2, (gdim, gdim), True))
-
-CG2 = dolfinx.fem.functionspace(mesh, ("P", 2))
-VCG1 = dolfinx.fem.functionspace(mesh, DG0.mesh.ufl_domain().ufl_coordinate_element())
-
-f = dolfinx.fem.Function(TCG1)
-f.vector.set(1.0)
-f.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-
-x = ufl.SpatialCoordinate(mesh)
-expr1 = f[0, 0] * ufl.grad(ufl.grad(ufl.sinh(x[0]) + x[1] ** 3))
+He1 = basix.ufl.quadrature_element("tetrahedron", degree=1)
+He4 = basix.ufl.quadrature_element("tetrahedron", degree=4)
 
 
-@pytest.mark.parametrize("V", [TCG1, TDG0, TDG1s, TDG2s])
-def test_expr(V):
+@pytest.mark.parametrize("element", [
+    basix.ufl.element("P", "tetrahedron", 1, shape=(3, 3)),
+    basix.ufl.element("DP", "tetrahedron", 0, shape=(3, 3)),
+    basix.ufl.element("DP", "tetrahedron", 0, shape=(3, 3), symmetry=True),
+    basix.ufl.element("DP", "tetrahedron", 1, shape=(3, 3), symmetry=True),
+    basix.ufl.element("DP", "tetrahedron", 2, shape=(3, 3), symmetry=True),
+    basix.ufl.blocked_element(He1, shape=(3, 3), symmetry=True),
+    basix.ufl.blocked_element(He4, shape=(3, 3), symmetry=True),
+    basix.ufl.element("Regge", "tetrahedron", 1),])
+def test_expr_matrix(element):
+
+    V = dolfinx.fem.functionspace(mesh3d, element)
+
+    x = ufl.SpatialCoordinate(V.mesh)
+    u_expr = ufl.grad(ufl.grad(ufl.sinh(x[0]) + x[1]**3 + x[0] * x[2]))
 
     # Interpolate
-    h_interp = dolfinx.fem.Function(V)
-    dolfiny.interpolation.interpolate(expr1, h_interp)
+    ui = dolfinx.fem.Function(V)
+    dolfiny.interpolation.interpolate(u_expr, ui)
 
     # Project
-    h_project = dolfinx.fem.Function(V)
-    dolfiny.projection.project(expr1, h_project)
+    up = dolfinx.fem.Function(V)
+    dolfiny.projection.project(u_expr, up)
 
     # Compare
-    h_project.vector.axpy(-1.0, h_interp.vector)
-    h_project.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
-
-    assert h_project.vector.norm() < 0.15
+    assert numpy.isclose(ui.x.norm(), up.x.norm(), rtol=1.0e-4)
 
 
-def test_diff():
-    f = dolfinx.fem.Function(CG1)
-    f.vector.set(1.0)
-    f.vector.ghostUpdate()
+@pytest.mark.parametrize("element", [
+    basix.ufl.element("P", "tetrahedron", 1, shape=(3,)),
+    basix.ufl.element("DP", "tetrahedron", 1, shape=(3,)),
+    basix.ufl.blocked_element(He1, shape=(3,)),
+    basix.ufl.blocked_element(He4, shape=(3,)),
+    basix.ufl.element("N1E", "tetrahedron", 1),
+    basix.ufl.element("N2E", "tetrahedron", 1),])
+def test_expr_vector(element):
 
-    x = ufl.SpatialCoordinate(mesh)
-    expr = x[0] + x[1] + f
+    V = dolfinx.fem.functionspace(mesh3d, element)
 
-    h_project = dolfinx.fem.Function(CG1)
-    dolfiny.projection.project(expr, h_project)
+    x = ufl.SpatialCoordinate(V.mesh)
+    u_expr = ufl.grad(ufl.sinh(x[0]) + x[1]**3)
 
-    h_interp = dolfinx.fem.Function(CG1)
-    dolfiny.interpolation.interpolate(expr, h_interp)
+    # Interpolate
+    ui = dolfinx.fem.Function(V)
+    dolfiny.interpolation.interpolate(u_expr, ui)
 
-    diff = dolfinx.fem.Function(CG1)
-    dolfiny.interpolation.interpolate(h_interp - h_project, diff)
+    # Project
+    up = dolfinx.fem.Function(V)
+    dolfiny.projection.project(u_expr, up)
 
-    assert diff.vector.norm(3) < 1.0e-3
-
-
-def test_perf():
-    N = 500
-    mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, N, N)
-
-    P1 = dolfinx.fem.functionspace(mesh, ("P", 1))
-    P2 = dolfinx.fem.functionspace(mesh, ("P", 2))
-
-    u1 = dolfinx.fem.Function(P1)
-    u2 = dolfinx.fem.Function(P2)
-
-    t0 = time.time()
-    dolfiny.interpolation.interpolate(u1, u2)
-    print("Cold", time.time() - t0)
-
-    t0 = time.time()
-    dolfiny.interpolation.interpolate(u1, u2)
-    print("Hot", time.time() - t0)
+    # Compare
+    assert numpy.isclose(ui.x.norm(), up.x.norm(), rtol=1.0e-2)
 
 
-def test_linear_combination():
-    N = 100
-    mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, N, N)
+@pytest.mark.parametrize("element", [
+    basix.ufl.element("P", "triangle", degree=1),
+    basix.ufl.element("DP", "triangle", degree=1),
+    basix.ufl.quadrature_element("triangle", degree=0),
+    basix.ufl.quadrature_element("triangle", degree=1)])
+def test_linear_combination(element):
 
-    P1 = dolfinx.fem.functionspace(mesh, ("P", 1))
+    V = dolfinx.fem.functionspace(mesh2d, element)
 
-    u1 = dolfinx.fem.Function(P1)
-    u2 = dolfinx.fem.Function(P1)
-    u3 = dolfinx.fem.Function(P1)
+    u1 = dolfinx.fem.Function(V)
+    u2 = dolfinx.fem.Function(V)
+    u3 = dolfinx.fem.Function(V)
 
-    f = dolfinx.fem.Function(P1)
-    g = dolfinx.fem.Function(P1)
+    f = dolfinx.fem.Function(V)
+    g = dolfinx.fem.Function(V)
+
+    print(f"\nndofs = {f.vector.getSize()}")
 
     with u1.vector.localForm() as local:
         local.set(1.0)
@@ -110,18 +96,75 @@ def test_linear_combination():
     with u3.vector.localForm() as local:
         local.set(3.0)
 
-    c1 = dolfinx.fem.Constant(mesh, 3.14)
-    c2 = dolfinx.fem.Constant(mesh, 0.1)
+    c1 = dolfinx.fem.Constant(V.mesh, 3.14)
+    c2 = dolfinx.fem.Constant(V.mesh, 0.1)
 
     expr = (c1 + c2) * (2.0 * (3.0 * u1 + u2) - u3 / 3.0 + 4 * (u1 + c2 * u3))
 
     t0 = time.time()
     dolfiny.interpolation.interpolate(expr, f)
-    print(f"Linear combination {time.time() - t0}")
+    print(f"Linear combination {time.time() - t0:.4f}")
 
     t0 = time.time()
-    compiled_expression = dolfiny.interpolation.CompiledExpression(expr, g.function_space.ufl_element())
-    dolfiny.interpolation.interpolate_compiled(compiled_expression, g)
-    print(f"Compiled interpolation {time.time() - t0}")
+    dolfiny.interpolation.interpolate(2 + expr - 2, g)  # FIXME: provide no-op ufl.Expr of dolfinx.fem.Function
+    print(f"Expression interp. {time.time() - t0:.4f}")
 
-    assert numpy.isclose((g.vector - f.vector).norm(), 0.0)
+    assert numpy.allclose(f.x.array, g.x.array)
+
+
+@pytest.mark.parametrize("element0", [
+    basix.ufl.element("P", "triangle", degree=1),
+    basix.ufl.element("DP", "triangle", degree=1),])
+@pytest.mark.parametrize("element1", [
+    basix.ufl.element("P", "triangle", degree=3),
+    basix.ufl.element("DP", "triangle", degree=3),
+    basix.ufl.quadrature_element("triangle", degree=3),])
+def test_function_expression_scalar(element0, element1):
+
+    V0 = dolfinx.fem.functionspace(mesh2d, element0)
+    V1 = dolfinx.fem.functionspace(mesh2d, element1)
+
+    u0 = dolfinx.fem.Function(V0)
+    u0.interpolate(lambda x: numpy.cos(x[0]) + x[1]**2)
+
+    u1 = dolfinx.fem.Function(V1)
+    u2 = dolfinx.fem.Function(V1)
+
+    print(f"\nndofs V0 = {u0.vector.getSize()}, ndofs V1 = {u1.vector.getSize()}")
+
+    t0 = time.time()
+    dolfiny.interpolation.interpolate(u0, u1)
+    print(f"Interpolate dolfinx.fem.Function {time.time() - t0:.4f}")
+
+    t0 = time.time()
+    dolfiny.interpolation.interpolate(2 + u0 - 2, u2)  # FIXME: provide no-op ufl.Expr of dolfinx.fem.Function
+    print(f"Interpolate ufl.Expr             {time.time() - t0:.4f}")
+
+    assert numpy.allclose(u1.x.array, u2.x.array)
+
+
+@pytest.mark.parametrize("element0, element1",
+                         [(basix.ufl.blocked_element(He1, shape=(3,)),
+                           basix.ufl.element("DP", "tetrahedron", 0, shape=(3,)))])
+def test_function_expression_blocked(element0, element1):
+
+    V0 = dolfinx.fem.functionspace(mesh3d, element0)
+    V1 = dolfinx.fem.functionspace(mesh3d, element1)
+
+    u0 = dolfinx.fem.Function(V0)
+    u0.interpolate(lambda x: numpy.array([numpy.cos(x[0]), x[1]**2, 3 * x[2]]))
+
+    u1 = dolfinx.fem.Function(V1)
+    u2 = dolfinx.fem.Function(V1)
+
+    print(f"\nndofs V0 = {u0.vector.getSize()}, ndofs V1 = {u1.vector.getSize()}")
+
+    t0 = time.time()
+    dolfiny.interpolation.interpolate(u0, u1)
+    print(f"Interpolate dolfinx.fem.Function {time.time() - t0:.4f}")
+
+    t0 = time.time()
+    dolfiny.interpolation.interpolate(2 * u0 / 2, u2)  # FIXME: provide no-op ufl.Expr of dolfinx.fem.Function
+    print(f"Interpolate ufl.Expr             {time.time() - t0:.4f}")
+
+    assert numpy.allclose(u1.x.array, u2.x.array)
