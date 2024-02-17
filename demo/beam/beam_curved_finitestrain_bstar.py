@@ -89,9 +89,9 @@ dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
-We = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
-Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
+Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p)
+We = basix.ufl.element("P", mesh.basix_cell(), degree=p)
+Re = basix.ufl.element("P", mesh.basix_cell(), degree=p)
 
 # Define function spaces
 Uf = dolfinx.fem.functionspace(mesh, Ue)

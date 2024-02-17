@@ -44,10 +44,10 @@ ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 dS = ufl.Measure("dS", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=2, shape=(2,))
-Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=2, shape=(2,))
-Ke = basix.ufl.element("DP", mesh.basix_cell(), degree=0, gdim=2)
-Se = basix.ufl.element("DP", mesh.basix_cell(), degree=p, gdim=2, shape=(2,))
+Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, shape=(2,))
+Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, shape=(2,))
+Ke = basix.ufl.element("DP", mesh.basix_cell(), degree=0)
+Se = basix.ufl.element("DP", mesh.basix_cell(), degree=p, shape=(2,))
 
 # Define function spaces
 Uf = dolfinx.fem.functionspace(mesh, Ue)
