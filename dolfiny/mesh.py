@@ -9,7 +9,7 @@ from dolfinx.io.gmshio import ufl_mesh
 from dolfinx.io import distribute_entity_data
 
 
-def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, prune_z=False):
+def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, partitioner=None, prune_y=False, prune_z=False):
     """Converts a gmsh model object into `dolfinx.Mesh` and `dolfinx.MeshTags`
     for physical tags.
 
@@ -19,7 +19,8 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
     tdim
         Topological dimension of the mesh
     comm: optional
-    ghost_mode: optional
+    partitioner: optional
+        Use given partitioner.
     prune_y: optional
         Prune y-components. Used to embed a flat geometries into lower dimension.
     prune_z: optional
@@ -173,7 +174,7 @@ def gmsh_to_dolfin(gmsh_model, tdim: int, comm=MPI.COMM_WORLD, prune_y=False, pr
         cells = numpy.empty((0, cells_shape[1]))
         points = numpy.empty((0, pts_shape[1]))
 
-    mesh = create_mesh(comm, cells, points, ufl_mesh(celltype, pts_shape[1], dtype=default_real_type))
+    mesh = create_mesh(comm, cells, points, ufl_mesh(celltype, pts_shape[1], dtype=default_real_type), partitioner)
     mts = {}
 
     # Get physical groups (dimension, tag)

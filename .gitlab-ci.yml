@@ -207,3 +207,13 @@ demo/continuation:
       - cd continuation
       - mpirun -n 1 python3 continuation_planartruss.py
       - mpirun -n 1 python3 continuation_planartruss_disp.py
+
+demo/tdnns:
+   extends: .demo_template
+   script:
+      - cd tdnns 
+      - mpirun -n 4 python3 solid_tdnns_2d_cantilever.py
+      - mpirun -n 4 python3 solid_tdnns_3d_cantilever.py
+      - mpirun -n 4 python3 solid_tdnns_3d_spanner.py
+      - mpirun -n 4 python3 solid_displ_3d_spanner.py
+      - mpirun -n 4 python3 solid_mixed_3d_spanner.py
