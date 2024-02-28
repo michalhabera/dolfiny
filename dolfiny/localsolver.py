@@ -1,6 +1,5 @@
 import logging
 import dolfinx
-from dolfinx.cpp.fem import Form_float64, Form_complex128
 from petsc4py import PETSc
 import numpy as np
 import numba
@@ -22,7 +21,7 @@ c_signature = numba.types.void(
     numba.types.CPointer(numba.types.double),
     numba.types.CPointer(numba.types.int32),
     numba.types.CPointer(numba.types.uint8))
-Form = Form_float64 if PETSc.ScalarType == np.float64 else Form_complex128
+Form = dolfinx.fem.form_cpp_class(PETSc.ScalarType)
 
 KernelData = collections.namedtuple("KernelData", ("kernel", "array", "w", "c", "coords", "entity_local_index",
                                                    "permutation", "constants", "coefficients"))
@@ -116,7 +115,7 @@ class LocalSolver:
 
             cppform = Form([V._cpp_object], integrals,
                            [c[0] for c in self.stacked_coefficients],
-                           [c[0] for c in self.stacked_constants], False, None)
+                           [c[0] for c in self.stacked_constants], False, {}, None)
             cppform = dolfinx.fem.Form(cppform)
             F_form += [cppform]
 
@@ -138,7 +137,7 @@ class LocalSolver:
 
                 J_form[gi][gj] = Form([V0._cpp_object, V1._cpp_object], integrals,
                                       [c[0] for c in self.stacked_coefficients],
-                                      [c[0] for c in self.stacked_constants], False, None)
+                                      [c[0] for c in self.stacked_constants], False, {}, None)
                 J_form[gi][gj] = dolfinx.fem.Form(J_form[gi][gj])
 
         return J_form
@@ -156,7 +155,7 @@ class LocalSolver:
 
             cppform = Form([V._cpp_object], integrals,
                            [c[0] for c in self.stacked_coefficients],
-                           [c[0] for c in self.stacked_constants], False, None)
+                           [c[0] for c in self.stacked_constants], False, {}, None)
             cppform = dolfinx.fem.Form(cppform)
             local_form += [cppform]
 

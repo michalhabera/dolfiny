@@ -2,10 +2,10 @@ FROM dolfinx/dev-env:current
 
 ARG DOLFINY_BUILD_TYPE="RelWithDebInfo"
 
-ARG UFL_GIT_COMMIT="b15d8d3"
+ARG UFL_GIT_COMMIT="0f2cb21"
 ARG BASIX_GIT_COMMIT="2e2a704"
-ARG FFCX_GIT_COMMIT="7bc8be7"
-ARG DOLFINX_GIT_COMMIT="3e56d6d"
+ARG FFCX_GIT_COMMIT="9b0320a"
+ARG DOLFINX_GIT_COMMIT="c7c6205"
 
 ARG PYPI_PACKAGE_REPO="https://gitlab.uni.lu/api/v4/projects/3415/packages/pypi/simple"
 
