@@ -11,6 +11,7 @@ import basix
 import dolfiny
 
 import mesh_block3d_gmshapi as mg
+import plot_block3d_pyvista as pl
 
 # Basic settings
 name = "spectral_elasticity"
@@ -34,6 +35,11 @@ interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 surface_front = interfaces_keys["surface_front"]
 surface_back = interfaces_keys["surface_back"]
 
+# Define boundary stress vector (torque at upper face)
+x = ufl.SpatialCoordinate(mesh)
+n = ufl.FacetNormal(mesh)
+t = dolfinx.fem.Constant(mesh, np.pi / 2) * ufl.cross(x - ufl.as_vector([dx / 2, dy / 2, dz]), n)
+
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 3})
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 3})
@@ -54,22 +60,14 @@ u_ = dolfinx.fem.Function(Uf, name='u_')  # boundary conditions
 # Define state as (ordered) list of functions
 m, δm = [u], [δu]
 
-# Boundary conditions
-alpha, u2 = 0.25 * np.pi / 8, 0.40
-
-
-def u_bar(x):
-    return np.array([x[2] * (x[0] - (x[0] * np.cos(alpha) - x[1] * np.sin(alpha))),
-                     x[2] * (x[1] - (x[0] * np.sin(alpha) + x[1] * np.cos(alpha))),
-                     x[2] * u2])
-
-
-u_.interpolate(u_bar)
+# output / visualisation
+vorder = mesh.geometry.cmap.degree
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), name="u")  # for output
+so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="s")  # for output
 
 # Kinematics
 F = ufl.Identity(3) + ufl.grad(u)
 C = F.T * F
-# C = F.T + F - ufl.Identity(3)  # linearised C
 # Spectral decomposition of C
 (c0, c1, c2), (E0, E1, E2) = dolfiny.invariants.eigenstate(C)
 
@@ -107,22 +105,19 @@ def strain_energy(i1, i2, i3):
 
 # Invariants (based on spectral decomposition of C)
 i1, i2, i3 = dolfiny.invariants.invariants_principal(ufl.diag(c))
-# i1, i2, i3 = c[0] + c[1] + c[2], c[0] * c[1] + c[0] * c[2] + c[1] * c[2], c[0] * c[1] * c[2]  # easier for UFL?
 # Material model (isotropic)
 Ψ = strain_energy(i1, i2, i3)
 # Stress measure
 s = 2 * ufl.diff(Ψ, c)
 
-# Weak form: components (as one-form)
-F = 0.5 * ufl.inner(δc, s) * dx  # isotropic material: eigenprojectors of C and S are identical
+# von Mises stress (output)
+svm = ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(ufl.diag(s)), ufl.dev(ufl.diag(s))))
+
+# Weak form: for isotropic material, eigenprojectors of C and S are identical
+F = -0.5 * ufl.inner(δc, s) * dx + ufl.inner(δu, t) * ds(surface_front)
 
 # Overall form (as list of forms)
 F = dolfiny.function.extract_blocks(F, δm)
-
-# Create output xdmf file -- open in Paraview with Xdmf3ReaderT
-ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
-# Write mesh, meshtags
-ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
 opts = PETSc.Options("spectral")
@@ -140,12 +135,10 @@ opts["pc_factor_mat_solver_type"] = "mumps"
 problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="spectral")
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
-f_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_front)
 b_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_back)
 
 # Set/update boundary conditions
 problem.bcs = [
-    dolfinx.fem.dirichletbc(u_, f_dofs_Uf),  # u front face
     dolfinx.fem.dirichletbc(u_, b_dofs_Uf),  # u back face
 ]
 
@@ -155,6 +148,18 @@ problem.solve()
 # Assert convergence of nonlinear solver
 problem.status(verbose=True, error_on_failure=True)
 
-ofile.write_function(u)
+# Assert symmetry of operator
+assert dolfiny.la.is_symmetric(problem.J)
 
-ofile.close()
+# Interpolate
+dolfiny.interpolation.interpolate(u, uo)
+dolfiny.projection.project(svm, so)
+
+# Write results to file
+with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w") as ofile:
+    ofile.write_mesh_meshtags(mesh)
+    ofile.write_function(uo)
+    ofile.write_function(so)
+
+# Visualise
+pl.plot_block3d_pyvista(name)
