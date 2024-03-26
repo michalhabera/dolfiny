@@ -204,8 +204,6 @@ if comm.rank == 0:
     grid.point_data["S"] = multiblock[1].point_data["S"]
     grid.point_data["s"] = multiblock[2].point_data["s"]
 
-    grid.point_data["u"] = np.concatenate((grid.point_data["u"], np.zeros((grid.n_points, 1))), axis=1)
-
     pixels = 2048
     plotter = pyvista.Plotter(off_screen=True, window_size=[pixels, pixels], image_scale=1)
     plotter.add_axes(labels_off=True)
