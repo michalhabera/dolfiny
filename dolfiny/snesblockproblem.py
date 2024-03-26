@@ -17,7 +17,9 @@ class SNESBlockProblem():
     reasons_snes = attributes_to_dict(PETSc.SNES.ConvergedReason, invert=True)
 
     def __init__(self, F_form: typing.List, u: typing.List, bcs=[], J_form=None,
-                 nest=False, restriction=None, prefix=None, localsolver: LocalSolver = None):
+                 nest=False, restriction=None, prefix=None, localsolver: LocalSolver = None,
+                 form_compiler_options: typing.Optional[dict] = None,
+                 jit_options: typing.Optional[dict] = None,):
         """SNES problem and solver wrapper
 
         Parameters
@@ -57,8 +59,9 @@ class SNESBlockProblem():
 
             for i in range(len(self.u)):
                 for j in range(len(self.u)):
-                    J_form[i][j] = ufl.algorithms.expand_derivatives(ufl.derivative(
-                        F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space)))
+                    uj = self.u[j]
+                    duj = ufl.TrialFunction(uj.function_space)
+                    J_form[i][j] = ufl.derivative(F_form[i], uj, duj)
 
                     # If the form happens to be empty replace with None
                     if J_form[i][j].empty():
@@ -67,8 +70,12 @@ class SNESBlockProblem():
             self.J_form = J_form
 
         # Compile all forms
-        self.F_form_all_ufc = dolfinx.fem.form(F_form)
-        self.J_form_all_ufc = dolfinx.fem.form(J_form)
+        self.F_form_all_ufc = dolfinx.fem.form(F_form,
+                                               form_compiler_options=form_compiler_options,
+                                               jit_options=jit_options)
+        self.J_form_all_ufc = dolfinx.fem.form(J_form,
+                                               form_compiler_options=form_compiler_options,
+                                               jit_options=jit_options)
 
         # By default, copy all forms as the forms used in assemblers
         self.F_form = self.F_form_all_ufc.copy()
