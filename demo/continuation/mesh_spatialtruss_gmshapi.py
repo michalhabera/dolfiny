@@ -3,8 +3,8 @@
 from mpi4py import MPI
 
 
-def mesh_planartruss_gmshapi(
-    name="planartruss",
+def mesh_spatialtruss_gmshapi(
+    name="spatialtruss",
     shape="straight",
     L=1.0,
     nL=2,
@@ -14,7 +14,7 @@ def mesh_planartruss_gmshapi(
     comm=MPI.COMM_WORLD,
 ):
     """
-    Create mesh of planar truss using the Python API of Gmsh.
+    Create mesh of spatial truss using the Python API of Gmsh.
     """
 
     tdim = 1  # target topological dimension
@@ -32,16 +32,27 @@ def mesh_planartruss_gmshapi(
         gmsh.model.add(name)
 
         # Create points and lines
-        p0 = gmsh.model.geo.addPoint(-L * gmsh.numpy.cos(θ), 0.0, 0.0)
-        p1 = gmsh.model.geo.addPoint(0.0, +L * gmsh.numpy.sin(θ), 0.0)
-        p2 = gmsh.model.geo.addPoint(+L * gmsh.numpy.cos(θ), 0.0, 0.0)
-        p3 = gmsh.model.geo.addPoint(0.0, L + L * gmsh.numpy.sin(θ), 0.0)
+        φ = 3.1415 / 6
+        p0 = gmsh.model.geo.addPoint(
+            -L * gmsh.numpy.cos(θ) * gmsh.numpy.cos(φ),
+            -L * gmsh.numpy.cos(θ) * gmsh.numpy.sin(φ),
+            0.0,
+        )
+        p1 = gmsh.model.geo.addPoint(
+            +L * gmsh.numpy.cos(θ) * gmsh.numpy.cos(φ),
+            -L * gmsh.numpy.cos(θ) * gmsh.numpy.sin(φ),
+            0.0,
+        )
+        p2 = gmsh.model.geo.addPoint(0.0, +L * gmsh.numpy.cos(θ), 0.0)
+        p3 = gmsh.model.geo.addPoint(0.0, 0.0, +L * gmsh.numpy.sin(θ))
+        p4 = gmsh.model.geo.addPoint(0.0, 0.0, L + L * gmsh.numpy.sin(θ))
 
         if shape == "straight":
-            l0 = gmsh.model.geo.addLine(p0, p1)
-            l1 = gmsh.model.geo.addLine(p1, p2)
-            l2 = gmsh.model.geo.addLine(p1, p3)
-            lines = [l0, l1, l2]
+            l0 = gmsh.model.geo.addLine(p0, p3)
+            l1 = gmsh.model.geo.addLine(p1, p3)
+            l2 = gmsh.model.geo.addLine(p2, p3)
+            l3 = gmsh.model.geo.addLine(p3, p4)
+            lines = [l0, l1, l2, l3]
         else:
             raise RuntimeError("Unknown shape identifier '{shape:s}'")
 
@@ -49,20 +60,20 @@ def mesh_planartruss_gmshapi(
         gmsh.model.geo.synchronize()
         # Define physical groups for subdomains (! target tag > 0)
         lower = 1
-        gmsh.model.addPhysicalGroup(tdim, [l0, l1], lower)
+        gmsh.model.addPhysicalGroup(tdim, [l0, l1, l2], lower)
         gmsh.model.setPhysicalName(tdim, lower, "lower")
         upper = 2
-        gmsh.model.addPhysicalGroup(tdim, [l2], upper)
+        gmsh.model.addPhysicalGroup(tdim, [l3], upper)
         gmsh.model.setPhysicalName(tdim, upper, "upper")
         # Define physical groups for interfaces (! target tag > 0)
         support = 1
-        gmsh.model.addPhysicalGroup(tdim - 1, [p0, p2], support)
+        gmsh.model.addPhysicalGroup(tdim - 1, [p0, p1, p2], support)
         gmsh.model.setPhysicalName(tdim - 1, support, "support")
         connect = 2
-        gmsh.model.addPhysicalGroup(tdim - 1, [p1], connect)
+        gmsh.model.addPhysicalGroup(tdim - 1, [p3], connect)
         gmsh.model.setPhysicalName(tdim - 1, connect, "connect")
         verytop = 3
-        gmsh.model.addPhysicalGroup(tdim - 1, [p3], verytop)
+        gmsh.model.addPhysicalGroup(tdim - 1, [p4], verytop)
         gmsh.model.setPhysicalName(tdim - 1, verytop, "verytop")
 
         # Set refinement along curve direction
@@ -83,4 +94,4 @@ def mesh_planartruss_gmshapi(
 
 
 if __name__ == "__main__":
-    mesh_planartruss_gmshapi(msh_file="planartruss.msh")
+    mesh_spatialtruss_gmshapi(msh_file="spatialtruss.msh")

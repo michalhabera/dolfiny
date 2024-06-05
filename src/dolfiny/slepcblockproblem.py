@@ -1,15 +1,21 @@
-import typing
-
 import dolfinx
 import ufl
+
 from slepc4py import SLEPc
 
 from dolfiny.function import vec_to_functions
 
 
-class SLEPcBlockProblem():
-    def __init__(self, F_form: typing.List, u: typing.List, lmbda: dolfinx.fem.Function,
-                 A_form=None, B_form=None, prefix=None):
+class SLEPcBlockProblem:
+    def __init__(
+        self,
+        F_form: list,
+        u: list,
+        lmbda: dolfinx.fem.Function,
+        A_form=None,
+        B_form=None,
+        prefix=None,
+    ):
         """SLEPc problem and solver wrapper.
 
         Wrapper for a generalised eigenvalue problem obtained from UFL residual forms.
@@ -51,11 +57,16 @@ class SLEPcBlockProblem():
         self.M0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]
         for i in range(len(self.u)):
             for j in range(len(self.u)):
-                self.M0[i][j] = ufl.algorithms.expand_derivatives(ufl.derivative(
-                    F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space)))
+                self.M0[i][j] = ufl.algorithms.expand_derivatives(
+                    ufl.derivative(
+                        F_form[i], self.u[j], ufl.TrialFunction(self.u[j].function_space)
+                    )
+                )
 
         if B_form is None:
-            B0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]
+            B0: list[list[ufl.Form | None]] = [
+                [None for i in range(len(self.u))] for j in range(len(self.u))
+            ]
 
             for i in range(len(self.u)):
                 for j in range(len(self.u)):
@@ -63,7 +74,7 @@ class SLEPcBlockProblem():
                     B0[i][j] = ufl.algorithms.expand_derivatives(ufl.diff(self.M0[i][j], lmbda))
                     B0[i][j] = ufl.replace(B0[i][j], {lmbda: ufl.zero()})
 
-                    if B0[i][j].empty():
+                    if B0[i][j].empty():  # type: ignore[union-attr]
                         B0[i][j] = None
 
             self.B_form = B0
@@ -71,13 +82,15 @@ class SLEPcBlockProblem():
             self.B_form = B_form
 
         if A_form is None:
-            A0 = [[None for i in range(len(self.u))] for j in range(len(self.u))]
+            A0: list[list[ufl.Form | None]] = [
+                [None for i in range(len(self.u))] for j in range(len(self.u))
+            ]
 
             for i in range(len(self.u)):
                 for j in range(len(self.u)):
                     A0[i][j] = ufl.replace(self.M0[i][j], {lmbda: ufl.zero()})
 
-                    if A0[i][j].empty():
+                    if A0[i][j].empty():  # type: ignore[union-attr]
                         A0[i][j] = None
                         continue
             self.A_form = A0
@@ -91,11 +104,11 @@ class SLEPcBlockProblem():
         self.A_form = dolfinx.fem.form(self.A_form)
         self.B_form = dolfinx.fem.form(self.B_form)
 
-        self.A = dolfinx.fem.petsc.create_matrix_block(self.A_form)
+        self.A = dolfinx.fem.petsc.create_matrix_block(self.A_form)  # type: ignore[arg-type]
 
         self.B = None
         if not self.empty_B():
-            self.B = dolfinx.fem.petsc.create_matrix_block(self.B_form)
+            self.B = dolfinx.fem.petsc.create_matrix_block(self.B_form)  # type: ignore[arg-type]
 
     def solve(self):
         self.A.zeroEntries()

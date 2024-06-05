@@ -1,17 +1,18 @@
 from mpi4py import MPI
+
 import dolfinx
-import dolfiny
-import numpy
 import ufl
+
+import numpy as np
+
+import dolfiny
 
 
 def test_simple_triangle():
-
     if MPI.COMM_WORLD.rank == 0:
-
         import gmsh
 
-        gmsh.initialize()
+        gmsh.initialize(interruptible=False)
         gmsh.model.add("test")
 
         p0 = gmsh.model.geo.addPoint(0.0, 0.0, 0.0)
@@ -46,7 +47,6 @@ def test_simple_triangle():
         gmsh_model = gmsh.model
 
     else:
-
         gmsh_model = None
 
     mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, 2, prune_z=True)
@@ -68,7 +68,7 @@ def test_simple_triangle():
     val = dolfinx.fem.assemble_scalar(form)
 
     val = mesh.comm.allreduce(val, op=MPI.SUM)
-    assert numpy.isclose(val, 2.0 + 2.0 * numpy.pi * 0.5 / 2.0, rtol=1.0e-3)
+    assert np.isclose(val, 2.0 + 2.0 * np.pi * 0.5 / 2.0, rtol=1.0e-3)
 
     dx = ufl.Measure("dx", subdomain_data=mt2, domain=mesh)
 
@@ -76,4 +76,4 @@ def test_simple_triangle():
     val = dolfinx.fem.assemble_scalar(form)
 
     val = mesh.comm.allreduce(val, op=MPI.SUM)
-    assert numpy.isclose(val, 1.0 + numpy.pi * 0.5**2 / 2.0, rtol=1.0e-3)
+    assert np.isclose(val, 1.0 + np.pi * 0.5**2 / 2.0, rtol=1.0e-3)

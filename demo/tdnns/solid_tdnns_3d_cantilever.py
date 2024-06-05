@@ -3,14 +3,15 @@
 from mpi4py import MPI
 from petsc4py import PETSc
 
-import dolfinx
-import dolfiny
-import ufl
 import basix
-
-import numpy as np
+import dolfinx
+import ufl
+from dolfinx import default_scalar_type as scalar
 
 import hdivdiv
+import numpy as np
+
+import dolfiny
 
 # Basic settings
 name = "solid_tdnns_3d_cantilever"
@@ -44,8 +45,8 @@ surface_front = interfaces_keys["face_x2=min"]
 surface_back = interfaces_keys["face_x2=max"]
 
 # Solid material parameters
-mu = dolfinx.fem.Constant(mesh, 100.0)  # GPa
-la = dolfinx.fem.Constant(mesh, 150.0)  # GPa
+mu = dolfinx.fem.Constant(mesh, scalar(100.0))  # GPa
+la = dolfinx.fem.Constant(mesh, scalar(150.0))  # GPa
 
 # Load
 g = dolfinx.fem.Constant(mesh, [0.0, 0.0, 0.0])  # volume force vector
@@ -79,9 +80,9 @@ m, δm = [u, S], [δu, δS]
 
 # Create other functions: output / visualisation
 vorder = mesh.geometry.cmap.degree
-So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3, 3), True)), name="S")
-uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), name="u")
-so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="s")
+So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder, (3, 3), True)), name="S")
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder, (3,))), name="u")
+so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder)), name="s")
 
 
 # Strain, kinematically
@@ -103,28 +104,34 @@ s = ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S)))
 
 # Duality pairing operator
 def b(S, u):
-    return - ufl.inner(S, Eu(u)) * dx \
-        + ufl.dot(ufl.dot(S, n), n) * ufl.dot(u, n) * ds \
-        + ufl.dot(ufl.dot(S('+'), n('+')), n('+')) * ufl.jump(u, n) * dS
+    return (
+        -ufl.inner(S, Eu(u)) * dx
+        + ufl.dot(ufl.dot(S, n), n) * ufl.dot(u, n) * ds
+        + ufl.dot(ufl.dot(S("+"), n("+")), n("+")) * ufl.jump(u, n) * dS
+    )
 
 
 # dual mixed form, TD-NNS, duality pairing
-f = + ufl.inner(δS, Es(S)) * dx + b(δS, u) \
-    + b(S, δu) \
-    + ufl.dot(δu, g) * dx + ufl.dot(δu, t) * ds(surface_right)
+form = (
+    +ufl.inner(δS, Es(S)) * dx
+    + b(δS, u)
+    + b(S, δu)
+    + ufl.dot(δu, g) * dx
+    + ufl.dot(δu, t) * ds(surface_right)
+)
 
-f += dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(δu, u) * dx  # ensure zero block diagonal for bc
+form += (
+    dolfinx.fem.Constant(mesh, scalar(0.0)) * ufl.inner(δu, u) * dx
+)  # ensure zero block diagonal for bc
 
 # Overall form (as list of forms)
-F = dolfiny.function.extract_blocks(f, δm)
+forms = dolfiny.function.extract_blocks(form, δm)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 surface_left_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_left)
-surface_rest_dofs_Sf = dolfiny.mesh.locate_dofs_topological(Sf, interfaces, [surface_right,
-                                                                             surface_top,
-                                                                             surface_bottom,
-                                                                             surface_front,
-                                                                             surface_back])
+surface_rest_dofs_Sf = dolfiny.mesh.locate_dofs_topological(
+    Sf, interfaces, [surface_right, surface_top, surface_bottom, surface_front, surface_back]
+)
 
 # Define boundary conditions
 bcs = [
@@ -133,7 +140,7 @@ bcs = [
 ]
 
 # Options for PETSc backend
-opts = PETSc.Options(name)
+opts = PETSc.Options(name)  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -149,7 +156,7 @@ opts["mat_mumps_icntl_14"] = 25
 opts["mat_mumps_icntl_24"] = 1
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, bcs, prefix=name)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, bcs, prefix=name)
 
 # Solve nonlinear problem
 problem.solve()
@@ -165,20 +172,20 @@ x = ufl.SpatialCoordinate(mesh)
 
 ref_tuple = ufl.dot(ufl.dot(S, n), n), ds
 exp_tuple = 0.0, ds
-assert np.isclose(dolfiny.expression.assemble(*ref_tuple),
-                  dolfiny.expression.assemble(*exp_tuple))
+assert np.isclose(dolfiny.expression.assemble(*ref_tuple), dolfiny.expression.assemble(*exp_tuple))
 ref_tuple = ufl.jump(ufl.dot(ufl.dot(S, n), n)), dS
 exp_tuple = 0.0, dS
-assert np.isclose(dolfiny.expression.assemble(*ref_tuple),
-                  dolfiny.expression.assemble(*exp_tuple))
+assert np.isclose(dolfiny.expression.assemble(*ref_tuple), dolfiny.expression.assemble(*exp_tuple))
 ref_tuple = +ufl.dot(S, n) - ufl.dot(ufl.dot(S, n), n) * n, ds(surface_left)
 exp_tuple = -ufl.dot(S, n) - ufl.dot(ufl.dot(S, n), n) * n, ds(surface_right)
-assert np.isclose(dolfiny.expression.assemble(*ref_tuple),
-                  dolfiny.expression.assemble(*exp_tuple), atol=1e-03).all()
+assert np.isclose(
+    dolfiny.expression.assemble(*ref_tuple), dolfiny.expression.assemble(*exp_tuple), atol=1e-03
+).all()
 ref_tuple = +ufl.cross(ufl.dot(S, n), x)[2], ds(surface_left)
 exp_tuple = -ufl.cross(t, x)[2], ds(surface_right)
-assert np.isclose(dolfiny.expression.assemble(*ref_tuple),
-                  dolfiny.expression.assemble(*exp_tuple), atol=1e-03)
+assert np.isclose(
+    dolfiny.expression.assemble(*ref_tuple), dolfiny.expression.assemble(*exp_tuple), atol=1e-03
+)
 
 # Write results to file
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
@@ -193,7 +200,6 @@ ofile.close()
 
 # Read results and plot using pyvista (all in serial)
 if comm.rank == 0:
-
     import pyvista
 
     class Xdmf3Reader(pyvista.XdmfReader):
@@ -212,17 +218,34 @@ if comm.rank == 0:
     plotter = pyvista.Plotter(off_screen=True, window_size=[pixels, pixels], image_scale=1)
     plotter.add_axes(labels_off=True)
 
-    sargs = dict(height=0.05, width=0.8, position_x=0.1, position_y=0.90,
-                 title="von Mises stress", font_family="courier", fmt="%1.2f", color="black",
-                 title_font_size=pixels // 50, label_font_size=pixels // 50)
+    sargs = dict(
+        height=0.05,
+        width=0.8,
+        position_x=0.1,
+        position_y=0.90,
+        title="von Mises stress",
+        font_family="courier",
+        fmt="%1.2f",
+        color="black",
+        title_font_size=pixels // 50,
+        label_font_size=pixels // 50,
+    )
 
     grid_warped = grid.warp_by_vector("u", factor=1.0)
 
     if not grid.get_cell(0).is_linear:
         grid_warped = grid_warped.extract_surface(nonlinear_subdivision=3)
 
-    plotter.add_mesh(grid_warped, scalars="s", scalar_bar_args=sargs, cmap="coolwarm",
-                     specular=0.5, specular_power=20, smooth_shading=True, split_sharp_edges=True)
+    plotter.add_mesh(
+        grid_warped,
+        scalars="s",
+        scalar_bar_args=sargs,
+        cmap="coolwarm",
+        specular=0.5,
+        specular_power=20,
+        smooth_shading=True,
+        split_sharp_edges=True,
+    )
 
     plotter.add_mesh(grid_warped, style="wireframe", color="black", line_width=pixels // 500)
 

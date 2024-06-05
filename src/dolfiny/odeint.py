@@ -1,6 +1,9 @@
 import dolfinx
-import dolfiny
 import ufl
+
+import dolfiny
+
+# ruff: noqa: E501
 
 
 def _copy_entries(source, target):
@@ -15,8 +18,7 @@ def _copy_entries(source, target):
             locs.copy(loct)
 
 
-class ODEInt():
-
+class ODEInt:
     def __init__(self, t, dt, x, xt, **kwargs):
         """Initialises the ODE integrator (single-step-method) for 1st order ODEs.
         Uses underneath the generalised alpha method and its limits.
@@ -126,7 +128,11 @@ class ODEInt():
         """Returns the UFL expression for: derivative in time x1t."""
 
         # return equation (1) solved for x1t
-        return 1 / self.alpha_f * ((1 - self.alpha_m) * x0t_aux + self.alpha_m * x1t_aux - (1 - self.alpha_f) * x0t)
+        return (
+            1
+            / self.alpha_f
+            * ((1 - self.alpha_m) * x0t_aux + self.alpha_m * x1t_aux - (1 - self.alpha_f) * x0t)
+        )
 
     def _derivative_dt_aux(self, x1, x0, x0t_aux):
         """Returns the UFL expression for: derivative in time x1t_aux."""
@@ -182,18 +188,21 @@ class ODEInt():
             for x1, x0, x1t_aux, x0t_aux in zip(self.x1, self.x0, self.x1t_aux, self.x0t_aux):
                 dolfiny.interpolation.interpolate(self._derivative_dt_aux(x1, x0, x0t_aux), x1t_aux)
         else:
-            dolfiny.interpolation.interpolate(self._derivative_dt_aux(self.x1, self.x0, self.x0t_aux), self.x1t_aux)
+            dolfiny.interpolation.interpolate(
+                self._derivative_dt_aux(self.x1, self.x0, self.x0t_aux), self.x1t_aux
+            )
 
         # update x1t
         if isinstance(self.x1t, list):
             for x1t_aux, x0t_aux, x1t, x0t in zip(self.x1t_aux, self.x0t_aux, self.x1t, self.x0t):
                 dolfiny.interpolation.interpolate(self._derivative_dt(x1t_aux, x0t_aux, x0t), x1t)
         else:
-            dolfiny.interpolation.interpolate(self._derivative_dt(self.x1t_aux, self.x0t_aux, self.x0t), self.x1t)
+            dolfiny.interpolation.interpolate(
+                self._derivative_dt(self.x1t_aux, self.x0t_aux, self.x0t), self.x1t
+            )
 
     def discretise_in_time(self, f):
-        """Discretises the form f(t, x, xt) in time. The solution fulfills f(t1, x1, x1t) = 0.
-        """
+        """Discretises the form f(t, x, xt) in time. The solution fulfills f(t1, x1, x1t) = 0."""
 
         # Construct expression for x1t_aux
         if isinstance(self.x1t, list):
@@ -218,8 +227,7 @@ class ODEInt():
         return f
 
 
-class ODEInt2():
-
+class ODEInt2:
     def __init__(self, t, dt, x, xt, xtt, **kwargs):
         """Initialises the ODE integrator (single-step-method) for 2nd order ODEs.
         Uses underneath the generalised alpha method and its limits.
@@ -286,12 +294,16 @@ class ODEInt2():
 
         if isinstance(self.x1, list):
             for x1, x1t, x1tt in zip(self.x1, self.x1t, self.x1tt):
-                if x1.function_space is not x1t.function_space \
-                   or x1.function_space is not x1tt.function_space:
+                if (
+                    x1.function_space is not x1t.function_space
+                    or x1.function_space is not x1tt.function_space
+                ):
                     raise RuntimeError("Incompatible function spaces for state and rate.")
         else:
-            if self.x1.function_space is not self.x1t.function_space \
-               or self.x1.function_space is not self.x1tt.function_space:
+            if (
+                self.x1.function_space is not self.x1t.function_space
+                or self.x1.function_space is not self.x1tt.function_space
+            ):
                 raise RuntimeError("Incompatible function spaces for state and rate.")
 
         # Set state x0
@@ -335,7 +347,7 @@ class ODEInt2():
             self.alpha_f.value = 1.0 / (1.0 + kwargs["rho"])
             self.alpha_m.value = (2.0 - kwargs["rho"]) * self.alpha_f.value
             self.gamma.value = 0.5 + self.alpha_m.value - self.alpha_f.value
-            self.beta.value = 0.25 * (1.0 + self.alpha_m.value - self.alpha_f.value)**2
+            self.beta.value = 0.25 * (1.0 + self.alpha_m.value - self.alpha_f.value) ** 2
 
         # Parameters directly
         if "alpha_f" in kwargs and "alpha_m" in kwargs and "gamma" in kwargs and "beta" in kwargs:
@@ -354,7 +366,9 @@ class ODEInt2():
         """Returns the UFL expression for: derivative in time x1tt."""
 
         # return equation (3) solved for x1t
-        return ((1 - self.alpha_m) * x0tt_aux + self.alpha_m * x1tt_aux - (1 - self.alpha_f) * x0tt) / self.alpha_f
+        return (
+            (1 - self.alpha_m) * x0tt_aux + self.alpha_m * x1tt_aux - (1 - self.alpha_f) * x0tt
+        ) / self.alpha_f
 
     def _derivative_dt2_aux(self, x1, x0, x0t, x0tt_aux):
         """Returns the UFL expression for: derivative in time x1tt."""
@@ -366,7 +380,11 @@ class ODEInt2():
         """Returns the UFL expression for: integral over the time interval int_t0^t1 x(t) dt."""
 
         # return integrated polynomial of degree 5
-        return self.dt / 2 * (x0 + x1) + self.dt**2 / 10 * (x0t - x1t) + self.dt**3 / 120 * (x0tt + x1tt)
+        return (
+            self.dt / 2 * (x0 + x1)
+            + self.dt**2 / 10 * (x0t - x1t)
+            + self.dt**3 / 120 * (x0tt + x1tt)
+        )
 
     def integral_dt(self, y):
         """Returns the UFL expression for: time integral of given UFL function y registered in ODEInt2."""
@@ -376,7 +394,9 @@ class ODEInt2():
                 raise RuntimeError("Given function not registered in ODEInt2 object.")
             else:
                 i = self.x1.index(y)
-                return self._integral_dt(self.x1[i], self.x1t[i], self.x1tt[i], self.x0[i], self.x0t[i], self.x0tt[i])
+                return self._integral_dt(
+                    self.x1[i], self.x1t[i], self.x1tt[i], self.x0[i], self.x0t[i], self.x0tt[i]
+                )
         else:
             if y != self.x1:
                 raise RuntimeError("Given function not registered in ODEInt2 object.")
@@ -408,29 +428,43 @@ class ODEInt2():
 
         # update x1tt_aux
         if isinstance(self.x1tt_aux, list):
-            for x1, x0, x0t, x1tt_aux, x0tt_aux in zip(self.x1, self.x0, self.x0t, self.x1tt_aux, self.x0tt_aux):
-                dolfiny.interpolation.interpolate(self._derivative_dt2_aux(x1, x0, x0t, x0tt_aux), x1tt_aux)
+            for x1, x0, x0t, x1tt_aux, x0tt_aux in zip(
+                self.x1, self.x0, self.x0t, self.x1tt_aux, self.x0tt_aux
+            ):
+                dolfiny.interpolation.interpolate(
+                    self._derivative_dt2_aux(x1, x0, x0t, x0tt_aux), x1tt_aux
+                )
         else:
             dolfiny.interpolation.interpolate(
-                self._derivative_dt2_aux(self.x1, self.x0, self.x0t, self.x0tt_aux), self.x1tt_aux)
+                self._derivative_dt2_aux(self.x1, self.x0, self.x0t, self.x0tt_aux), self.x1tt_aux
+            )
 
         # update x1t
         if isinstance(self.x1t, list):
-            for x1tt_aux, x0tt_aux, x1t, x0t in zip(self.x1tt_aux, self.x0tt_aux, self.x1t, self.x0t):
+            for x1tt_aux, x0tt_aux, x1t, x0t in zip(
+                self.x1tt_aux, self.x0tt_aux, self.x1t, self.x0t
+            ):
                 dolfiny.interpolation.interpolate(self._derivative_dt(x1tt_aux, x0tt_aux, x0t), x1t)
         else:
-            dolfiny.interpolation.interpolate(self._derivative_dt(self.x1tt_aux, self.x0tt_aux, self.x0t), self.x1t)
+            dolfiny.interpolation.interpolate(
+                self._derivative_dt(self.x1tt_aux, self.x0tt_aux, self.x0t), self.x1t
+            )
 
         # update x1tt
         if isinstance(self.x1tt, list):
-            for x1tt_aux, x0tt_aux, x1tt, x0tt in zip(self.x1tt_aux, self.x0tt_aux, self.x1tt, self.x0tt):
-                dolfiny.interpolation.interpolate(self._derivative_dt2(x1tt_aux, x0tt_aux, x0tt), x1tt)
+            for x1tt_aux, x0tt_aux, x1tt, x0tt in zip(
+                self.x1tt_aux, self.x0tt_aux, self.x1tt, self.x0tt
+            ):
+                dolfiny.interpolation.interpolate(
+                    self._derivative_dt2(x1tt_aux, x0tt_aux, x0tt), x1tt
+                )
         else:
-            dolfiny.interpolation.interpolate(self._derivative_dt2(self.x1tt_aux, self.x0tt_aux, self.x0tt), self.x1tt)
+            dolfiny.interpolation.interpolate(
+                self._derivative_dt2(self.x1tt_aux, self.x0tt_aux, self.x0tt), self.x1tt
+            )
 
     def discretise_in_time(self, f):
-        """Discretises the form f(t, x, xt, xtt) in time. The solution fulfills f(t1, x1, x1t, x1tt) = 0.
-        """
+        """Discretises the form f(t, x, xt, xtt) in time. The solution fulfills f(t1, x1, x1t, x1tt) = 0."""
 
         # Construct expression for x1tt_aux
         if isinstance(self.x1tt, list):

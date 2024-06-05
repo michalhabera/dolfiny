@@ -110,9 +110,9 @@ def linearise(e, u, u0=None):
         if isinstance(u, list):
             u0 = []
             for v in u:
-                u0.append(dolfinx.fem.Function(v.function_space, name=v.name + '_0'))
+                u0.append(dolfinx.fem.Function(v.function_space, name=v.name + "_0"))
         else:
-            u0 = dolfinx.fem.Function(u.function_space, name=u.name + '_0')
+            u0 = dolfinx.fem.Function(u.function_space, name=u.name + "_0")
 
     e0 = evaluate(e, u, u0)
     deu = derivative(e, u, u, u0)
@@ -143,8 +143,9 @@ def assemble(e, dx):
 
     """
 
-    import numpy as np
     from mpi4py import MPI
+
+    import numpy as np
 
     rank = ufl.rank(e)
     shape = ufl.shape(e)
@@ -185,12 +186,11 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
 
     """
 
-    from ufl.classes import Division, Product, ScalarValue, Sum
-    from ufl.classes import ComponentTensor, Indexed, Index
+    from ufl.classes import ComponentTensor, Division, Index, Indexed, Product, ScalarValue, Sum
 
     if isinstance(e, dolfinx.fem.Function):
         linear_comb.append((e, scalar_weight))
-    elif isinstance(e, (Product, Division)):
+    elif isinstance(e, Product | Division):
         e0, e1 = e.ufl_operands
 
         if isinstance(e0, ScalarValue):
@@ -210,7 +210,7 @@ def extract_linear_combination(e, linear_comb=[], scalar_weight=1.0):
         e0, e1 = e.ufl_operands
         extract_linear_combination(e0, linear_comb, scalar_weight)
         extract_linear_combination(e1, linear_comb, scalar_weight)
-    elif isinstance(e, (ComponentTensor, Indexed)):
+    elif isinstance(e, ComponentTensor | Indexed):
         expr, indices = e.ufl_operands
         if not all(isinstance(i, Index) for i in indices):
             raise RuntimeError("Expecting free index, not fixed index")

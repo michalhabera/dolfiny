@@ -1,5 +1,6 @@
-from scipy.sparse import csr_matrix
 from petsc4py import PETSc
+
+from scipy.sparse import csr_matrix
 
 
 def petsc_to_scipy(A):
@@ -40,6 +41,7 @@ def is_symmetric(A, rtol=1e-06, atol=1e-08):
         asymA.destroy()
 
         import dolfiny
+
         dolfiny.utils.pprint(f"absolute asymmetry measure = {norm_asymA:.3e}")
         dolfiny.utils.pprint(f"relative asymmetry measure = {norm_asymA / A.norm(2):.3e}")
 

@@ -3,9 +3,16 @@
 from mpi4py import MPI
 
 
-def mesh_spanner_gmshapi(name="spanner", step_file="spanner25_lo.step", size=0.04,
-                         do_quads=False, order=2, msh_file=None, vtk_file=None,
-                         comm=MPI.COMM_WORLD):
+def mesh_spanner_gmshapi(
+    name="spanner",
+    step_file="spanner25_lo.step",
+    size=0.04,
+    do_quads=False,
+    order=2,
+    msh_file=None,
+    vtk_file=None,
+    comm=MPI.COMM_WORLD,
+):
     """
     Create mesh of 3d spanner from STEP file using the Python API of Gmsh.
 
@@ -23,7 +30,6 @@ def mesh_spanner_gmshapi(name="spanner", step_file="spanner25_lo.step", size=0.0
     # Perform Gmsh work only on rank = 0
 
     if comm.rank == 0:
-
         import gmsh
 
         # Initialise gmsh and set options
@@ -65,7 +71,7 @@ def mesh_spanner_gmshapi(name="spanner", step_file="spanner25_lo.step", size=0.0
         gmsh.model.occ.synchronize()
 
         # Get model entites
-        points, lines, surfaces, volumes = [gmsh.model.occ.get_entities(d) for d in [0, 1, 2, 3]]
+        points, lines, surfaces, volumes = (gmsh.model.occ.get_entities(d) for d in [0, 1, 2, 3])
         boundaries = gmsh.model.get_boundary(volumes, oriented=False)
 
         # Assertions, problem-specific
@@ -82,38 +88,44 @@ def mesh_spanner_gmshapi(name="spanner", step_file="spanner25_lo.step", size=0.0
         if step_file == "spanner25_lo.step":
             tag_interfaces_flats = extract_tags([surfaces[11 - 1], surfaces[14 - 1]])
             tag_interfaces_crown = extract_tags([surfaces[k - 1] for k in range(18, 42)])
-            tag_interfaces_other = list(set(extract_tags(boundaries))
-                                        - set(tag_interfaces_flats)
-                                        - set(tag_interfaces_crown))
+            tag_interfaces_other = list(
+                set(extract_tags(boundaries))
+                - set(tag_interfaces_flats)
+                - set(tag_interfaces_crown)
+            )
         elif step_file == "spanner25_hi.step":
             tag_interfaces_flats = extract_tags([surfaces[4 - 1], surfaces[12 - 1]])
             tag_interfaces_crown = extract_tags([surfaces[k - 1] for k in range(97, 120 + 1)])
-            tag_interfaces_other = list(set(extract_tags(boundaries))
-                                        - set(tag_interfaces_flats)
-                                        - set(tag_interfaces_crown))
+            tag_interfaces_other = list(
+                set(extract_tags(boundaries))
+                - set(tag_interfaces_flats)
+                - set(tag_interfaces_crown)
+            )
         else:
             raise RuntimeError(f"Cannot tag required entities for '{step_file}'")
 
         # Define physical groups for subdomains (! target tag > 0)
         domain = 1
         gmsh.model.add_physical_group(tdim, tag_subdomains_total, domain)
-        gmsh.model.set_physical_name(tdim, domain, 'domain')
+        gmsh.model.set_physical_name(tdim, domain, "domain")
 
         # Define physical groups for interfaces (! target tag > 0)
         surface_flats = 1
         gmsh.model.add_physical_group(tdim - 1, tag_interfaces_flats, surface_flats)
-        gmsh.model.set_physical_name(tdim - 1, surface_flats, 'surface_flats')
+        gmsh.model.set_physical_name(tdim - 1, surface_flats, "surface_flats")
         surface_crown = 2
         gmsh.model.add_physical_group(tdim - 1, tag_interfaces_crown, surface_crown)
-        gmsh.model.set_physical_name(tdim - 1, surface_crown, 'surface_crown')
+        gmsh.model.set_physical_name(tdim - 1, surface_crown, "surface_crown")
         surface_other = 3
         gmsh.model.add_physical_group(tdim - 1, tag_interfaces_other, surface_other)
-        gmsh.model.set_physical_name(tdim - 1, surface_other, 'surface_other')
+        gmsh.model.set_physical_name(tdim - 1, surface_other, "surface_other")
 
         # Set sizes
         csize = size  # characteristic size (head diameter)
         distance = gmsh.model.mesh.field.add("Distance")
-        gmsh.model.mesh.field.set_numbers(distance, "SurfacesList", tag_interfaces_flats + tag_interfaces_crown)
+        gmsh.model.mesh.field.set_numbers(
+            distance, "SurfacesList", tag_interfaces_flats + tag_interfaces_crown
+        )
         threshold = gmsh.model.mesh.field.add("Threshold")
         gmsh.model.mesh.field.set_number(threshold, "InField", distance)
         gmsh.model.mesh.field.set_number(threshold, "SizeMin", csize * 0.05)
@@ -138,10 +150,13 @@ def mesh_spanner_gmshapi(name="spanner", step_file="spanner25_lo.step", size=0.0
                     elements_quality = gmsh.model.mesh.get_element_qualities(elements, q_measure)
                     below_eps = sum(elements_quality <= q_eps)
 
-                    print(f"{str(e):8s}: {len(elements):8d} {element_name:20s} ({t:2d}), "
-                          + f"{q_measure:>8s} < {q_eps} = {below_eps:4d} "
-                          + f"[{min(elements_quality):+.3e}, {max(elements_quality):+.3e}] "
-                          + ("Quality warning!" if below_eps > 0 else ""), flush=True)
+                    print(
+                        f"{e!s:8s}: {len(elements):8d} {element_name:20s} ({t:2d}), "
+                        + f"{q_measure:>8s} < {q_eps} = {below_eps:4d} "
+                        + f"[{min(elements_quality):+.3e}, {max(elements_quality):+.3e}] "
+                        + ("Quality warning!" if below_eps > 0 else ""),
+                        flush=True,
+                    )
 
                     # success &= not bool(below_eps)
 
@@ -160,13 +175,13 @@ def mesh_spanner_gmshapi(name="spanner", step_file="spanner25_lo.step", size=0.0
 
 
 if __name__ == "__main__":
-
     msh_file = "spanner.msh"
     vtk_file = "spanner.vtk"
 
     mesh_spanner_gmshapi(msh_file=msh_file, vtk_file=vtk_file)
 
     import pyvista
+
     grid = pyvista.read(vtk_file)
 
     print(grid)
@@ -177,12 +192,17 @@ if __name__ == "__main__":
 
     grid_surface_hires = grid.extract_surface(nonlinear_subdivision=4)
 
-    plotter.add_mesh(grid_surface_hires, color="tab:orange",
-                     specular=0.5, specular_power=20,
-                     smooth_shading=True, split_sharp_edges=True)
+    plotter.add_mesh(
+        grid_surface_hires,
+        color="tab:orange",
+        specular=0.5,
+        specular_power=20,
+        smooth_shading=True,
+        split_sharp_edges=True,
+    )
 
-    plotter.camera_position = pyvista.pyvista_ndarray([(-0.8, -1.0, 0.8),
-                                                       (0.05, 0.5, 0.0),
-                                                       (2.0, 4.0, 8.0)]) * 0.15
+    plotter.camera_position = (
+        pyvista.pyvista_ndarray([(-0.8, -1.0, 0.8), (0.05, 0.5, 0.0), (2.0, 4.0, 8.0)]) * 0.15
+    )
 
     plotter.screenshot("spanner.png", transparent_background=False)

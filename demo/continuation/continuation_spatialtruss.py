@@ -8,13 +8,13 @@ import dolfinx
 import ufl
 from dolfinx import default_scalar_type as scalar
 
-import mesh_planartruss_gmshapi as mg
+import mesh_spatialtruss_gmshapi as mg
 import numpy as np
 
 import dolfiny
 
 # Basic settings
-name = "continuation_planartruss"
+name = "continuation_spatialtruss"
 comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
@@ -24,10 +24,10 @@ p = 1  # physics: polynomial order
 q = 1  # geometry: polynomial order
 
 # Create the regular mesh of a curve with given dimensions
-gmsh_model, tdim = mg.mesh_planartruss_gmshapi(name, L=L, nL=2, θ=θ, order=q)
+gmsh_model, tdim = mg.mesh_spatialtruss_gmshapi(name, L=L, nL=2, θ=θ, order=q)
 
 # Get mesh and meshtags
-mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
+mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim)
 gdim = mesh.geometry.dim
 
 # Get merged MeshTags for each codimension
@@ -63,19 +63,23 @@ m, δm = [u], [δu]
 # System properties
 K = dolfinx.fem.Constant(mesh, scalar(1.0))  # axial stiffness, lower
 β = dolfinx.fem.Constant(mesh, scalar(1.2))  # stiffness factor for upper
-p = dolfinx.fem.Constant(mesh, [0.0, -1.0])  # load vector, 2D
+p = dolfinx.fem.Constant(mesh, [0.0, 0.0, -1.0])  # load vector, 2D
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 support_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, support)
-verytop_dofh_Uf = dolfiny.mesh.locate_dofs_topological(
+verytop_dofx_Uf = dolfiny.mesh.locate_dofs_topological(
     (Uf.sub(0), Uf.sub(0).collapse()[0]), interfaces, verytop
+)
+verytop_dofy_Uf = dolfiny.mesh.locate_dofs_topological(
+    (Uf.sub(1), Uf.sub(1).collapse()[0]), interfaces, verytop
 )
 
 # Define boundary conditions
 bcs = [
     dolfinx.fem.dirichletbc(u_, support_dofs_Uf),  # fix full displacement at support
-    dolfinx.fem.dirichletbc(u_, verytop_dofh_Uf, Uf),
-]  # fix horizontal displacement at verytop
+    dolfinx.fem.dirichletbc(u_, verytop_dofx_Uf, Uf),  # fix x displacement at verytop
+    dolfinx.fem.dirichletbc(u_, verytop_dofy_Uf, Uf),  # fix y displacement at verytop
+]
 
 # Tangent basis (un-deformed configuration)
 t0 = ufl.geometry.Jacobian(mesh)[:, 0]
@@ -138,11 +142,11 @@ def monitor(context=None):
     if comm.size > 1:
         return
 
-    u1_component = (Uf.sub(1), Uf.sub(1).collapse()[0])
+    u2_component = (Uf.sub(2), Uf.sub(2).collapse()[0])
 
     track_ids = [
-        dolfiny.mesh.locate_dofs_topological(u1_component, interfaces, verytop),
-        dolfiny.mesh.locate_dofs_topological(u1_component, interfaces, connect),
+        dolfiny.mesh.locate_dofs_topological(u2_component, interfaces, verytop),
+        dolfiny.mesh.locate_dofs_topological(u2_component, interfaces, connect),
     ]
 
     track_val = [u.vector[idx[0]].squeeze() for idx in track_ids]
@@ -181,7 +185,7 @@ for j in range(60):
     dolfiny.utils.pprint(f"\n*** Continuation step {j:d}")
 
     # Solve one step of the non-linear continuation problem
-    continuation.solve_step(ds=0.05)
+    continuation.solve_step(ds=0.06)
 
     # Monitor
     monitor(continuation)
@@ -200,7 +204,7 @@ if comm.size == 1:
     flip = cycler(color=["tab:orange", "tab:blue"])
     flip += cycler(markeredgecolor=["tab:orange", "tab:blue"])
     fig, ax1 = plt.subplots(figsize=(8, 6), dpi=400)
-    ax1.set_title(f"3-member planar truss, $θ$ = {θ / np.pi:1.3f}$π$", fontsize=12)
+    ax1.set_title(f"4-member spatial truss, $θ$ = {θ / np.pi:1.3f}$π$", fontsize=12)
     ax1.set_xlabel("displacement $u / L$ $[-]$", fontsize=12)
     ax1.set_ylabel("load factor $λ$ $[-]$", fontsize=12)
     ax1.grid(linewidth=0.25)
@@ -214,10 +218,10 @@ if comm.size == 1:
         ms=6.0,
         mfc="w",
         marker=".",
-        label=["$u^{top}_1$", "$u^{mid}_1$"],
+        label=["$u^{top}_2$", "$u^{mid}_2$"],
     )
 
     ax1.legend()
     ax1.set_xlim([-2.0, +0.0])
-    ax1.set_ylim([-0.6, +0.6])
+    ax1.set_ylim([-0.8, +0.8])
     fig.savefig(f"{name}.png")

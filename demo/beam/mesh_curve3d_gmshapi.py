@@ -3,8 +3,16 @@
 from mpi4py import MPI
 
 
-def mesh_curve3d_gmshapi(name="curve3d", shape="xline", L=1.0, nL=10,
-                         progression=1.0, order=1, msh_file=None, comm=MPI.COMM_WORLD):
+def mesh_curve3d_gmshapi(
+    name="curve3d",
+    shape="xline",
+    L=1.0,
+    nL=10,
+    progression=1.0,
+    order=1,
+    msh_file=None,
+    comm=MPI.COMM_WORLD,
+):
     """
     Create mesh of 3d curve using the Python API of Gmsh.
     """
@@ -14,7 +22,6 @@ def mesh_curve3d_gmshapi(name="curve3d", shape="xline", L=1.0, nL=10,
     # Perform Gmsh work only on rank = 0
 
     if comm.rank == 0:
-
         import gmsh
 
         # Initialise gmsh and set options
@@ -36,7 +43,8 @@ def mesh_curve3d_gmshapi(name="curve3d", shape="xline", L=1.0, nL=10,
             l0 = gmsh.model.geo.addLine(p0, p1)
             p_beg, p_end, lines = p0, p1, [l0]
         elif shape == "slope":
-            from math import pi, cos, sin
+            from math import cos, pi, sin
+
             alpha = pi / 8
             p0 = gmsh.model.geo.addPoint(0.0, 0.0, 0.0)
             p1 = gmsh.model.geo.addPoint(cos(alpha) * L, 0.0, sin(alpha) * L)
@@ -72,12 +80,12 @@ def mesh_curve3d_gmshapi(name="curve3d", shape="xline", L=1.0, nL=10,
             l3 = gmsh.model.geo.addCircleArc(p3, pc, p4)
             p_beg, p_end, lines = p0, p4, [l0, l1, l2, l3]
         else:
-            raise RuntimeError("Unknown shape identifier \'{shape:s}\'")
+            raise RuntimeError("Unknown shape identifier '{shape:s}'")
 
         # Define physical groups for subdomains (! target tag > 0)
         domain = 1
         gmsh.model.addPhysicalGroup(tdim, lines, domain)  # all lines
-        gmsh.model.setPhysicalName(tdim, domain, 'domain')
+        gmsh.model.setPhysicalName(tdim, domain, "domain")
 
         # Determine interfaces
         # ... (not needed, we have the end points already)
@@ -85,10 +93,10 @@ def mesh_curve3d_gmshapi(name="curve3d", shape="xline", L=1.0, nL=10,
         # Define physical groups for interfaces (! target tag > 0)
         beg = 1
         gmsh.model.addPhysicalGroup(tdim - 1, [p_beg], beg)
-        gmsh.model.setPhysicalName(tdim - 1, beg, 'beg')
+        gmsh.model.setPhysicalName(tdim - 1, beg, "beg")
         end = 2
         gmsh.model.addPhysicalGroup(tdim - 1, [p_end], end)
-        gmsh.model.setPhysicalName(tdim - 1, end, 'end')
+        gmsh.model.setPhysicalName(tdim - 1, end, "end")
 
         # Sync
         gmsh.model.geo.synchronize()
@@ -96,7 +104,9 @@ def mesh_curve3d_gmshapi(name="curve3d", shape="xline", L=1.0, nL=10,
         # Set refinement along curve direction
         for line in lines:
             numNodes = int(nL / len(lines))
-            gmsh.model.mesh.setTransfiniteCurve(line, numNodes=numNodes, meshType="Progression", coef=progression)
+            gmsh.model.mesh.setTransfiniteCurve(
+                line, numNodes=numNodes, meshType="Progression", coef=progression
+            )
 
         # Generate the mesh
         gmsh.model.mesh.generate()
