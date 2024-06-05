@@ -60,6 +60,7 @@ mypy:
    rules:
       - if: ($CI_RUNNER_ARCHITECTURE == $TARGET_ARCH)
       - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule")
+      - if: $CI_COMMIT_TAG
       - exists: 
           - Dockerfile
         when: manual
