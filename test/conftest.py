@@ -1,7 +1,9 @@
 import gc
 
 from mpi4py import MPI
+
 import dolfinx
+
 import pytest
 
 

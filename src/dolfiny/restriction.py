@@ -1,13 +1,16 @@
-import typing
+# mypy: disable-error-code="attr-defined, name-defined"
 
-import dolfinx
-import numpy
 from petsc4py import PETSc
 
+import dolfinx
 
-class Restriction():
-    def __init__(self, function_spaces: typing.List[dolfinx.fem.FunctionSpace],
-                 blocal_dofs: typing.List[numpy.ndarray]):
+import numpy as np
+
+
+class Restriction:
+    def __init__(
+        self, function_spaces: list[dolfinx.fem.FunctionSpace], blocal_dofs: list[np.ndarray]
+    ):
         """Restriction of a problem to subset of degree-of-freedom indices.
 
         Parameters
@@ -36,7 +39,6 @@ class Restriction():
         offset_vec = 0
 
         for i, space in enumerate(function_spaces):
-
             bs = space.dofmap.index_map_bs
 
             size_local = space.dofmap.index_map.size_local
@@ -59,8 +61,8 @@ class Restriction():
             dofs += self.boffsets_vec[i]
             self.bglobal_dofs_vec.append(dofs)
 
-        self.bglobal_dofs_vec_stacked = numpy.hstack(self.bglobal_dofs_vec)
-        self.bglobal_dofs_mat_stacked = numpy.hstack(self.bglobal_dofs_mat)
+        self.bglobal_dofs_vec_stacked = np.hstack(self.bglobal_dofs_vec)
+        self.bglobal_dofs_mat_stacked = np.hstack(self.bglobal_dofs_mat)
 
     def restrict_matrix(self, A: PETSc.Mat):
         # Fetching IS only for owned dofs
@@ -80,14 +82,15 @@ class Restriction():
 
         return subx
 
-    def vec_to_functions(self, rx: PETSc.Vec, f: typing.List):
+    def vec_to_functions(self, rx: PETSc.Vec, f: list):
         """Update Functions using restricted DOF indices."""
         rdof_offset = 0
         for i, fi in enumerate(f):
             num_rdofs = self.bglobal_dofs_vec[i].shape[0]
 
-            fi.vector.array[self.bglobal_dofs_vec[i] - self.boffsets_vec[i]] = \
-                rx.array_r[rdof_offset:(rdof_offset + num_rdofs)]
+            fi.vector.array[self.bglobal_dofs_vec[i] - self.boffsets_vec[i]] = rx.array_r[
+                rdof_offset : (rdof_offset + num_rdofs)
+            ]
 
             fi.vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
             rdof_offset += num_rdofs

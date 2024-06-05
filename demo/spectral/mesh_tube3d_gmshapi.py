@@ -3,8 +3,8 @@
 from mpi4py import MPI
 
 
-def mesh_block3d_gmshapi(
-    name="block3d",
+def mesh_tube3d_gmshapi(
+    name="tube3d",
     dx=1.0,
     dy=1.0,
     dz=1.0,
@@ -23,7 +23,7 @@ def mesh_block3d_gmshapi(
     comm=MPI.COMM_WORLD,
 ):
     """
-    Create mesh of 3d block using the Python API of Gmsh.
+    Create mesh of 3d tube using the Python API of Gmsh.
     """
     tdim = 3  # target topological dimension
 
@@ -49,6 +49,8 @@ def mesh_block3d_gmshapi(
 
         # Set refinement
         import numpy as np
+
+        # FIXME: generate a 3d tube here.
 
         def nele(n):
             return np.ones(n, dtype=int)
@@ -86,7 +88,7 @@ def mesh_block3d_gmshapi(
         )
         s0 = e1[1][1]
         # e2 = gmsh.model.geo.extrude([(tdim - 1, s0)], 0.0, 0.0, dz, recombine=do_quads)
-        _ = gmsh.model.geo.extrude(
+        e2 = gmsh.model.geo.extrude(  # noqa: F841
             [(tdim - 1, s0)],
             0.0,
             0.0,
@@ -94,7 +96,7 @@ def mesh_block3d_gmshapi(
             numElements=nele(nz),
             heights=prog(nz, pz),
             recombine=do_quads,
-        )
+        )  # generate to produce surface order below
 
         # Synchronize
         gmsh.model.geo.synchronize()
@@ -152,4 +154,4 @@ def mesh_block3d_gmshapi(
 
 
 if __name__ == "__main__":
-    mesh_block3d_gmshapi(msh_file="block3d.msh")
+    mesh_tube3d_gmshapi(msh_file="tube3d.msh")

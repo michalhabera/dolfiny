@@ -4,8 +4,7 @@ import dolfinx
 
 
 class XDMFFile(dolfinx.io.XDMFFile):
-
-    KEYS_OF_MESHTAGS = 'KeysOfMeshTags'
+    KEYS_OF_MESHTAGS = "KeysOfMeshTags"
 
     def write_mesh_meshtags(self, mesh, mts=None):
         """Write mesh and meshtags to XDMFFile
@@ -36,7 +35,7 @@ class XDMFFile(dolfinx.io.XDMFFile):
             mesh.topology.create_connectivity(mt.dim, mesh.topology.dim)
             self.write_meshtags(mt, mesh.geometry)
 
-    def read_mesh_meshtags(self, mesh_name='mesh'):
+    def read_mesh_meshtags(self, mesh_name="mesh"):
         """Read mesh and meshtags from XDMFFile
 
         Parameters
@@ -65,6 +64,7 @@ class XDMFFile(dolfinx.io.XDMFFile):
         value = self.read_information(self.KEYS_OF_MESHTAGS)
 
         import ast
+
         keys_meshtags = ast.literal_eval(value)
 
         mts = {}

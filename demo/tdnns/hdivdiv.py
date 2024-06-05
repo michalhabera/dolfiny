@@ -2,6 +2,7 @@
 
 import basix
 import basix.ufl
+
 import numpy as np
 
 
@@ -43,10 +44,12 @@ def discrete(celltype, quadrature_degree, entity_degree, variant=basix.LagrangeV
     if quadrature_degree >= 0:
         qa, qw = basix.make_quadrature(celltype, quadrature_degree)
     else:
-        qa, qw = np.zeros((0, topological_dimension(celltype))), np.zeros((0))
+        qa, qw = np.zeros((0, topological_dimension(celltype))), np.zeros(0)
 
     if entity_degree >= 0:
-        space = basix.create_element(basix.ElementFamily.P, celltype, entity_degree, variant, discontinuous=True)
+        space = basix.create_element(
+            basix.ElementFamily.P, celltype, entity_degree, variant, discontinuous=True
+        )
         values = space.tabulate(0, qa)
     else:
         values = None
@@ -85,7 +88,6 @@ def orthogonalise(A, start=0):
 
 
 def create_custom_hdivdiv(celltype, degree, discontinuous=False, verbose=False):
-
     assert degree >= 0
     assert celltype in (basix.CellType.triangle, basix.CellType.tetrahedron)
 
@@ -105,11 +107,13 @@ def create_custom_hdivdiv(celltype, degree, discontinuous=False, verbose=False):
         for j in range(tdim):
             xoff = i + tdim * j
             yoff = i + j
-            if (tdim == 3 and i > 0 and j > 0):
+            if tdim == 3 and i > 0 and j > 0:
                 yoff += 1
 
             for k in range(basis_size):
-                wcoeffs[yoff * basis_size + k, xoff * basis_size + k] = (1.0 if i == j else np.sqrt(0.5))
+                wcoeffs[yoff * basis_size + k, xoff * basis_size + k] = (
+                    1.0 if i == j else np.sqrt(0.5)
+                )
 
     topology = basix.topology(celltype)
 
@@ -119,10 +123,8 @@ def create_custom_hdivdiv(celltype, degree, discontinuous=False, verbose=False):
 
     # Loop over entities
     for d, entities in enumerate(topology):
-
         # Loop over entities of dimension d
         for e, _ in enumerate(entities):
-
             ex = basix._basixcpp.sub_entity_geometry(celltype._value_, d, e)
             ct = sub_entity_type(celltype, d, e)
 
@@ -133,7 +135,9 @@ def create_custom_hdivdiv(celltype, degree, discontinuous=False, verbose=False):
             if tdim - d == 1:  # facets with NormalInnerProductIntegralMoment
                 K = ex @ basix._basixcpp.cell_facet_jacobians(celltype._value_)[e]
 
-                facet_n = basix._basixcpp.cell_facet_outward_normals(celltype._value_)[e]  # normalised
+                facet_n = basix._basixcpp.cell_facet_outward_normals(celltype._value_)[
+                    e
+                ]  # normalised
                 facet_n *= np.sqrt(np.linalg.det(K.T @ K))
 
                 directions = [np.outer(facet_n, facet_n)]
@@ -146,20 +150,27 @@ def create_custom_hdivdiv(celltype, degree, discontinuous=False, verbose=False):
             if tdim - d == 0:  # cells with IntegralMoment
                 if ct == basix.CellType.triangle:
                     # see A. Sinwel 2009, PhD thesis
-                    directions = [np.array([[0.0, 1.0], [1.0, 0.0]]),
-                                  np.array([[-2.0, 1.0], [1.0, 0.0]]),
-                                  np.array([[0.0, -1.0], [-1.0, 2.0]])]
+                    directions = [
+                        np.array([[0.0, 1.0], [1.0, 0.0]]),
+                        np.array([[-2.0, 1.0], [1.0, 0.0]]),
+                        np.array([[0.0, -1.0], [-1.0, 2.0]]),
+                    ]
                     directions_extra = []
                 if ct == basix.CellType.tetrahedron:
                     # see A. Pechstein, J. Schöberl 2018, https://doi.org/10.1007/s00211-017-0933-3
-                    directions = [np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]]),
-                                  np.array([[-6.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]]),
-                                  np.array([[0.0, 1.0, 1.0], [1.0, -6.0, 1.0], [1.0, 1.0, 0.0]]),
-                                  np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, -6.0]])]
-                    directions_extra = [np.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0], [-1.0, 1.0, 0.0]]),
-                                        np.array([[0.0, -1.0, 0.0], [-1.0, 0.0, 1.0], [0.0, 1.0, 0.0]])]
+                    directions = [
+                        np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]]),
+                        np.array([[-6.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]]),
+                        np.array([[0.0, 1.0, 1.0], [1.0, -6.0, 1.0], [1.0, 1.0, 0.0]]),
+                        np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, -6.0]]),
+                    ]
+                    directions_extra = [
+                        np.array([[0.0, 0.0, -1.0], [0.0, 0.0, 1.0], [-1.0, 1.0, 0.0]]),
+                        np.array([[0.0, -1.0, 0.0], [-1.0, 0.0, 1.0], [0.0, 1.0, 0.0]]),
+                    ]
 
                 # checks
+                # ruff: noqa: E501
                 # orth_fd_cd = [np.einsum('ij,ij', Si, Sj) for Si in directions for Sj in directions_extra]
                 # assert np.isclose(orth_fd_cd, 0.0).all()
                 # sidx = [0, 1, 3] if tdim == 2 else [0, 1, 2, 4, 5, 8]
@@ -195,14 +206,14 @@ def create_custom_hdivdiv(celltype, degree, discontinuous=False, verbose=False):
     map_type = basix.MapType.doubleContravariantPiola
 
     # Create basix element
-    hdivdiv = basix.ufl.custom_element(celltype, [tdim, tdim], wcoeffs, x, M, 0,
-                                       map_type, space, discontinuous, -1, degree)
+    hdivdiv = basix.ufl.custom_element(
+        celltype, [tdim, tdim], wcoeffs, x, M, 0, map_type, space, discontinuous, -1, degree
+    )
 
     return hdivdiv
 
 
 def test_hdivdiv_zero_normal_normal_cell(element):
-
     if isinstance(element, basix.ufl._BasixElement):
         element = element._element
 
@@ -215,14 +226,14 @@ def test_hdivdiv_zero_normal_normal_cell(element):
     if element.cell_type == basix.CellType.triangle:
         num_cell_dofs = 3 * (degree + 1) * degree // 2
     elif element.cell_type == basix.CellType.tetrahedron:
-        num_cell_dofs = (degree + 2) * (degree + 1)**2
+        num_cell_dofs = (degree + 2) * (degree + 1) ** 2
     else:
         raise RuntimeError("Unexpected cell type!")
 
     if num_cell_dofs == 0:
         return
 
-    normal_normal = np.zeros((ndofs))
+    normal_normal = np.zeros(ndofs)
 
     # Check for vanishing facet normal-normal components of cell functions
     for e, _ in enumerate(topology[tdim - 1]):
@@ -241,7 +252,6 @@ def test_hdivdiv_zero_normal_normal_cell(element):
 
 
 if __name__ == "__main__":
-
     for ctype in [basix.CellType.triangle, basix.CellType.tetrahedron]:
         for degree in range(5):
             hdivdiv = create_custom_hdivdiv(ctype, degree, verbose=True)

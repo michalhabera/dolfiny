@@ -3,13 +3,15 @@
 from mpi4py import MPI
 from petsc4py import PETSc
 
-import dolfinx
-import dolfiny
-import ufl
 import basix
+import dolfinx
+import ufl
+from dolfinx import default_scalar_type as scalar
 
 import mesh_spanner_gmshapi as mg
 import plot_spanner_pyvista as pl
+
+import dolfiny
 
 # Basic settings
 name = "solid_displ_3d_spanner"
@@ -32,19 +34,19 @@ surface_flats = interfaces_keys["surface_flats"]
 surface_crown = interfaces_keys["surface_crown"]
 
 # Solid material parameters, steel S235: E=210 [GPa], nue=0.30 [-], fy = 0.235 [GPa]
-mu = dolfinx.fem.Constant(mesh, 81.0)  # GPa
-la = dolfinx.fem.Constant(mesh, 121.0)  # GPa
+mu = dolfinx.fem.Constant(mesh, scalar(81.0))  # GPa
+la = dolfinx.fem.Constant(mesh, scalar(121.0))  # GPa
 
 # Load
 g = dolfinx.fem.Constant(mesh, [0.0, 0.0, 0.0])  # volume force vector
-t = dolfinx.fem.Constant(mesh, [5.e-4, 0.0, 0.0])  # boundary stress vector
+t = dolfinx.fem.Constant(mesh, [5.0e-4, 0.0, 0.0])  # boundary stress vector
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(3, ))
+Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(3,))
 
 # Define function spaces
 Uf = dolfinx.fem.functionspace(mesh, Ue)
@@ -61,9 +63,9 @@ m, δm = [u], [δu]
 
 # Create other functions: output / visualisation
 vorder = mesh.geometry.cmap.degree
-So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3, 3), True)), name="S")
-uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), name="u")
-so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="s")
+So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder, (3, 3), True)), name="S")
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder, (3,))), name="u")
+so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder)), name="s")
 
 
 # Strain, kinematically
@@ -82,12 +84,10 @@ def s(S):
 
 
 # Form, displacement-based
-f = - ufl.inner(E(δu), S(E(u))) * dx \
-    + ufl.dot(δu, g) * dx \
-    + ufl.dot(δu, t) * ds(surface_crown)
+form = -ufl.inner(E(δu), S(E(u))) * dx + ufl.dot(δu, g) * dx + ufl.dot(δu, t) * ds(surface_crown)
 
 # Overall form (as list of forms)
-F = dolfiny.function.extract_blocks(f, δm)
+forms = dolfiny.function.extract_blocks(form, δm)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 surface_left_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_flats)
@@ -98,7 +98,7 @@ bcs = [
 ]
 
 # Options for PETSc backend
-opts = PETSc.Options(name)
+opts = PETSc.Options(name)  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -110,7 +110,7 @@ opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, bcs, prefix=name)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, bcs, prefix=name)
 
 # Solve nonlinear problem
 problem.solve()

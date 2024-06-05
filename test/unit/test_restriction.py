@@ -1,16 +1,19 @@
 import os
 
-import dolfinx
-import dolfiny
-import numpy
-import pytest
-import ufl
 from mpi4py import MPI
 from petsc4py import PETSc
 
+import dolfinx
+import ufl
+
+import numpy as np
+import pytest
+
+import dolfiny
+
 skip_in_parallel = pytest.mark.skipif(
-    MPI.COMM_WORLD.size > 1,
-    reason="This test should only be run in serial.")
+    MPI.COMM_WORLD.size > 1, reason="This test should only be run in serial."
+)
 
 
 def test_coupled_poisson():
@@ -25,20 +28,25 @@ def test_coupled_poisson():
     mesh.topology.create_connectivity(mesh.topology.dim, mesh.topology.dim)
     mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
 
-    left_half = dolfinx.mesh.locate_entities(mesh, mesh.topology.dim, lambda x: numpy.less_equal(x[0], 0.5))
-    right_half = dolfinx.mesh.locate_entities(mesh, mesh.topology.dim, lambda x: numpy.greater_equal(x[0], 0.5))
+    left_half = dolfinx.mesh.locate_entities(
+        mesh, mesh.topology.dim, lambda x: np.less_equal(x[0], 0.5)
+    )
+    right_half = dolfinx.mesh.locate_entities(
+        mesh, mesh.topology.dim, lambda x: np.greater_equal(x[0], 0.5)
+    )
 
-    left_values = numpy.full(left_half.shape, 1, dtype=numpy.intc)
-    right_values = numpy.full(right_half.shape, 2, dtype=numpy.intc)
+    left_values = np.full(left_half.shape, 1, dtype=np.intc)
+    right_values = np.full(right_half.shape, 2, dtype=np.intc)
 
-    indices = numpy.hstack((left_half, right_half))
-    values = numpy.hstack((left_values, right_values))
-    indices, pos = numpy.unique(indices, return_index=True)
+    indices = np.hstack((left_half, right_half))
+    values = np.hstack((left_values, right_values))
+    indices, pos = np.unique(indices, return_index=True)
     mt = dolfinx.mesh.meshtags(mesh, mesh.topology.dim, indices, values[pos])
 
     interface_facets = dolfinx.mesh.locate_entities(
-        mesh, mesh.topology.dim - 1, lambda x: numpy.isclose(x[0], 0.5))
-    indices = numpy.unique(interface_facets)
+        mesh, mesh.topology.dim - 1, lambda x: np.isclose(x[0], 0.5)
+    )
+    indices = np.unique(interface_facets)
     mt_interface = dolfinx.mesh.meshtags(mesh, mesh.topology.dim - 1, indices, 1)
 
     U0 = dolfinx.fem.functionspace(mesh, ("P", 1))
@@ -67,13 +75,15 @@ def test_coupled_poisson():
     F1 = ufl.inner(ufl.grad(w1), ufl.grad(v1)) * dx(2) - lam("+") * v1("+") * dS(1) - b1
     F2 = w0("-") * m("-") * dS(1) - w1("+") * m("+") * dS(1) - b2
 
-    bcdofsU0 = dolfinx.fem.locate_dofs_geometrical(U0, lambda x: numpy.isclose(x[0], 0.0))
-    bcdofsU1 = dolfinx.fem.locate_dofs_geometrical(U1, lambda x: numpy.isclose(x[0], 1.0))
+    bcdofsU0 = dolfinx.fem.locate_dofs_geometrical(U0, lambda x: np.isclose(x[0], 0.0))
+    bcdofsU1 = dolfinx.fem.locate_dofs_geometrical(U1, lambda x: np.isclose(x[0], 1.0))
     bcs = [dolfinx.fem.dirichletbc(u0_bc, bcdofsU0), dolfinx.fem.dirichletbc(u1_bc, bcdofsU1)]
 
     rdofsU0 = dolfinx.fem.locate_dofs_topological(U0, mesh.topology.dim, left_half, remote=False)
     rdofsU1 = dolfinx.fem.locate_dofs_topological(U1, mesh.topology.dim, right_half, remote=False)
-    rdofsL = dolfinx.fem.locate_dofs_topological(L, mesh.topology.dim - 1, interface_facets, remote=False)
+    rdofsL = dolfinx.fem.locate_dofs_topological(
+        L, mesh.topology.dim - 1, interface_facets, remote=False
+    )
 
     r = dolfiny.restriction.Restriction([U0, U1, L], [rdofsU0, rdofsU1, rdofsL])
 
@@ -86,10 +96,11 @@ def test_coupled_poisson():
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
-    opts['mat_mumps_icntl_24'] = 1
+    opts["mat_mumps_icntl_24"] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        [F0, F1, F2], [w0, w1, lam], bcs=bcs, restriction=r, prefix="poisson")
+        [F0, F1, F2], [w0, w1, lam], bcs=bcs, restriction=r, prefix="poisson"
+    )
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -97,7 +108,7 @@ def test_coupled_poisson():
 
     # Evaluate the solution -0.5*x*(x-1) at x=0.5
     bb_tree = dolfinx.geometry.bb_tree(mesh, mesh.topology.dim)
-    p = numpy.array([0.5, 0.5, 0.0], dtype=numpy.float64)
+    p = np.array([0.5, 0.5, 0.0], dtype=np.float64)
 
     cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, p)
     cells = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, p).array
@@ -106,21 +117,23 @@ def test_coupled_poisson():
         value_s0 = s0.eval(p, cells[0])
         value_s1 = s1.eval(p, cells[0])
 
-        assert (numpy.isclose(value_s0[0], 0.125, rtol=1.0e-4))
-        assert (numpy.isclose(value_s1[0], 0.125, rtol=1.0e-4))
+        assert np.isclose(value_s0[0], 0.125, rtol=1.0e-4)
+        assert np.isclose(value_s1[0], 0.125, rtol=1.0e-4)
 
 
 def test_sloped_stokes():
-
     path = os.path.dirname(os.path.realpath(__file__))
 
     # Read mesh, subdomains and boundaries
-    with dolfinx.io.XDMFFile(MPI.COMM_WORLD,
-                             os.path.join(path, "data", "sloped_triangle_mesh.xdmf"), "r") as infile:
+    with dolfinx.io.XDMFFile(
+        MPI.COMM_WORLD, os.path.join(path, "data", "sloped_triangle_mesh.xdmf"), "r"
+    ) as infile:
         mesh = infile.read_mesh(name="Grid")
         mesh.topology.create_connectivity(1, mesh.topology.dim)
 
-    with dolfinx.io.XDMFFile(MPI.COMM_WORLD, os.path.join(path, "data", "sloped_line_mvc.xdmf"), "r") as infile:
+    with dolfinx.io.XDMFFile(
+        MPI.COMM_WORLD, os.path.join(path, "data", "sloped_line_mvc.xdmf"), "r"
+    ) as infile:
         boundaries = infile.read_meshtags(mesh, name="Grid")
 
     V = dolfinx.fem.functionspace(mesh, ("P", 2, (mesh.geometry.dim,)))
@@ -139,21 +152,24 @@ def test_sloped_stokes():
     n = ufl.FacetNormal(mesh)
     ds = ufl.Measure("ds", subdomain_data=boundaries, domain=mesh)
 
-    F0 = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx(mesh) \
-        - p * ufl.div(v) * ufl.dx(mesh) + lam * ufl.inner(v, n) * ds(1)
+    F0 = (
+        ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx(mesh)
+        - p * ufl.div(v) * ufl.dx(mesh)
+        + lam * ufl.inner(v, n) * ds(1)
+    )
     F1 = ufl.div(u) * q * ufl.dx(mesh)
     F2 = ufl.inner(u, n) * m * ds(1)
 
     u_bc = dolfinx.fem.Function(V)
-    bc_facets = numpy.where(boundaries.values == 4)[0]
+    bc_facets = np.where(boundaries.values == 4)[0]
     bcdofsV = dolfinx.fem.locate_dofs_topological(V, 1, boundaries.indices[bc_facets])
 
     u_bc_top = dolfinx.fem.Function(V)
-    bctop_facets = numpy.where(boundaries.values == 3)[0]
+    bctop_facets = np.where(boundaries.values == 3)[0]
     bcdofstopV = dolfinx.fem.locate_dofs_topological(V, 1, boundaries.indices[bctop_facets])
 
     def utop(x):
-        values = numpy.zeros((2, x.shape[1]))
+        values = np.zeros((2, x.shape[1]))
         values[0] = 1.0
         values[1] = 0.0
         return values
@@ -161,22 +177,22 @@ def test_sloped_stokes():
     u_bc_top.interpolate(utop)
 
     # Find common dofs at the top corners
-    intersect = numpy.intersect1d(bcdofsV, bcdofstopV)
+    intersect = np.intersect1d(bcdofsV, bcdofstopV)
 
     # Remove for consistency
-    bcdofstopV = numpy.setdiff1d(bcdofstopV, intersect)
+    bcdofstopV = np.setdiff1d(bcdofstopV, intersect)
 
     bcs = [dolfinx.fem.dirichletbc(u_bc, bcdofsV)]
     bcs.append(dolfinx.fem.dirichletbc(u_bc_top, bcdofstopV))
 
-    r_facets = numpy.where(boundaries.values == 1)[0]
+    r_facets = np.where(boundaries.values == 1)[0]
     rdofsL = dolfinx.fem.locate_dofs_topological(L, 1, boundaries.indices[r_facets])
 
     Vsize = V.dofmap.index_map_bs * (V.dofmap.index_map.size_local)
     Psize = P.dofmap.index_map_bs * (P.dofmap.index_map.size_local)
 
-    rdofsV = numpy.arange(Vsize, dtype=numpy.int32)
-    rdofsP = numpy.arange(Psize, dtype=numpy.int32)
+    rdofsV = np.arange(Vsize, dtype=np.int32)
+    rdofsP = np.arange(Psize, dtype=np.int32)
 
     r = dolfiny.restriction.Restriction([V, P, L], [rdofsV, rdofsP, rdofsL])
 
@@ -189,10 +205,11 @@ def test_sloped_stokes():
     opts["ksp_type"] = "preonly"
     opts["pc_type"] = "lu"
     opts["pc_factor_mat_solver_type"] = "mumps"
-    opts['mat_mumps_icntl_24'] = 1
+    opts["mat_mumps_icntl_24"] = 1
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="stokes")
+        [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="stokes"
+    )
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0
@@ -202,7 +219,7 @@ def test_sloped_stokes():
 def test_pipes_stokes():
     import gmsh
 
-    gmsh.initialize()
+    gmsh.initialize(interruptible=False)
     gmsh.model.add("test_pipes")
     geo = gmsh.model.geo
 
@@ -268,8 +285,11 @@ def test_pipes_stokes():
     ds = ufl.Measure("ds", subdomain_data=mt1, domain=mesh)
     n = ufl.FacetNormal(mesh)
 
-    F0 = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx(mesh) \
-        - p * ufl.div(v) * ufl.dx(mesh) + lam * ufl.inner(v, n) * ds(keys1["bottom"])
+    F0 = (
+        ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx(mesh)
+        - p * ufl.div(v) * ufl.dx(mesh)
+        + lam * ufl.inner(v, n) * ds(keys1["bottom"])
+    )
     F1 = ufl.div(u) * q * ufl.dx(mesh) + dolfinx.fem.Constant(mesh, 0.0) * p * q * ufl.dx(mesh)
     F2 = ufl.inner(u, n) * m * ds(keys1["bottom"])
 
@@ -280,7 +300,7 @@ def test_pipes_stokes():
     updofsV = dolfiny.mesh.locate_dofs_topological(V, mt1, keys1["up"])
 
     def uinflow(x):
-        values = numpy.zeros((2, x.shape[1]))
+        values = np.zeros((2, x.shape[1]))
         values[0] = 0.0
         values[1] = -1.0
         return values
@@ -290,13 +310,14 @@ def test_pipes_stokes():
     p_bc = dolfinx.fem.Function(P)
 
     bcdofsP = dolfinx.fem.locate_dofs_geometrical(
-        P, lambda x: numpy.logical_and(numpy.isclose(x[0], 0.0), numpy.isclose(x[1], 0.0)))
+        P, lambda x: np.logical_and(np.isclose(x[0], 0.0), np.isclose(x[1], 0.0))
+    )
 
     # Find common dofs at the top corners
-    intersect = numpy.intersect1d(inflowdofsV, updofsV)
+    intersect = np.intersect1d(inflowdofsV, updofsV)
 
     # Remove for consistency
-    inflowdofsV = numpy.setdiff1d(inflowdofsV, intersect)
+    inflowdofsV = np.setdiff1d(inflowdofsV, intersect)
 
     bcs = [dolfinx.fem.dirichletbc(u_inflow, inflowdofsV)]
     bcs.append(dolfinx.fem.dirichletbc(u_up, updofsV))
@@ -307,8 +328,8 @@ def test_pipes_stokes():
     Vsize = V.dofmap.index_map_bs * V.dofmap.index_map.size_local
     Psize = P.dofmap.index_map_bs * P.dofmap.index_map.size_local
 
-    rdofsV = numpy.arange(Vsize, dtype=numpy.int32)
-    rdofsP = numpy.arange(Psize, dtype=numpy.int32)
+    rdofsV = np.arange(Vsize, dtype=np.int32)
+    rdofsP = np.arange(Psize, dtype=np.int32)
 
     r = dolfiny.restriction.Restriction([V, P, L], [rdofsV, rdofsP, lagrangedofsL])
 
@@ -323,7 +344,8 @@ def test_pipes_stokes():
     opts["pc_factor_mat_solver_type"] = "mumps"
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(
-        [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="pipes")
+        [F0, F1, F2], [u, p, lam], bcs=bcs, restriction=r, prefix="pipes"
+    )
     s0, s1, s2 = problem.solve()
 
     assert problem.snes.getConvergedReason() > 0

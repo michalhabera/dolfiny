@@ -1,7 +1,8 @@
+from petsc4py import PETSc
+
 import dolfinx
 import ufl
-from petsc4py import PETSc
-from dolfinx.fem.petsc import (apply_lifting, assemble_matrix, assemble_vector, set_bc)
+from dolfinx.fem.petsc import apply_lifting, assemble_matrix, assemble_vector, set_bc
 
 
 def project(e, target_func, bcs=[]):
@@ -74,7 +75,9 @@ def project_codimension(p_expression, target_func, projector, mt, mt_id, eps=1.0
 
     # Get dofs not associated with mt = inactive
     dofs_mt = dolfinx.fem.locate_dofs_topological(V, V.mesh.topology.dim - 1, mt.find(mt_id))
-    dofsall = np.arange(V.dofmap.index_map.size_local + V.dofmap.index_map.num_ghosts, dtype=np.int32)
+    dofsall = np.arange(
+        V.dofmap.index_map.size_local + V.dofmap.index_map.num_ghosts, dtype=np.int32
+    )
     dofs_inactive = np.setdiff1d(dofsall, dofs_mt, assume_unique=True)
 
     # Zero-valued inactive dofs

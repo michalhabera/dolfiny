@@ -3,13 +3,15 @@
 from mpi4py import MPI
 from petsc4py import PETSc
 
-import dolfinx
-import dolfiny
-import numpy as np
-import ufl
 import basix
+import dolfinx
+import ufl
+from dolfinx import default_scalar_type as scalar
 
 import mesh_planartruss_gmshapi as mg
+import numpy as np
+
+import dolfiny
 
 # Basic settings
 name = "continuation_planartruss_disp"
@@ -56,11 +58,11 @@ Kf = dolfinx.fem.functionspace(mesh, Ke)
 Sf = dolfinx.fem.functionspace(mesh, Se)
 
 # Define functions
-u = dolfinx.fem.Function(Uf, name='u')  # displacement
-r = dolfinx.fem.Function(Rf, name='r')  # constraint, Lagrange multiplier
+u = dolfinx.fem.Function(Uf, name="u")  # displacement
+r = dolfinx.fem.Function(Rf, name="r")  # constraint, Lagrange multiplier
 k = dolfinx.fem.Function(Kf, name="k")  # axial stiffness
 s = dolfinx.fem.Function(Sf, name="s")  # internal force
-u_ = dolfinx.fem.Function(Uf, name='u_')  # displacement, inhomogeneous (bc)
+u_ = dolfinx.fem.Function(Uf, name="u_")  # displacement, inhomogeneous (bc)
 δu = ufl.TestFunction(Uf)
 δr = ufl.TestFunction(Rf)
 
@@ -68,8 +70,12 @@ u_ = dolfinx.fem.Function(Uf, name='u_')  # displacement, inhomogeneous (bc)
 m, δm = [u, r], [δu, δr]
 
 # System properties
-k.x.array[dolfiny.mesh.locate_dofs_topological(Kf, subdomains, lower)] = 1.0e+2  # axial stiffness, lower
-k.x.array[dolfiny.mesh.locate_dofs_topological(Kf, subdomains, upper)] = 2.0e-0  # axial stiffness, upper
+k.x.array[dolfiny.mesh.locate_dofs_topological(Kf, subdomains, lower)] = (
+    1.0e2  # axial stiffness, lower
+)
+k.x.array[dolfiny.mesh.locate_dofs_topological(Kf, subdomains, upper)] = (
+    2.0e-0  # axial stiffness, upper
+)
 k.x.scatter_forward()
 
 d = dolfinx.fem.Constant(mesh, [0.0, -1.0])  # disp vector, 2D
@@ -108,13 +114,13 @@ dEm = dolfiny.expression.derivative(Em, m, δm)
 Sm = k * Em
 
 # Load factor
-λ = dolfinx.fem.Constant(mesh, 1.0)
+λ = dolfinx.fem.Constant(mesh, scalar(1.0))
 
 # Constraint
 c = ufl.inner(r, λ * d - u)
 
 # Weak form
-form = - ufl.inner(dEm, Sm) * dx + dolfiny.expression.derivative(c, m, δm) * ds(verytop)
+form = -ufl.inner(dEm, Sm) * dx + dolfiny.expression.derivative(c, m, δm) * ds(verytop)
 
 # Overall form (as list of forms)
 forms = dolfiny.function.extract_blocks(form, δm)
@@ -125,7 +131,7 @@ ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 ofile.write_mesh_meshtags(mesh, mts) if q <= 2 else None
 
 # Options for PETSc backend
-opts = PETSc.Options("continuation")
+opts = PETSc.Options("continuation")  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -137,11 +143,10 @@ opts["ksp_type"] = "preonly"
 opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
-monitor_history = []
+monitor_history: list[np.ndarray] = []
 
 
 def monitor(context=None):
-
     # obtain dual quantities for monitoring
     dolfiny.interpolation.interpolate(Sm * t0, s)  # internal force
 
@@ -181,7 +186,9 @@ def block_inner(a1, a2):
 
 
 # Create nonlinear problem context
-problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, bcs, prefix="continuation", restriction=restrc)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(
+    forms, m, bcs, prefix="continuation", restriction=restrc
+)
 
 # Create continuation problem context
 continuation = dolfiny.continuation.Crisfield(problem, λ, inner=block_inner)
@@ -193,9 +200,8 @@ continuation.initialise(ds=0.02, λ=0.0)
 monitor()
 
 # Continuation procedure
-for k in range(35):
-
-    dolfiny.utils.pprint(f"\n*** Continuation step {k:d}")
+for j in range(35):
+    dolfiny.utils.pprint(f"\n*** Continuation step {j:d}")
 
     # Solve one step of the non-linear continuation problem
     continuation.solve_step()
@@ -204,29 +210,29 @@ for k in range(35):
     monitor()
 
     # Write output
-    ofile.write_function(u, k) if q <= 2 else None
+    ofile.write_function(u, j) if q <= 2 else None
 
 ofile.close()
 
 # Post-processing
 if comm.rank == 0:
-
     # plot
-    import matplotlib.pyplot
+    import matplotlib.pyplot as plt
     from cycler import cycler
-    flip = (cycler(color=['tab:orange', 'tab:blue']))
-    flip += (cycler(markeredgecolor=['tab:orange', 'tab:blue']))
-    fig, ax1 = matplotlib.pyplot.subplots(figsize=(8, 6), dpi=400)
+
+    flip = cycler(color=["tab:orange", "tab:blue"])
+    flip += cycler(markeredgecolor=["tab:orange", "tab:blue"])
+    fig, ax1 = plt.subplots(figsize=(8, 6), dpi=400)
     ax1.set_title(f"3-member planar truss, $u$-controlled, $θ$ = {θ / np.pi:1.2f}$π$", fontsize=12)
-    ax1.set_xlabel('displacement $u$ $[m]$', fontsize=12)
-    ax1.set_ylabel('internal force $N^{top}_1 (λ)$ $[kN]$', fontsize=12)
+    ax1.set_xlabel("displacement $u$ $[m]$", fontsize=12)
+    ax1.set_ylabel("internal force $N^{top}_1 (λ)$ $[kN]$", fontsize=12)
     ax1.grid(linewidth=0.25)
     # fig.tight_layout()
 
     # monitored results (force-displacement curves)
-    u_ = np.array(monitor_history)[:, :2, 1]
-    f_ = np.array(monitor_history)[:, 2, 1]
-    ax1.plot(u_, f_, lw=1.5, ms=6.0, mfc='w', marker='.', label=["$u^{top}_1$", "$u^{mid}_1$"])
+    um_ = np.array(monitor_history)[:, :2, 1]
+    fm_ = np.array(monitor_history)[:, 2, 1]
+    ax1.plot(um_, fm_, lw=1.5, ms=6.0, mfc="w", marker=".", label=["$u^{top}_1$", "$u^{mid}_1$"])
 
     ax1.legend()
     ax1.set_xlim([-0.4, +0.0])

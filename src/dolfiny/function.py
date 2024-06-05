@@ -1,13 +1,16 @@
-import typing
+# mypy: disable-error-code="attr-defined"
 
-import dolfinx
-import numpy
-import ufl
 from petsc4py import PETSc
 
+import dolfinx
+import ufl
 
-def extract_blocks(form, test_functions: typing.List[ufl.Argument],
-                   trial_functions: typing.List[ufl.Argument] = None):
+import numpy as np
+
+
+def extract_blocks(
+    form, test_functions: list[ufl.Argument], trial_functions: list[ufl.Argument] | None = None
+):
     """Extract blocks from a monolithic UFL form.
 
     Parameters
@@ -24,16 +27,17 @@ def extract_blocks(form, test_functions: typing.List[ufl.Argument],
     """
     # Check for distinct test functions
     if len(test_functions) != len(set(test_functions)):
-        raise RuntimeError("Duplicate test functions detected. Create TestFunction(s) from separate FunctionSpace(s)!")
+        raise RuntimeError(
+            "Duplicate test functions detected. Create TestFunctions from separate FunctionSpaces!"
+        )
 
     # Prepare empty block matrices list
     if trial_functions is not None:
-        blocks = [[None for i in range(len(test_functions))] for j in range(len(trial_functions))]
+        blocks: list[list[None]] = [[None] * len(test_functions)] * len(trial_functions)
     else:
-        blocks = [None for i in range(len(test_functions))]
+        blocks: list[None] = [None] * len(test_functions)  # type: ignore[no-redef]
 
     for i, tef in enumerate(test_functions):
-
         if trial_functions is not None:
             for j, trf in enumerate(trial_functions):
                 to_null = dict()
@@ -65,7 +69,7 @@ def extract_blocks(form, test_functions: typing.List[ufl.Argument],
     return blocks
 
 
-def functions_to_vec(u: typing.List[dolfinx.fem.Function], x):
+def functions_to_vec(u: list[dolfinx.fem.Function], x):
     """Copies functions into block vector."""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
@@ -76,12 +80,12 @@ def functions_to_vec(u: typing.List[dolfinx.fem.Function], x):
         for i in range(len(u)):
             size_local = u[i].vector.getLocalSize()
             with x.localForm() as loc:
-                loc.array[offset:offset + size_local] = u[i].vector.array_r
+                loc.array[offset : offset + size_local] = u[i].vector.array_r
             offset += size_local
             x.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
 
-def vec_to_functions(x, u: typing.List[dolfinx.fem.Function]):
+def vec_to_functions(x, u: list[dolfinx.fem.Function]):
     """Copies block vector into functions."""
     if x.getType() == "nest":
         for i, subvec in enumerate(x.getNestSubVecs()):
@@ -91,12 +95,12 @@ def vec_to_functions(x, u: typing.List[dolfinx.fem.Function]):
         offset = 0
         for i in range(len(u)):
             size_local = u[i].vector.getLocalSize()
-            u[i].vector.array[:] = x.array_r[offset:offset + size_local]
+            u[i].vector.array[:] = x.array_r[offset : offset + size_local]
             offset += size_local
             u[i].vector.ghostUpdate(addv=PETSc.InsertMode.INSERT, mode=PETSc.ScatterMode.FORWARD)
 
 
 def unroll_dofs(dofs, block_size):
     """Unroll blocked dofs."""
-    arr = block_size * numpy.repeat(dofs, block_size).reshape(-1, block_size) + numpy.arange(block_size)
+    arr = block_size * np.repeat(dofs, block_size).reshape(-1, block_size) + np.arange(block_size)
     return arr.flatten().astype(dofs.dtype)

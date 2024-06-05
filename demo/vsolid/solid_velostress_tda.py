@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
-import dolfinx
-import dolfiny
-import ufl
-import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
+import basix
+import dolfinx
+import ufl
+from dolfinx import default_scalar_type as scalar
+
 import mesh_block3d_gmshapi as mg
+
+import dolfiny
 
 # Basic settings
 name = "solid_velostress_tda"
@@ -18,11 +21,9 @@ dx, dy, dz = 2.0, 0.01, 0.1
 nx, ny, nz = 20, 2, 2
 
 # Create the regular mesh of a block with given dimensions
-gmsh_model, tdim = mg.mesh_block3d_gmshapi(name, dx, dy, dz, nx, ny, nz, px=1.0, py=1.0, pz=1.0, do_quads=False)
-
-# # Create the regular mesh of a block with given dimensions and save as msh, then read into gmsh model
-# mg.mesh_block3d_gmshapi(name, dx, dy, dz, nx, ny, nz, do_quads=False, msh_file=f"{name}.msh")
-# gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
+gmsh_model, tdim = mg.mesh_block3d_gmshapi(
+    name, dx, dy, dz, nx, ny, nz, px=1.0, py=1.0, pz=1.0, do_quads=False
+)
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim)
@@ -44,18 +45,18 @@ surface_left = interfaces_keys["surface_left"]
 surface_right = interfaces_keys["surface_right"]
 
 # Solid material parameters
-rho = dolfinx.fem.Constant(mesh, 1e-9 * 1e+4)  # [1e-9 * 1e+4 kg/m^3]
-eta = dolfinx.fem.Constant(mesh, 1e-9 * 0e+4)  # [1e-9 * 0e+4 kg/m^3/s]
-mu = dolfinx.fem.Constant(mesh, 1e-9 * 1e11)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.fem.Constant(mesh, 1e-9 * 1e10)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+rho = dolfinx.fem.Constant(mesh, scalar(1e-9 * 1e4))  # [1e-9 * 1e+4 kg/m^3]
+eta = dolfinx.fem.Constant(mesh, scalar(1e-9 * 0e4))  # [1e-9 * 0e+4 kg/m^3/s]
+mu = dolfinx.fem.Constant(mesh, scalar(1e-9 * 1e11))  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
+la = dolfinx.fem.Constant(mesh, scalar(1e-9 * 1e10))  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
 
 # Load
 b = dolfinx.fem.Constant(mesh, [0.0, -10, 0.0])  # [m/s^2]
 
 # Global time
-time = dolfinx.fem.Constant(mesh, 0.0)  # [s]
+time = dolfinx.fem.Constant(mesh, scalar(0.0))  # [s]
 # Time step size
-dt = dolfinx.fem.Constant(mesh, 1e-2)  # [s]
+dt = dolfinx.fem.Constant(mesh, scalar(1e-2))  # [s]
 # Number of time steps
 nT = 200
 
@@ -90,9 +91,11 @@ m, mt, δm = [v, S], [vt, St], [δv, δS]
 u = dolfinx.fem.Function(Vf, name="u")
 d = dolfinx.fem.Function(Vf, name="d")  # dummy
 
-vo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3,))), name="v")  # for output
-So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3, 3), True)), name="S")  # for output
-uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (3,))), name="u")  # for output
+vo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", 1, (3,))), name="v")  # for output
+So = dolfinx.fem.Function(
+    dolfinx.fem.functionspace(mesh, ("P", 1, (3, 3), True)), name="S"
+)  # for output
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", 1, (3,))), name="u")  # for output
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=m, xt=mt, rho=0.95)
@@ -115,17 +118,21 @@ dotEs = 1 / (2 * mu) * St - la / (2 * mu * (3 * la + 2 * mu)) * ufl.tr(St) * I
 δdotE = dolfiny.expression.derivative(odeint.discretise_in_time(dotE), m, δm)
 
 # Weak form (as one-form)
-f = ufl.inner(δv, rho * vt) * dx + ufl.inner(δv, eta * v) * dx \
-    + ufl.inner(δdotE, S) * dx + ufl.inner(δS, dotE - dotEs) * dx \
+form = (
+    ufl.inner(δv, rho * vt) * dx
+    + ufl.inner(δv, eta * v) * dx
+    + ufl.inner(δdotE, S) * dx
+    + ufl.inner(δS, dotE - dotEs) * dx
     - ufl.inner(δv, rho * b) * dx
+)
 
 # Optional: linearise weak form
-# f = dolfiny.expression.linearise(dolfiny.expression.evaluate(f, u_expr, u), m, [v, S, u])  # linearise
+# form = dolfiny.expression.linearise(dolfiny.expression.evaluate(form, u_expr, u), m, [v, S, u])
 
 # Overall form (as one-form)
-F = odeint.discretise_in_time(f)
+form = odeint.discretise_in_time(form)
 # Overall form (as list of forms)
-F = dolfiny.function.extract_blocks(F, δm)
+forms = dolfiny.function.extract_blocks(form, δm)
 
 # Create output xdmf file -- open in Paraview with Xdmf3ReaderT
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
@@ -140,7 +147,7 @@ ofile.write_function(So, time.value)
 ofile.write_function(uo, time.value)
 
 # Options for PETSc backend
-opts = PETSc.Options(name)
+opts = PETSc.Options(name)  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -152,15 +159,16 @@ opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, prefix=name)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 surface_left_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, surface_left)
 
 # Process time steps
 for time_step in range(1, nT + 1):
-
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}\n")
+    dolfiny.utils.pprint(
+        f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}\n"
+    )
 
     # Stage next time step
     odeint.stage()

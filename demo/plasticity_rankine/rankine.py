@@ -2,14 +2,15 @@
 
 from mpi4py import MPI
 from petsc4py import PETSc
-import numpy as np
 
+import basix
 import dolfinx
 import ufl
-import basix
-import dolfiny
-import mesh_notched
 
+import mesh_notched
+import numpy as np
+
+import dolfiny
 
 name = "notched"
 gmsh_model, tdim = mesh_notched.mesh_notched(name, clscale=0.2)
@@ -22,7 +23,8 @@ with dolfiny.io.XDMFFile(MPI.COMM_WORLD, f"{name}.xdmf", "w") as ofile:
     ofile.write_mesh_meshtags(mesh, mts)
 
 top_facets = dolfinx.mesh.locate_entities_boundary(
-    mesh, 1, lambda x: np.logical_and(np.isclose(x[0], 0.0), np.greater_equal(x[1], 0.5)))
+    mesh, 1, lambda x: np.logical_and(np.isclose(x[0], 0.0), np.greater_equal(x[1], 0.5))
+)
 bottom_facets = dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[1], 0.0))
 
 quad_degree = 8
@@ -45,7 +47,7 @@ l0 = dolfinx.fem.Function(Lf, name="l0")  # total plastic multiplier
 δdP = ufl.TestFunction(Pf)
 δdl = ufl.TestFunction(Lf)
 
-uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', 1, (2,))), name="u")  # for output
+uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", 1, (2,))), name="u")  # for output
 
 
 def f(sigma):
@@ -84,8 +86,10 @@ F2 = ufl.inner(ufl.min_value(dl, -f(sigma)), δdl) * dx
 u_top = dolfinx.fem.Function(Uf, name="u_top")
 u_bottom = dolfinx.fem.Function(Uf, name="u_bottom")
 
-bcs = [dolfinx.fem.dirichletbc(u_top, dolfinx.fem.locate_dofs_topological(Uf, 1, top_facets)),
-       dolfinx.fem.dirichletbc(u_bottom, dolfinx.fem.locate_dofs_topological(Uf, 1, bottom_facets))]
+bcs = [
+    dolfinx.fem.dirichletbc(u_top, dolfinx.fem.locate_dofs_topological(Uf, 1, top_facets)),
+    dolfinx.fem.dirichletbc(u_bottom, dolfinx.fem.locate_dofs_topological(Uf, 1, bottom_facets)),
+]
 
 sc_J = dolfiny.localsolver.UserKernel(
     name="sc_J",
@@ -99,7 +103,8 @@ sc_J = dolfiny.localsolver.UserKernel(
         Eigen::MatrixXd Jllrow1(J21.array.rows(), J21.array.cols() + J22.array.cols());
         Jllrow1 << J21.array, J22.array;
 
-        Eigen::MatrixXd Jll(J11.array.rows() + J21.array.rows(), J11.array.cols() + J22.array.cols());
+        Eigen::MatrixXd Jll(J11.array.rows() + J21.array.rows(),
+                            J11.array.cols() + J22.array.cols());
         Jll << Jllrow0,
                Jllrow1;
 
@@ -115,7 +120,8 @@ sc_J = dolfiny.localsolver.UserKernel(
         A = J00.array - Jgl * Jll.partialPivLu().solve(Jlg);
     }
     """,
-    required_J=[(0, 0), (0, 1), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)])
+    required_J=[(0, 0), (0, 1), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)],
+)
 
 sc_F_cell = dolfiny.localsolver.UserKernel(
     name="sc_F_cell",
@@ -126,7 +132,8 @@ sc_F_cell = dolfiny.localsolver.UserKernel(
         A = F0.array;
     }
     """,
-    required_J=[])
+    required_J=[],
+)
 
 solve_body = r"""
     auto dP = Eigen::Map<Eigen::Matrix<double, 48, 1>>(&F1.w[12]);
@@ -229,7 +236,8 @@ solve_dP = dolfiny.localsolver.UserKernel(
         A = dP;
     }}
     """,
-    required_J=[(1, 1), (1, 2), (2, 1), (2, 2)])
+    required_J=[(1, 1), (1, 2), (2, 1), (2, 2)],
+)
 
 solve_dl = dolfiny.localsolver.UserKernel(
     name="solve_dl",
@@ -241,37 +249,48 @@ solve_dl = dolfiny.localsolver.UserKernel(
         A = dl;
     }}
     """,
-    required_J=[(1, 1), (1, 2), (2, 1), (2, 2)])
+    required_J=[(1, 1), (1, 2), (2, 1), (2, 2)],
+)
 
 
 def local_update(problem):
     with problem.xloc.localForm() as x_local:
         x_local.set(0.0)
 
-    dolfiny.function.vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
+    dolfiny.function.vec_to_functions(
+        problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id]
+    )
 
     # Assemble into local vector and scatter to functions
     dolfinx.fem.petsc.assemble_vector_block(
-        problem.xloc, problem.local_form, [[problem.J_form[0][0] for i in range(2)] for i in range(2)], [],
-        x0=problem.xloc, scale=-1.0)
-    dolfiny.function.vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
+        problem.xloc,
+        problem.local_form,
+        [[problem.J_form[0][0] for i in range(2)] for i in range(2)],
+        [],
+        x0=problem.xloc,
+        scale=-1.0,
+    )
+    dolfiny.function.vec_to_functions(
+        problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id]
+    )
 
 
 cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
 
-ls = dolfiny.localsolver.LocalSolver([Uf, Pf, Lf], local_spaces_id=[1, 2],
-                                     F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                   [(-1, sc_F_cell, cells[-1])]}],
-                                     J_integrals=[[{dolfinx.fem.IntegralType.cell:
-                                                    [(-1, sc_J, cells[-1])]}]],
-                                     local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       [(-1, solve_dP, cells[-1])]},
-                                                      {dolfinx.fem.IntegralType.cell:
-                                                       [(-1, solve_dl, cells[-1])]}],
-                                     local_update=local_update)
+ls = dolfiny.localsolver.LocalSolver(
+    [Uf, Pf, Lf],
+    local_spaces_id=[1, 2],
+    F_integrals=[{dolfinx.fem.IntegralType.cell: [(-1, sc_F_cell, cells[-1])]}],
+    J_integrals=[[{dolfinx.fem.IntegralType.cell: [(-1, sc_J, cells[-1])]}]],
+    local_integrals=[
+        {dolfinx.fem.IntegralType.cell: [(-1, solve_dP, cells[-1])]},
+        {dolfinx.fem.IntegralType.cell: [(-1, solve_dl, cells[-1])]},
+    ],
+    local_update=local_update,
+)
 
 
-opts = PETSc.Options(name)
+opts = PETSc.Options(name)  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -282,8 +301,9 @@ opts["ksp_type"] = "preonly"
 opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
-problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1, F2], [u, dP, dl], bcs=bcs,
-                                                    prefix=name, localsolver=ls)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(
+    [F0, F1, F2], [u, dP, dl], bcs=bcs, prefix=name, localsolver=ls
+)
 
 ls.view()
 
@@ -293,7 +313,6 @@ load, unload = np.linspace(0.0, 1.0, num=K + 1), np.linspace(1.0, 0.0, num=K + 1
 cycle = np.concatenate((load, unload))
 
 for step, factor in enumerate(cycle):
-
     dolfiny.utils.pprint(f"\n+++ Processing step {step:3d}, load factor = {factor:5.4f}")
 
     # Update values for given boundary displacement

@@ -1,6 +1,7 @@
 # python
 *.egg-info
 __pycache__
+dist
 
 # skip generated files
 *.msh
@@ -14,5 +15,8 @@ __pycache__
 *.pth
 *.vtk
 
-# gitlab
+# tool caches
 .gitlab-ci-local
+.mypy_cache
+.pytest_cache
+.ruff_cache
