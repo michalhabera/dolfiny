@@ -2,13 +2,14 @@
 
 from mpi4py import MPI
 from petsc4py import PETSc
-from slepc4py import SLEPc
 
+import basix
 import dolfinx
 import ufl
-import basix
+from dolfinx import default_scalar_type as scalar
 
 import numpy as np
+from slepc4py import SLEPc
 
 import dolfiny
 
@@ -28,7 +29,9 @@ mesh = dolfinx.mesh.create_box(comm, [[minx] * 3, [maxx] * 3], [e] * 3, cell_typ
 mts = {}
 for d in range(mesh.geometry.dim):
     for k, kx in enumerate((minx, maxx)):
-        facets = dolfinx.mesh.locate_entities(mesh, mesh.topology.dim - 1, lambda x: np.isclose(x[d], kx))
+        facets = dolfinx.mesh.locate_entities(
+            mesh, mesh.topology.dim - 1, lambda x: np.isclose(x[d], kx)
+        )
         mt = dolfinx.mesh.meshtags(mesh, mesh.topology.dim - 1, np.unique(facets), 2 * d + k)
         mts[f"face_x{d}={kx:+.2f}"] = mt
 
@@ -40,33 +43,38 @@ mesh.topology.create_connectivity(mesh.topology.dim - 1, mesh.topology.dim)
 Se = basix.ufl.element("P", mesh.basix_cell(), p, shape=(3, 3), symmetry=True)
 Sf = dolfinx.fem.functionspace(mesh, Se)
 δS = ufl.TestFunction(Sf)
-S = dolfinx.fem.Function(Sf, name='S')
-S0 = dolfinx.fem.Function(Sf, name='S0')
+S = dolfinx.fem.Function(Sf, name="S")
+S0 = dolfinx.fem.Function(Sf, name="S0")
 
 # displacement
 Ue = basix.ufl.element("P", mesh.basix_cell(), p + 1, shape=(3,))
 Uf = dolfinx.fem.functionspace(mesh, Ue)
 δu = ufl.TestFunction(Uf)
-u = dolfinx.fem.Function(Uf, name='u')
-u0 = dolfinx.fem.Function(Uf, name='u0')
+u = dolfinx.fem.Function(Uf, name="u")
+u0 = dolfinx.fem.Function(Uf, name="u0")
 
 # output / visualisation
 vorder = mesh.geometry.cmap.degree
-So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3, 3), True)), name="S")  # for output
-uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder, (3,))), name="u")  # for output
-so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('P', vorder)), name="s")  # for output
+So = dolfinx.fem.Function(
+    dolfinx.fem.functionspace(mesh, ("P", vorder, (3, 3), True)), name="S"
+)  # for output
+uo = dolfinx.fem.Function(
+    dolfinx.fem.functionspace(mesh, ("P", vorder, (3,))), name="u"
+)  # for output
+so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder)), name="s")  # for output
 
 # material
-E = dolfinx.fem.Constant(mesh, 200.0)
-nu = dolfinx.fem.Constant(mesh, 0.25)
+E = dolfinx.fem.Constant(mesh, scalar(200.0))
+nu = dolfinx.fem.Constant(mesh, scalar(0.25))
 la = E * nu / (1 + nu) / (1 - 2 * nu)
 mu = E / 2 / (1 + nu)
 
 # stabilisation factor, if needed by chosen stress form
-ω = dolfinx.fem.Constant(mesh, 0.0)  # CHECK: 1 / sqrt(2)
+ω = dolfinx.fem.Constant(mesh, scalar(0.0))  # CHECK: 1 / sqrt(2)
 
 # factor enabling the Neumann term
-β = dolfinx.fem.Constant(mesh, 1.0)
+β = dolfinx.fem.Constant(mesh, scalar(1.0))
+
 
 # strain
 def strain_from_displm(u):
@@ -100,7 +108,10 @@ S0_expr = stress_from_strain(E0_expr)
 # scalar measure (output)
 # s_title, s = "von Mises stress", ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S)))
 # s_title, s = "mean stress", ufl.tr(S) / 3
-s_title, s = "L2 relative stress error", ufl.sqrt(ufl.inner(S - S0_expr, S - S0_expr)) / ufl.sqrt(ufl.inner(S0_expr, S0_expr))
+s_title, s = (
+    "L2 relative stress error",
+    ufl.sqrt(ufl.inner(S - S0_expr, S - S0_expr)) / ufl.sqrt(ufl.inner(S0_expr, S0_expr)),
+)
 
 
 def b(S):
@@ -112,12 +123,17 @@ def t(S):
 
 
 def T(S):
-    return (1 + nu) * ufl.dot(ufl.grad(S), n) + ufl.outer(ufl.grad(ufl.tr(S)), n) \
-        + ufl.inner(ufl.div(S), n) * ufl.Identity(3)  # boundary stress tensor
+    return (
+        (1 + nu) * ufl.dot(ufl.grad(S), n)
+        + ufl.outer(ufl.grad(ufl.tr(S)), n)
+        + ufl.inner(ufl.div(S), n) * ufl.Identity(3)
+    )  # boundary stress tensor
 
 
 def D(u):  # alternative form, based on given (extensional) boundary displacement
-    return E / (1 - 2 * nu) * ufl.dot(ufl.grad(ufl.div(u)), n) * ufl.Identity(3)  # boundary stress tensor
+    return (
+        E / (1 - 2 * nu) * ufl.dot(ufl.grad(ufl.div(u)), n) * ufl.Identity(3)
+    )  # boundary stress tensor
 
 
 # interpolate expression on function space
@@ -147,18 +163,19 @@ neumann = list(set(boundary_keys.values()) - set(dirichlet))  # complement to di
 #     + psi_2 * ufl.inner(ufl.div(δS), b(S0_expr)) * dx
 
 # form: stress-based
-f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
-    - (1 + nu) * 2 * ufl.inner(δS, ufl.sym(ufl.grad(b(S0_expr)))) * dx \
-    + ufl.inner(ufl.div(δS), ufl.grad(ufl.tr(S))) * dx \
-    \
-    + ufl.inner(ufl.grad(ufl.tr(δS)), ufl.div(S)) * dx \
-    - (1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.div(b(S0_expr)) * dx \
-    \
-    + ω * (ufl.inner(ufl.div(δS), ufl.div(S)) - ufl.inner(δS, ufl.sym(ufl.grad(b(S0_expr))))) * dx \
-    \
+f_stress = (
+    (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx
+    - (1 + nu) * 2 * ufl.inner(δS, ufl.sym(ufl.grad(b(S0_expr)))) * dx
+    + ufl.inner(ufl.div(δS), ufl.grad(ufl.tr(S))) * dx
+    + ufl.inner(ufl.grad(ufl.tr(δS)), ufl.div(S)) * dx
+    - (1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.div(b(S0_expr)) * dx
+    + ω * (ufl.inner(ufl.div(δS), ufl.div(S)) - ufl.inner(δS, ufl.sym(ufl.grad(b(S0_expr))))) * dx
     - β * sum(ufl.inner(δS, T(S0_expr)) * ds(k) for k in neumann)
+)
 # - sum(0 * ufl.inner(δS, D(u0_expr)) * ds(k) for k in neumann) \
-# CHECK: - (1 + nu) * ufl.inner(δS, ufl.outer(-b(S0_expr), n)) * ds - ufl.tr(δS) * ufl.dot(-b(S0_expr), n) * ds
+# CHECK:
+# - (1 + nu) * ufl.inner(δS, ufl.outer(-b(S0_expr), n)) * ds
+# - ufl.tr(δS) * ufl.dot(-b(S0_expr), n) * ds
 
 # # form: stress-based, additional integration-by-parts on b-terms
 # f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
@@ -172,9 +189,11 @@ f_stress = (1 + nu) * ufl.inner(ufl.grad(δS), ufl.grad(S)) * dx \
 #     - sum((1 + nu**2) / (1 - nu) * ufl.tr(δS) * ufl.inner(b(S0_expr), n) * ds(k) for k in neumann)
 
 # form: displacement-based
-f_displm = ufl.inner(strain_from_displm(δu), stress_from_strain(strain_from_displm(u))) * dx \
-    - ufl.inner(δu, b(S0_expr)) * dx \
+f_displm = (
+    ufl.inner(strain_from_displm(δu), stress_from_strain(strain_from_displm(u))) * dx
+    - ufl.inner(δu, b(S0_expr)) * dx
     - sum(ufl.inner(δu, t(S0_expr)) * ds(k) for k in neumann)
+)
 
 # block form
 F_stress = dolfiny.function.extract_blocks(f_stress, [δS])
@@ -190,7 +209,7 @@ bcs_displm = [dolfinx.fem.dirichletbc(u0, bcsdofs_Uf)]
 
 
 # petsc options
-opts = PETSc.Options(name)
+opts = PETSc.Options(name)  # type: ignore[attr-defined]
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
 opts["snes_atol"] = 1.0e-10
@@ -207,18 +226,26 @@ opts["pc_factor_mat_solver_type"] = "mumps"
 # opts["pc_type"] = "bjacobi"
 
 # stress problem (nonlinear problem, for convenience)
-problem_stress = dolfiny.snesblockproblem.SNESBlockProblem(F_stress, [S], prefix=name, bcs=bcs_stress)
+problem_stress = dolfiny.snesblockproblem.SNESBlockProblem(
+    F_stress, [S], prefix=name, bcs=bcs_stress
+)
 problem_stress.solve()
 problem_stress.status(verbose=True, error_on_failure=True)
 # check symmetry
-dolfiny.utils.pprint(f"(stress) discrete operator is symmetric = {problem_stress.J.isSymmetric(tol=1.0e-12)}")
+dolfiny.utils.pprint(
+    f"(stress) discrete operator is symmetric = {problem_stress.J.isSymmetric(tol=1.0e-12)}"
+)
 
 # displm problem (nonlinear problem, for convenience)
-problem_displm = dolfiny.snesblockproblem.SNESBlockProblem(F_displm, [u], prefix=name, bcs=bcs_displm)
+problem_displm = dolfiny.snesblockproblem.SNESBlockProblem(
+    F_displm, [u], prefix=name, bcs=bcs_displm
+)
 problem_displm.solve()
 problem_displm.status(verbose=True, error_on_failure=True)
 # check symmetry
-dolfiny.utils.pprint(f"(displm) discrete operator is symmetric = {problem_displm.J.isSymmetric(tol=1.0e-12)}")
+dolfiny.utils.pprint(
+    f"(displm) discrete operator is symmetric = {problem_displm.J.isSymmetric(tol=1.0e-12)}"
+)
 
 # output
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
@@ -233,7 +260,6 @@ ofile.close()
 
 # plot using pyvista
 if comm.rank == 0:
-
     import pyvista
 
     class Xdmf3Reader(pyvista.XdmfReader):
@@ -252,17 +278,35 @@ if comm.rank == 0:
     plotter = pyvista.Plotter(off_screen=True, window_size=[pixels, pixels], image_scale=1)
     plotter.add_axes(labels_off=True)
 
-    sargs = dict(height=0.05, width=0.8, position_x=0.1, position_y=0.90,
-                 title=s_title, font_family="courier", fmt="%1.2e", color="black",
-                 n_labels=3, title_font_size=pixels // 50, label_font_size=pixels // 50)
+    sargs = dict(
+        height=0.05,
+        width=0.8,
+        position_x=0.1,
+        position_y=0.90,
+        title=s_title,
+        font_family="courier",
+        fmt="%1.2e",
+        color="black",
+        n_labels=3,
+        title_font_size=pixels // 50,
+        label_font_size=pixels // 50,
+    )
 
     grid_warped = grid.warp_by_vector("u", factor=1.0)
 
     if not grid.get_cell(0).is_linear:
         grid_warped = grid_warped.extract_surface(nonlinear_subdivision=3)
 
-    plotter.add_mesh(grid_warped, scalars="s", scalar_bar_args=sargs, cmap="coolwarm",
-                     specular=0.5, specular_power=20, smooth_shading=True, split_sharp_edges=True)
+    plotter.add_mesh(
+        grid_warped,
+        scalars="s",
+        scalar_bar_args=sargs,
+        cmap="coolwarm",
+        specular=0.5,
+        specular_power=20,
+        smooth_shading=True,
+        split_sharp_edges=True,
+    )
 
     plotter.add_mesh(grid_warped, style="wireframe", color="black", line_width=pixels // 500)
 
@@ -291,15 +335,27 @@ def inc(A):
     laplace_traceA = ufl.div(ufl.grad(trace_A))
     hessian_traceA = ufl.grad(ufl.grad(trace_A))
 
-    return Ddiv_A + Ddiv_A.T - laplace_A - hessian_traceA + (laplace_traceA - divdiv_A) * ufl.Identity(3)
+    return (
+        Ddiv_A
+        + Ddiv_A.T
+        - laplace_A
+        - hessian_traceA
+        + (laplace_traceA - divdiv_A) * ufl.Identity(3)
+    )
 
 
 # Statistics
 dolfiny.utils.pprint(f"SUMMARY :: cell = {mesh.topology.cell_name()}, e = {e:2d}")
 dolfiny.utils.pprint(f"        :: p(S) = {p} [ndof = {S.vector.getSize()}]")
 dolfiny.utils.pprint(f"        :: p(u) = {p + 1} [ndof = {u.vector.getSize()}]")
-dolfiny.utils.pprint(f"        :: bc D = {dirichlet} = {[k for k, v in boundary_keys.items() for i in dirichlet if v == i]})")  # noqa: E501
-dolfiny.utils.pprint(f"        :: bc N = {neumann} = {[k for k, v in boundary_keys.items() for i in neumann if v == i]})")  # noqa: E501
+dolfiny.utils.pprint(
+    f"        :: bc D = {dirichlet} = "
+    f"{[k for k, v in boundary_keys.items() for i in dirichlet if v == i]})"
+)
+dolfiny.utils.pprint(
+    f"        :: bc N = {neumann} = "
+    f"{[k for k, v in boundary_keys.items() for i in neumann if v == i]})"
+)
 
 # Solution errors
 dolfiny.utils.pprint("*** Errors ***")
@@ -312,7 +368,9 @@ Su_vs_S0_error = dolfiny.expression.assemble(error(Su, S0_expr), dx)
 dolfiny.utils.pprint(f"relative Su error norm = {Su_vs_S0_error:.3e}")
 
 u_vs_u0_error = dolfiny.expression.assemble(error(u, u0_expr), dx)
-dolfiny.utils.pprint(f"relative u  error norm = {u_vs_u0_error:.3e}")  # NOTE: could blow up (for zero-valued u0)
+dolfiny.utils.pprint(
+    f"relative u  error norm = {u_vs_u0_error:.3e}"
+)  # NOTE: could blow up (for zero-valued u0)
 
 incE_norm = dolfiny.expression.assemble(norm(inc(strain_from_stress(S))), dx)
 dolfiny.utils.pprint(f"inc(E(S )) norm = {incE_norm:.3e}")
@@ -349,48 +407,50 @@ eps.solve()
 assert eps.getConverged() >= nev
 eigenvalues = np.array([eps.getEigenvalue(i).real for i in range(nev)])
 dolfiny.utils.pprint(eigenvalues[:nev])
-dolfiny.utils.pprint(f"eps :: niter = {eps.getIterationNumber()}, reason = {eps.getConvergedReason()}")
+dolfiny.utils.pprint(
+    f"eps :: niter = {eps.getIterationNumber()}, reason = {eps.getConvergedReason()}"
+)
 exit()
 
 # detailed error study
 
-M = 11
-S_errors = np.zeros((M, M))
+# M = 11
+# S_errors = np.zeros((M, M))
 
-p1 = np.logspace(-5, 5, M)
-p2 = np.logspace(-5, 5, M)
+# p1 = np.logspace(-5, 5, M)
+# p2 = np.logspace(-5, 5, M)
 
-for i, psi_1_value in enumerate(p1):
-    for j, psi_2_value in enumerate(p2):
-        psi_1.value = psi_1_value
-        psi_2.value = psi_2_value
+# for i, psi_1_value in enumerate(p1):
+#     for j, psi_2_value in enumerate(p2):
+#         psi_1.value = psi_1_value
+#         psi_2.value = psi_2_value
 
-        Sh, = problem_stress.solve()
+#         (Sh,) = problem_stress.solve()
 
-        S_errors[i, j] = dolfiny.expression.assemble(error(Sh, S0_expr), dx)
+#         S_errors[i, j] = dolfiny.expression.assemble(error(Sh, S0_expr), dx)
 
-        dolfiny.utils.pprint(f"[{i}, {j}] e = {S_errors[i, j]:.4e}")
+#         dolfiny.utils.pprint(f"[{i}, {j}] e = {S_errors[i, j]:.4e}")
 
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, dpi=400)
+# fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, dpi=400)
 
-P1, P2 = np.meshgrid(p1, p2)
-P1 = np.log10(P1)
-P2 = np.log10(P2)
-ax.plot_surface(P1, P2, S_errors,
-                rstride=1, cstride=1, shade=True,
-                linewidth=1, alpha=0.5, antialiased=False)
+# P1, P2 = np.meshgrid(p1, p2)
+# P1 = np.log10(P1)
+# P2 = np.log10(P2)
+# ax.plot_surface(
+#     P1, P2, S_errors, rstride=1, cstride=1, shade=True, linewidth=1, alpha=0.5, antialiased=False
+# )
 
-# ax.plot_wireframe(P1, P2, S_errors, rstride=1, cstride=1, linewidth=0.5)
+# # ax.plot_wireframe(P1, P2, S_errors, rstride=1, cstride=1, linewidth=0.5)
 
-ax.set_xlabel(r"$\log \psi_1$")
-ax.set_ylabel(r"$\log \psi_2$")
-ax.set_zlabel(r"$| S^a - S^h |_{2} / | S^ a |_{2}$")
-ax.set_title("stress errors")
-ax.grid(lw=0.1)
+# ax.set_xlabel(r"$\log \psi_1$")
+# ax.set_ylabel(r"$\log \psi_2$")
+# ax.set_zlabel(r"$| S^a - S^h |_{2} / | S^ a |_{2}$")
+# ax.set_title("stress errors")
+# ax.grid(lw=0.1)
 
-fig.tight_layout()
-fig.savefig(f"{name}.png")
-plt.close()
+# fig.tight_layout()
+# fig.savefig(f"{name}.png")
+# plt.close()
