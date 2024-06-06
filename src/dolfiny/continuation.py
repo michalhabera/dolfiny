@@ -1,13 +1,12 @@
 import dolfinx
-import dolfiny
 import ufl
 
+from dolfiny.snesblockproblem import SNESBlockProblem
+from dolfiny.utils import pprint
 
-class Crisfield():
 
-    def __init__(self, problem: dolfiny.snesblockproblem.SNESBlockProblem, λ: ufl.Constant,
-                 monitor=None, inner=None):
-
+class Crisfield:
+    def __init__(self, problem: SNESBlockProblem, λ: ufl.Constant, monitor=None, inner=None):
         self.problem = problem
         self.monitor = monitor
         self.inner = inner if inner is not None else lambda v1, v2: v1.dot(v2)
@@ -20,8 +19,12 @@ class Crisfield():
         self.Δx = problem.active_x.copy()  # accumulated x increment of current continuation step
         self.δx_dFdλ = problem.active_x.copy()
 
-        self.dλ = dolfinx.fem.Constant(self.λ._ufl_domain, self.λ.value)  # converged λ increment towards last continuation step   # noqa: E501
-        self.Δλ = dolfinx.fem.Constant(self.λ._ufl_domain, self.λ.value)  # accumulated λ increment of current continuation step   # noqa: E501
+        self.dλ = dolfinx.fem.Constant(
+            self.λ._ufl_domain, self.λ.value
+        )  # converged λ increment towards last continuation step
+        self.Δλ = dolfinx.fem.Constant(
+            self.λ._ufl_domain, self.λ.value
+        )  # accumulated λ increment of current continuation step
 
         self.ds = 0.1  # continuation step size, default
         self.psi = 1.0  # continuation shape, default
@@ -29,7 +32,6 @@ class Crisfield():
         self.problem.snes.setUpdate(Crisfield.update, kargs=dict(continuation=self))
 
     def initialise(self, ds=None, λ=None, psi=None):
-
         if ds is not None:
             self.ds = ds
 
@@ -47,7 +49,6 @@ class Crisfield():
         self.dλ.value = self.ds
 
     def solve_step(self, ds=None, zero_x_predictor=False):
-
         if ds is not None:
             self.ds = ds
 
@@ -59,16 +60,14 @@ class Crisfield():
                 Δx_local.set(0.0)
         else:
             # Δx = dx (saves about one Newton iterate over zeroed Δx)
-            with self.dx.localForm() as dx_local, \
-                 self.Δx.localForm() as Δx_local:
+            with self.dx.localForm() as dx_local, self.Δx.localForm() as Δx_local:
                 dx_local.copy(Δx_local)
         # Δλ
         self.Δλ.value = self.dλ.value
 
         # set solution predictors according to step predictors
         # x += Δx
-        with self.problem.active_x.localForm() as x_local, \
-             self.Δx.localForm() as Δx_local:
+        with self.problem.active_x.localForm() as x_local, self.Δx.localForm() as Δx_local:
             x_local += Δx_local
         # λ += Δλ
         self.λ.value += self.Δλ.value
@@ -101,8 +100,7 @@ class Crisfield():
 
         # store converged accumulated increments of this continuation step
         # dx <- Δx
-        with self.dx.localForm() as dx_local, \
-             self.Δx.localForm() as Δx_local:
+        with self.dx.localForm() as dx_local, self.Δx.localForm() as Δx_local:
             Δx_local.copy(dx_local)
         # dλ <- Δλ
         self.dλ.value = self.Δλ.value
@@ -120,7 +118,7 @@ class Crisfield():
 
         apply.
 
-        M. A. Crisfield: A fast incremental/iterative solution procedure that handles "snap-through",
+        M. A. Crisfield: A fast incremental/iterative solution procedure that handles "snap-through"
         Computers & Structures, 13:1-3, 55-62, 1981. https://doi.org/10.1016/0045-7949(81)90108-5
         """
 
@@ -162,14 +160,16 @@ class Crisfield():
 
             if arg < 0.0:
                 # something is seriously wrong: tangent does not intersect ball (ds)
-                dolfiny.utils.pprint(f"a1 = {a1:1.3e}, a2 = {a2:1.3e}, a3 = {a3:1.3e}")
-                dolfiny.utils.pprint(f"sqrt_arg = {arg:1.3e}")
-                raise RuntimeError("Continuation: Failed solving the arc-length equation! Reduce ds.")
+                pprint(f"a1 = {a1:1.3e}, a2 = {a2:1.3e}, a3 = {a3:1.3e}")
+                pprint(f"sqrt_arg = {arg:1.3e}")
+                raise RuntimeError(
+                    "Continuation: Failed solving the arc-length equation! Reduce ds."
+                )
 
-            sqr = arg**(0.5)
+            sqr = arg ** (0.5)
             δλ1 = (-a2 - sqr) / a1
             δλ2 = (-a2 + sqr) / a1
-            # dolfiny.utils.pprint(f"δλ_1 = {δλ1:1.3e}, δλ_2 = {δλ2:1.3e}")
+            # pprint(f"δλ_1 = {δλ1:1.3e}, δλ_2 = {δλ2:1.3e}")
 
             sign = lambda x: bool(x > 0) - bool(x < 0)  # noqa: E731
             sign = sign(δx_dFdλ.dot(dx) + dλ * dFdλ_inner)
@@ -196,17 +196,23 @@ class Crisfield():
         snes.computeFunction(continuation.problem.active_x, continuation.dFdλ)
         continuation.λ.value = 0.0  # evaluate F_0 = F(x, λ=0)
         snes.computeFunction(continuation.problem.active_x, continuation.problem.active_F)
-        with continuation.dFdλ.localForm() as dFdλ_local, \
-             continuation.problem.active_F.localForm() as F_local:
+        with (
+            continuation.dFdλ.localForm() as dFdλ_local,
+            continuation.problem.active_F.localForm() as F_local,
+        ):
             dFdλ_local -= F_local  # dFdλ = F_1 - F_0
         continuation.λ.value = λ_save  # store λ value
         snes.computeFunction(continuation.problem.active_x, continuation.problem.active_F)
 
         # monitor (default)
-        x, dx, r = abs(continuation.λ.value), abs(δλ), abs(continuation.inner(Δx, Δx) + Δλ**2 * dFdλ_inner - ds**2)
+        x, dx, r = (
+            abs(continuation.λ.value),
+            abs(δλ),
+            abs(continuation.inner(Δx, Δx) + Δλ**2 * dFdλ_inner - ds**2),
+        )
         name = "λ"
         message = f"# arc           |x|={x:9.3e} |dx|={dx:9.3e} |r|={r:9.3e} ({name:s})"
-        dolfiny.utils.pprint(message)
+        pprint(message)
 
         # monitor (custom)
         if continuation.monitor is not None:

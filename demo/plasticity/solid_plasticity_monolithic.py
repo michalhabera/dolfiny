@@ -3,13 +3,16 @@
 from mpi4py import MPI
 from petsc4py import PETSc
 
-import dolfinx
-import dolfiny
-import numpy as np
-import ufl
 import basix
+import dolfinx
+import ufl
+from dolfinx import default_scalar_type as scalar
 
+import matplotlib.pyplot as plt
 import mesh_iso6892_gmshapi as mg
+import numpy as np
+
+import dolfiny
 
 # references:
 # https://doi.org/10.1007/978-94-011-2860-5_66
@@ -54,16 +57,16 @@ surface_1 = interfaces_keys["surface_grip_left"]
 surface_2 = interfaces_keys["surface_grip_right"]
 
 # Solid: material parameters
-mu = dolfinx.fem.Constant(mesh, 100.0)  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
-la = dolfinx.fem.Constant(mesh, 10.00)  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
-Sy = dolfinx.fem.Constant(mesh, 0.300)  # initial yield stress [GPa]
-bh = dolfinx.fem.Constant(mesh, 20.00)  # isotropic hardening: saturation rate  [-]
-qh = dolfinx.fem.Constant(mesh, 0.100)  # isotropic hardening: saturation value [GPa]
-bb = dolfinx.fem.Constant(mesh, 250.0)  # kinematic hardening: saturation rate  [-]
-qb = dolfinx.fem.Constant(mesh, 0.100)  # kinematic hardening: saturation value [GPa] (includes factor 2/3)
+mu = dolfinx.fem.Constant(mesh, scalar(100.0))  # [1e-9 * 1e+11 N/m^2 = 100 GPa]
+la = dolfinx.fem.Constant(mesh, scalar(10.00))  # [1e-9 * 1e+10 N/m^2 =  10 GPa]
+Sy = dolfinx.fem.Constant(mesh, scalar(0.300))  # initial yield stress [GPa]
+bh = dolfinx.fem.Constant(mesh, scalar(20.00))  # isotropic hardening: saturation rate  [-]
+qh = dolfinx.fem.Constant(mesh, scalar(0.100))  # isotropic hardening: saturation value [GPa]
+bb = dolfinx.fem.Constant(mesh, scalar(250.0))  # kinematic hardening: saturation rate  [-]
+qb = dolfinx.fem.Constant(mesh, scalar(0.100))  # kinematic hardening: saturation value [GPa] (2/3)
 
 # Solid: load parameters
-μ = dolfinx.fem.Constant(mesh, 1.0)  # load factor
+μ = dolfinx.fem.Constant(mesh, scalar(1.0))  # load factor
 
 
 def u_bar(x):
@@ -72,7 +75,9 @@ def u_bar(x):
 
 # Define integration measures
 quad_degree = p
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": quad_degree})
+dx = ufl.Measure(
+    "dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": quad_degree}
+)
 
 # Define elements
 Ue = basix.ufl.element("P", mesh.basix_cell(), p, shape=(mesh.geometry.dim,))
@@ -99,10 +104,12 @@ S0 = dolfinx.fem.Function(Tf, name="S0")  # stress, previous converged solution 
 
 u_ = dolfinx.fem.Function(Uf, name="u_")  # displacement, defines state at boundary
 
-Po = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0, (3, 3))), name="P")  # for output
-Bo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0, (3, 3))), name="B")
-So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0, (3, 3))), name="S")
-ho = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ('DP', 0)), name="h")
+Po = dolfinx.fem.Function(
+    dolfinx.fem.functionspace(mesh, ("DP", 0, (3, 3))), name="P"
+)  # for output
+Bo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("DP", 0, (3, 3))), name="B")
+So = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("DP", 0, (3, 3))), name="S")
+ho = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("DP", 0)), name="h")
 
 δu = ufl.TestFunction(Uf)
 δP = ufl.TestFunction(Tf)
@@ -144,9 +151,11 @@ g = f
 dgdS = ufl.diff(g, S)
 
 # Total differential of yield function, used for checks only
-df = + ufl.inner(ufl.diff(f, S), S - S0) \
-     + ufl.inner(ufl.diff(f, h), h - h0) \
-     + ufl.inner(ufl.diff(f, B), B - B0)
+df = (
+    +ufl.inner(ufl.diff(f, S), S - S0)
+    + ufl.inner(ufl.diff(f, h), h - h0)
+    + ufl.inner(ufl.diff(f, B), B - B0)
+)
 
 # Unwrap expression from variable
 S, B, h = S.expression(), B.expression(), h.expression()
@@ -158,13 +167,15 @@ S, B, h = S.expression(), B.expression(), h.expression()
 dλ = ufl.max_value(f, 0)  # ppos = MacAuley bracket
 
 # Weak form (as one-form)
-F = + ufl.inner(δE, S) * dx \
-    + ufl.inner(δP, (P - P0) - dλ * dgdS) * dx \
-    + ufl.inner(δh, (h - h0) - dλ * bh * (qh * 1.00 - h)) * dx \
+form = (
+    ufl.inner(δE, S) * dx
+    + ufl.inner(δP, (P - P0) - dλ * dgdS) * dx
+    + ufl.inner(δh, (h - h0) - dλ * bh * (qh * 1.00 - h)) * dx
     + ufl.inner(δB, (B - B0) - dλ * bb * (qb * dgdS - B)) * dx
+)
 
 # Overall form (as list of forms)
-F = dolfiny.function.extract_blocks(F, δm)
+forms = dolfiny.function.extract_blocks(form, δm)
 
 # Create output xdmf file -- open in Paraview with Xdmf3ReaderT
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
@@ -172,7 +183,7 @@ ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
 ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
-opts = PETSc.Options(name)
+opts = PETSc.Options(name)  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -184,14 +195,14 @@ opts["pc_type"] = "lu"  # NOTE: this monolithic formulation is not symmetric
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix=name)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, prefix=name)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 surface_1_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_1)
 surface_2_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_2)
 
 # Book-keeping of results
-results = {'E': [], 'S': [], 'P': [], 'μ': []}
+results: dict[str, list[float]] = {"E": [], "S": [], "P": [], "μ": []}
 
 # Set up load steps
 K = 25  # number of steps per load phase
@@ -202,7 +213,6 @@ cycles = np.concatenate([cycle] * Z)
 
 # Process load steps
 for step, factor in enumerate(cycles):
-
     # Set current load factor
     μ.value = factor
 
@@ -227,14 +237,14 @@ for step, factor in enumerate(cycles):
     dxg = dx(domain_gauge)
     V = dolfiny.expression.assemble(1.0, dxg)
     n = ufl.as_vector([1, 0, 0])
-    results['E'].append(dolfiny.expression.assemble(ufl.dot(E * n, n), dxg) / V)
-    results['S'].append(dolfiny.expression.assemble(ufl.dot(S * n, n), dxg) / V)
-    results['P'].append(dolfiny.expression.assemble(ufl.dot(P * n, n), dxg) / V)
-    results['μ'].append(factor)
+    results["E"].append(dolfiny.expression.assemble(ufl.dot(E * n, n), dxg) / V)
+    results["S"].append(dolfiny.expression.assemble(ufl.dot(S * n, n), dxg) / V)
+    results["P"].append(dolfiny.expression.assemble(ufl.dot(P * n, n), dxg) / V)
+    results["μ"].append(factor)
 
     # Basic consistency checks
-    assert dolfiny.expression.assemble(dλ * df, dxg) / V < 1.e-03, "|| dλ*df || != 0.0"
-    assert dolfiny.expression.assemble(dλ * f, dxg) / V < 1.e-06, "|| dλ*df || != 0.0"
+    assert dolfiny.expression.assemble(dλ * df, dxg) / V < 1.0e-03, "|| dλ*df || != 0.0"
+    assert dolfiny.expression.assemble(dλ * f, dxg) / V < 1.0e-06, "|| dλ*df || != 0.0"
 
     # Fix: 2nd order tetrahedron
     # mesh.geometry.cmap.non_affine_atol = 1.0e-8
@@ -265,21 +275,28 @@ ofile.close()
 
 # Post-process results
 
-import matplotlib.pyplot
-
-fig, ax1 = matplotlib.pyplot.subplots()
+fig, ax1 = plt.subplots()
 ax1.set_title("Rate-independent plasticity: $J_2$, monolithic formulation, 3D", fontsize=12)
-ax1.set_xlabel(r'volume-averaged strain $\frac{1}{V}\int n^T E n \, dV$ [-]', fontsize=12)
-ax1.set_ylabel(r'volume-averaged stress $\frac{1}{V}\int n^T S n \, dV$ [GPa]', fontsize=12)
+ax1.set_xlabel(r"volume-averaged strain $\frac{1}{V}\int n^T E n \, dV$ [-]", fontsize=12)
+ax1.set_ylabel(r"volume-averaged stress $\frac{1}{V}\int n^T S n \, dV$ [GPa]", fontsize=12)
 ax1.grid(linewidth=0.25)
 fig.tight_layout()
 
-E = np.array(results['E'])
-S = np.array(results['S'])
+E = np.array(results["E"])
+S = np.array(results["S"])
 
 # stress-strain curve
-ax1.plot(E, S, color='tab:blue', linestyle='-', linewidth=1.0, markersize=4.0, marker='.', label=r'$S-E$ curve')
+ax1.plot(
+    E,
+    S,
+    color="tab:blue",
+    linestyle="-",
+    linewidth=1.0,
+    markersize=4.0,
+    marker=".",
+    label=r"$S-E$ curve",
+)
 
-ax1.legend(loc='lower right')
-ax1.ticklabel_format(style='sci', scilimits=(-2, -2), axis='x')
+ax1.legend(loc="lower right")
+ax1.ticklabel_format(style="sci", scilimits=(-2, -2), axis="x")
 fig.savefig(f"{name}.pdf")

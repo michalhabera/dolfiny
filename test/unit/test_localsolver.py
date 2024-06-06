@@ -1,29 +1,33 @@
-import dolfinx
-import dolfiny
-import numpy as np
-import numba
-import ufl
-import basix
 from petsc4py import PETSc
-from dolfiny.function import vec_to_functions
+
+import basix
+import dolfinx
+import ufl
 from dolfinx.cpp.fem import compute_integration_domains
 
+import numba
+import numpy as np
+
+import dolfiny
+from dolfiny.function import vec_to_functions
 
 c_signature = numba.types.void(
-    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),
-    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),
-    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),
+    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),  # type: ignore[attr-defined]
+    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),  # type: ignore[attr-defined]
+    numba.types.CPointer(numba.typeof(PETSc.ScalarType())),  # type: ignore[attr-defined]
     numba.types.CPointer(numba.types.double),
     numba.types.CPointer(numba.types.int32),
-    numba.types.CPointer(numba.types.uint8))
+    numba.types.CPointer(numba.types.uint8),
+)
 
 
 def test_linear_elasticity(squaremesh_5):
-
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True)
+    Se = basix.ufl.element(
+        "DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True
+    )
     Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(mesh.geometry.dim,))
 
     S = dolfinx.fem.functionspace(mesh, Se)
@@ -34,7 +38,9 @@ def test_linear_elasticity(squaremesh_5):
 
     # Locate all facets at the free end and assign them value 1. Sort the
     # facet indices (requirement for constructing MeshTags)
-    free_end_facets = np.sort(dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[0], 1.0)))
+    free_end_facets = np.sort(
+        dolfinx.mesh.locate_entities_boundary(mesh, 1, lambda x: np.isclose(x[0], 1.0))
+    )
     mt = dolfinx.mesh.meshtags(mesh, 1, free_end_facets, 1)
 
     ds = ufl.Measure("ds", subdomain_data=mt)
@@ -54,7 +60,7 @@ def test_linear_elasticity(squaremesh_5):
     def sigma_u(u):
         """Constitutive relation for stress-strain. Assuming plane-stress in XY"""
         eps = 0.5 * (ufl.grad(u) + ufl.grad(u).T)
-        sigma = E / (1. - nu ** 2) * ((1. - nu) * eps + nu * ufl.Identity(2) * ufl.tr(eps))
+        sigma = E / (1.0 - nu**2) * ((1.0 - nu) * eps + nu * ufl.Identity(2) * ufl.tr(eps))
         return sigma
 
     f = ufl.as_vector([0.0, 1.0 / 16])
@@ -62,8 +68,11 @@ def test_linear_elasticity(squaremesh_5):
     du = dolfinx.fem.Function(U)
 
     F0 = ufl.inner(sigma0 - sigma_u(u0), tau) * ufl.dx
-    F1 = ufl.inner(sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
-        dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(u0 + du, v) * ufl.dx
+    F1 = (
+        ufl.inner(sigma0, ufl.grad(v)) * ufl.dx
+        + ufl.inner(f, v) * ds(1)
+        + dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(u0 + du, v) * ufl.dx
+    )
 
     sc_J = dolfiny.localsolver.UserKernel(
         name="sc_J",
@@ -73,7 +82,7 @@ def test_linear_elasticity(squaremesh_5):
             A = J11.array - J10.array * J00.array.inverse() * J01.array;
         };
         """,
-        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)]
+        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)],
     )
 
     sc_F_cell = dolfiny.localsolver.UserKernel(
@@ -84,7 +93,7 @@ def test_linear_elasticity(squaremesh_5):
             A = F1.array - J10.array * J00.array.inverse() * F0.array;
         };
         """,
-        required_J=[(1, 0), (0, 0)]
+        required_J=[(1, 0), (0, 0)],
     )
 
     sc_F_exterior_facet = dolfiny.localsolver.UserKernel(
@@ -95,7 +104,7 @@ def test_linear_elasticity(squaremesh_5):
             A = F1.array;
         };
         """,
-        required_J=[]
+        required_J=[],
     )
 
     solve_stress = dolfiny.localsolver.UserKernel(
@@ -108,7 +117,7 @@ def test_linear_elasticity(squaremesh_5):
             A = sigma0 - J00.array.inverse() * (F0.array - J01.array * du);
         };
         """,
-        required_J=[(0, 1), (0, 0)]
+        required_J=[(0, 1), (0, 0)],
     )
 
     def local_update(problem):
@@ -123,22 +132,32 @@ def test_linear_elasticity(squaremesh_5):
             x_local.set(0.0)
         # Assemble into local vector and scatter to functions
         dolfinx.fem.petsc.assemble_vector_block(
-            problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0)
-        vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
+            problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0
+        )
+        vec_to_functions(
+            problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id]
+        )
 
     cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
-    exterior_facets = dict(compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object))
+    exterior_facets = dict(
+        compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object)
+    )
 
-    ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
-                                         F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       [(-1, sc_F_cell, cells.get(-1, []))],
-                                                       dolfinx.fem.IntegralType.exterior_facet:
-                                                       [(1, sc_F_exterior_facet, exterior_facets.get(1, []))]}],
-                                         J_integrals=[[{dolfinx.fem.IntegralType.cell:
-                                                        [(-1, sc_J, cells.get(-1, []))]}]],
-                                         local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           [(-1, solve_stress, cells.get(-1, []))]}],
-                                         local_update=local_update)
+    ls = dolfiny.localsolver.LocalSolver(
+        [S, U],
+        local_spaces_id=[0],
+        F_integrals=[
+            {
+                dolfinx.fem.IntegralType.cell: [(-1, sc_F_cell, cells.get(-1, []))],
+                dolfinx.fem.IntegralType.exterior_facet: [
+                    (1, sc_F_exterior_facet, exterior_facets.get(1, []))
+                ],
+            }
+        ],
+        J_integrals=[[{dolfinx.fem.IntegralType.cell: [(-1, sc_J, cells.get(-1, []))]}]],
+        local_integrals=[{dolfinx.fem.IntegralType.cell: [(-1, solve_stress, cells.get(-1, []))]}],
+        local_update=local_update,
+    )
 
     opts = PETSc.Options("linear_elasticity")
 
@@ -149,9 +168,9 @@ def test_linear_elasticity(squaremesh_5):
     opts["pc_type"] = "cholesky"
     opts["pc_factor_mat_solver_type"] = "mumps"
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc],
-                                                        prefix="linear_elasticity",
-                                                        localsolver=ls)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(
+        [F0, F1], [sigma0, u0], [bc], prefix="linear_elasticity", localsolver=ls
+    )
     sigma1, u1 = problem.solve()
 
     assert np.isclose(u1.vector.norm(), 2.80028313)
@@ -159,11 +178,12 @@ def test_linear_elasticity(squaremesh_5):
 
 
 def test_nonlinear_elasticity_schur(squaremesh_5):
-
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True)
+    Se = basix.ufl.element(
+        "DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True
+    )
     Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(mesh.geometry.dim,))
 
     S = dolfinx.fem.functionspace(mesh, Se)
@@ -172,7 +192,9 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     sigma0, tau = dolfinx.fem.Function(S, name="sigma"), ufl.TestFunction(S)
     u0, v = dolfinx.fem.Function(U, name="u"), ufl.TestFunction(U)
 
-    free_end_facets = np.sort(dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 1.0)))
+    free_end_facets = np.sort(
+        dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 1.0))
+    )
     mt = dolfinx.mesh.meshtags(squaremesh_5, 1, free_end_facets, 1)
 
     ds = ufl.Measure("ds", subdomain_data=mt)
@@ -182,7 +204,9 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     u_bc.x.array[:] = 0.0
 
     # Displacement BC is applied to the left side
-    left_facets = dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 0.0))
+    left_facets = dolfinx.mesh.locate_entities_boundary(
+        squaremesh_5, 1, lambda x: np.isclose(x[0], 0.0)
+    )
     bdofs = dolfinx.fem.locate_dofs_topological(U, 1, left_facets)
     bc = dolfinx.fem.dirichletbc(u_bc, bdofs)
 
@@ -209,8 +233,11 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     f = ufl.as_vector([0.0, 1.0 / 16 / 2])
     du = dolfinx.fem.Function(U)
     F0 = ufl.inner(sigma0 - sigma_u(u0), tau) * ufl.dx
-    F1 = ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
-        dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0 + du, v) * ufl.dx
+    F1 = (
+        ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx
+        + ufl.inner(f, v) * ds(1)
+        + dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0 + du, v) * ufl.dx
+    )
 
     sc_J = dolfiny.localsolver.UserKernel(
         name="sc_J",
@@ -220,7 +247,8 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
             A = J11.array - J10.array * J00.array.inverse() * J01.array;
         };
         """,
-        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)])
+        required_J=[(1, 0), (0, 0), (0, 1), (1, 1)],
+    )
 
     sc_F_cell = dolfiny.localsolver.UserKernel(
         name="sc_F_cell",
@@ -230,7 +258,8 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
             A = F1.array - J10.array * J00.array.inverse() * F0.array;
         };
         """,
-        required_J=[(1, 0), (0, 0)])
+        required_J=[(1, 0), (0, 0)],
+    )
 
     sc_F_exterior_facet = dolfiny.localsolver.UserKernel(
         name="sc_F_exterior_facet",
@@ -240,7 +269,7 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
             A = F1.array;
         };
         """,
-        required_J=[]
+        required_J=[],
     )
 
     solve_stress = dolfiny.localsolver.UserKernel(
@@ -253,7 +282,8 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
             A = sigma0 - J00.array.inverse() * (F0.array - J01.array * du);
         };
         """,
-        required_J=[(0, 0), (0, 1)])
+        required_J=[(0, 0), (0, 1)],
+    )
 
     def local_update(problem):
         dx = problem.snes.getSolutionUpdate()
@@ -267,22 +297,32 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
             x_local.set(0.0)
         # Assemble into local vector and scatter to functions
         dolfinx.fem.petsc.assemble_vector_block(
-            problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0)
-        vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
+            problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0
+        )
+        vec_to_functions(
+            problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id]
+        )
 
     cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
-    exterior_facets = dict(compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object))
+    exterior_facets = dict(
+        compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object)
+    )
 
-    ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
-                                         F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       [(-1, sc_F_cell, cells.get(-1, []))],
-                                                       dolfinx.fem.IntegralType.exterior_facet:
-                                                       [(1, sc_F_exterior_facet, exterior_facets.get(1, []))]}],
-                                         J_integrals=[[{dolfinx.fem.IntegralType.cell:
-                                                        [(-1, sc_J, cells.get(-1, []))]}]],
-                                         local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           [(-1, solve_stress, cells.get(-1, []))]}],
-                                         local_update=local_update)
+    ls = dolfiny.localsolver.LocalSolver(
+        [S, U],
+        local_spaces_id=[0],
+        F_integrals=[
+            {
+                dolfinx.fem.IntegralType.cell: [(-1, sc_F_cell, cells.get(-1, []))],
+                dolfinx.fem.IntegralType.exterior_facet: [
+                    (1, sc_F_exterior_facet, exterior_facets.get(1, []))
+                ],
+            }
+        ],
+        J_integrals=[[{dolfinx.fem.IntegralType.cell: [(-1, sc_J, cells.get(-1, []))]}]],
+        local_integrals=[{dolfinx.fem.IntegralType.cell: [(-1, solve_stress, cells.get(-1, []))]}],
+        local_update=local_update,
+    )
 
     opts = PETSc.Options("nonlinear_elasticity_schur")
 
@@ -293,9 +333,9 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
     opts["pc_type"] = "cholesky"
     opts["pc_factor_mat_solver_type"] = "mumps"
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc],
-                                                        prefix="nonlinear_elasticity_schur",
-                                                        localsolver=ls)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(
+        [F0, F1], [sigma0, u0], [bc], prefix="nonlinear_elasticity_schur", localsolver=ls
+    )
     sigma1, u1 = problem.solve()
 
     assert np.isclose(u1.vector.norm(), 1.24196714)
@@ -303,11 +343,12 @@ def test_nonlinear_elasticity_schur(squaremesh_5):
 
 
 def test_nonlinear_elasticity_nonlinear(squaremesh_5):
-
     mesh = squaremesh_5
 
     # Stress and displacement elements
-    Se = basix.ufl.element("DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True)
+    Se = basix.ufl.element(
+        "DP", mesh.basix_cell(), 1, shape=(mesh.geometry.dim, mesh.geometry.dim), symmetry=True
+    )
     Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(mesh.geometry.dim,))
 
     S = dolfinx.fem.functionspace(mesh, Se)
@@ -316,7 +357,9 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     sigma0, tau = dolfinx.fem.Function(S, name="sigma"), ufl.TestFunction(S)
     u0, v = dolfinx.fem.Function(U, name="u"), ufl.TestFunction(U)
 
-    free_end_facets = np.sort(dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 1.0)))
+    free_end_facets = np.sort(
+        dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 1.0))
+    )
     mt = dolfinx.mesh.meshtags(squaremesh_5, 1, free_end_facets, 1)
 
     ds = ufl.Measure("ds", subdomain_data=mt)
@@ -326,7 +369,9 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     u_bc.x.array[:] = 0.0
 
     # Displacement BC is applied to the left side
-    left_facets = dolfinx.mesh.locate_entities_boundary(squaremesh_5, 1, lambda x: np.isclose(x[0], 0.0))
+    left_facets = dolfinx.mesh.locate_entities_boundary(
+        squaremesh_5, 1, lambda x: np.isclose(x[0], 0.0)
+    )
     bdofs = dolfinx.fem.locate_dofs_topological(U, 1, left_facets)
     bc = dolfinx.fem.dirichletbc(u_bc, bdofs)
 
@@ -352,8 +397,11 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
 
     f = ufl.as_vector([0.0, 1.0 / 16 / 2])
     F0 = ufl.inner(sigma0 - sigma_u(u0), tau) * ufl.dx
-    F1 = ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx + ufl.inner(f, v) * ds(1) + \
-        dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0, v) * ufl.dx
+    F1 = (
+        ufl.inner(F(u0) * sigma0, ufl.grad(v)) * ufl.dx
+        + ufl.inner(f, v) * ds(1)
+        + dolfinx.fem.Constant(squaremesh_5, 0.0) * ufl.inner(u0, v) * ufl.dx
+    )
 
     # Using here Numba kernel to test the codepath
     @numba.njit
@@ -373,7 +421,7 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
             A = F1.array;
         };
         """,
-        required_J=[]
+        required_J=[],
     )
 
     solve_stress = dolfiny.localsolver.UserKernel(
@@ -398,7 +446,7 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
         A = sigma0;
         }
         """,
-        required_J=[(0, 0)]
+        required_J=[(0, 0)],
     )
 
     def local_update(problem):
@@ -406,22 +454,32 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
             x_local.set(0.0)
         # Assemble into local vector and scatter to functions
         dolfinx.fem.petsc.assemble_vector_block(
-            problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0)
-        vec_to_functions(problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id])
+            problem.xloc, problem.local_form, problem.J_form, [], x0=problem.xloc, scale=-1.0
+        )
+        vec_to_functions(
+            problem.xloc, [problem.u[idx] for idx in problem.localsolver.local_spaces_id]
+        )
 
     cells = dict([(-1, np.arange(mesh.topology.index_map(mesh.topology.dim).size_local))])
-    exterior_facets = dict(compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object))
+    exterior_facets = dict(
+        compute_integration_domains(dolfinx.fem.IntegralType.exterior_facet, mt._cpp_object)
+    )
 
-    ls = dolfiny.localsolver.LocalSolver([S, U], local_spaces_id=[0],
-                                         F_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                       [(-1, sc_F_cell, cells.get(-1, []))],
-                                                       dolfinx.fem.IntegralType.exterior_facet:
-                                                       [(1, sc_F_exterior_facet, exterior_facets.get(1, []))]}],
-                                         J_integrals=[[{dolfinx.fem.IntegralType.cell:
-                                                        [(-1, sc_J, cells.get(-1, []))]}]],
-                                         local_integrals=[{dolfinx.fem.IntegralType.cell:
-                                                           [(-1, solve_stress, cells.get(-1, []))]}],
-                                         local_update=local_update)
+    ls = dolfiny.localsolver.LocalSolver(
+        [S, U],
+        local_spaces_id=[0],
+        F_integrals=[
+            {
+                dolfinx.fem.IntegralType.cell: [(-1, sc_F_cell, cells.get(-1, []))],
+                dolfinx.fem.IntegralType.exterior_facet: [
+                    (1, sc_F_exterior_facet, exterior_facets.get(1, []))
+                ],
+            }
+        ],
+        J_integrals=[[{dolfinx.fem.IntegralType.cell: [(-1, sc_J, cells.get(-1, []))]}]],
+        local_integrals=[{dolfinx.fem.IntegralType.cell: [(-1, solve_stress, cells.get(-1, []))]}],
+        local_update=local_update,
+    )
 
     opts = PETSc.Options("nonlinear_elasticity_nonlinear")
 
@@ -436,10 +494,14 @@ def test_nonlinear_elasticity_nonlinear(squaremesh_5):
     rdofsU = np.arange(Usize, dtype=np.int32)
     r = dolfiny.restriction.Restriction([U], [rdofsU])
 
-    problem = dolfiny.snesblockproblem.SNESBlockProblem([F0, F1], [sigma0, u0], [bc],
-                                                        prefix="nonlinear_elasticity_nonlinear",
-                                                        localsolver=ls,
-                                                        restriction=r)
+    problem = dolfiny.snesblockproblem.SNESBlockProblem(
+        [F0, F1],
+        [sigma0, u0],
+        [bc],
+        prefix="nonlinear_elasticity_nonlinear",
+        localsolver=ls,
+        restriction=r,
+    )
     sigma1, u1 = problem.solve()
 
     assert np.isclose(u1.vector.norm(), 1.24196714)

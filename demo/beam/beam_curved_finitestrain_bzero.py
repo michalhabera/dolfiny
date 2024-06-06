@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 
-import dolfinx
-import dolfiny
-import numpy as np
-import ufl
-import basix
 from mpi4py import MPI
 from petsc4py import PETSc
 
+import basix
+import dolfinx
+import ufl
+from dolfinx import default_scalar_type as scalar
+
 import mesh_curve3d_gmshapi as mg
+import numpy as np
 import postprocess_matplotlib as pp
+
+import dolfiny
 
 # Basic settings
 name = "beam_curved_finitestrain_bzero"
@@ -23,10 +26,6 @@ q = 2  # geometry: polynomial order
 
 # Create the regular mesh of a curve with given dimensions
 gmsh_model, tdim = mg.mesh_curve3d_gmshapi(name, shape="f_arc", L=L, nL=N, order=q)
-
-# # Create the regular mesh of a curve with given dimensions and save as msh, then read into gmsh model
-# mg.mesh_curve3d_gmshapi(name, shape="xline", L=L, nL=N, order=q, msh_file=f"{name}.msh")
-# gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim)
@@ -55,7 +54,7 @@ I = b * h**3 / 12  # [m^4]  # noqa: E741
 
 # Structure: material parameters
 n = 0  # [-] Poisson ratio
-E = 1.0e+8  # [N/m^2] elasticity modulus
+E = 1.0e8  # [N/m^2] elasticity modulus
 lamé_λ = E * n / (1 + n) / (1 - 2 * n)  # Lamé constant λ
 lamé_μ = E / 2 / (1 + n)  # Lamé constant μ
 
@@ -65,7 +64,7 @@ def S(E):
     Stress as function of strain from strain energy function
     """
     E = ufl.variable(E)
-    W = lamé_μ * ufl.inner(E, E) + lamé_λ / 2 * ufl.tr(E)**2  # Saint-Venant Kirchhoff
+    W = lamé_μ * ufl.inner(E, E) + lamé_λ / 2 * ufl.tr(E) ** 2  # Saint-Venant Kirchhoff
     S = ufl.diff(W, E)
     return S
 
@@ -74,24 +73,24 @@ def S(E):
 sc_fac = 10 * (1 + n) / (12 + 11 * n)
 
 # Structure: load parameters
-μ = dolfinx.fem.Constant(mesh, 1.0)  # load factor
+μ = dolfinx.fem.Constant(mesh, scalar(1.0))  # load factor
 
-p_x = μ * dolfinx.fem.Constant(mesh, 1.0 * 0)
-p_z = μ * dolfinx.fem.Constant(mesh, 1.0 * 0)
-m_y = μ * dolfinx.fem.Constant(mesh, 1.0 * 0)
+p_x = μ * dolfinx.fem.Constant(mesh, scalar(1.0 * 0))
+p_z = μ * dolfinx.fem.Constant(mesh, scalar(1.0 * 0))
+m_y = μ * dolfinx.fem.Constant(mesh, scalar(1.0 * 0))
 
-F_x = μ * dolfinx.fem.Constant(mesh, (2.0 * np.pi / L)**2 * E * I * 0)  # prescribed F_x: 2, 4
-F_z = μ * dolfinx.fem.Constant(mesh, (0.5 * np.pi / L)**2 * E * I * 0)  # prescribed F_z: 4, 8
-M_y = μ * dolfinx.fem.Constant(mesh, (2.0 * np.pi / L)**1 * E * I * 1)  # prescribed M_y: 1, 2
+F_x = μ * dolfinx.fem.Constant(mesh, scalar((2.0 * np.pi / L) ** 2 * E * I * 0))  # prescr F_x: 2, 4
+F_z = μ * dolfinx.fem.Constant(mesh, scalar((0.5 * np.pi / L) ** 2 * E * I * 0))  # prescr F_z: 4, 8
+M_y = μ * dolfinx.fem.Constant(mesh, scalar((2.0 * np.pi / L) ** 1 * E * I * 1))  # prescr M_y: 1, 2
 
 # Define integration measures
 dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains)
 ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces)
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
-We = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
-Re = basix.ufl.element("P", mesh.basix_cell(), degree=p, gdim=mesh.geometry.dim)
+Ue = basix.ufl.element("P", mesh.basix_cell(), degree=p)
+We = basix.ufl.element("P", mesh.basix_cell(), degree=p)
+Re = basix.ufl.element("P", mesh.basix_cell(), degree=p)
 
 # Define function spaces
 Uf = dolfinx.fem.functionspace(mesh, Ue)
@@ -99,13 +98,13 @@ Wf = dolfinx.fem.functionspace(mesh, We)
 Rf = dolfinx.fem.functionspace(mesh, Re)
 
 # Define functions
-u = dolfinx.fem.Function(Uf, name='u')
-w = dolfinx.fem.Function(Wf, name='w')
-r = dolfinx.fem.Function(Rf, name='r')
+u = dolfinx.fem.Function(Uf, name="u")
+w = dolfinx.fem.Function(Wf, name="w")
+r = dolfinx.fem.Function(Rf, name="r")
 
-u_ = dolfinx.fem.Function(Uf, name='u_')  # boundary conditions
-w_ = dolfinx.fem.Function(Wf, name='w_')
-r_ = dolfinx.fem.Function(Rf, name='r_')
+u_ = dolfinx.fem.Function(Uf, name="u_")  # boundary conditions
+w_ = dolfinx.fem.Function(Wf, name="w_")
+r_ = dolfinx.fem.Function(Rf, name="r_")
 
 δu = ufl.TestFunction(Uf)
 δw = ufl.TestFunction(Wf)
@@ -143,13 +142,13 @@ P = ufl.Identity(mesh.geometry.dim) - ufl.outer(n0i, n0i)
 
 # Thickness variable
 X = dolfinx.fem.functionspace(mesh, ("DP", q))
-ξ = dolfinx.fem.Function(X, name='ξ')
+ξ = dolfinx.fem.Function(X, name="ξ")
 
 # Undeformed configuration: director d0 and placement b0
 d0 = n0i  # normal of manifold mesh, interpolated
 b0 = x0 + ξ * d0
 
-# Deformed configuration: director d and placement b, assumed kinematics, director uses rotation matrix
+# Deformed configuration: director d and placement b, assumed kinematics, uses rotation matrix
 d = ufl.as_matrix([[ufl.cos(r), 0, ufl.sin(r)], [0, 1, 0], [-ufl.sin(r), 0, ufl.cos(r)]]) * d0
 b = x0 + ufl.as_vector([u, 0, w]) + ξ * d
 
@@ -160,7 +159,9 @@ J0 = ufl.algorithms.apply_derivatives.apply_derivatives(J0)
 J0 = ufl.replace(J0, {ufl.grad(ξ): d0})
 
 # Configuration gradient, deformed configuration
-J = ufl.grad(b) - ufl.outer(d0, d0)  # = P * ufl.grad(x0) + ufl.grad(ufl.as_vector([u, 0, w]) + ξ * d)
+J = ufl.grad(b) - ufl.outer(
+    d0, d0
+)  # = P * ufl.grad(x0) + ufl.grad(ufl.as_vector([u, 0, w]) + ξ * d)
 J = ufl.algorithms.apply_algebra_lowering.apply_algebra_lowering(J)
 J = ufl.algorithms.apply_derivatives.apply_derivatives(J)
 J = ufl.replace(J, {ufl.grad(ξ): d0})
@@ -199,21 +200,25 @@ A = dolfinx.fem.functionspace(mesh, ("DP", 0))
 dolfiny.interpolation.interpolate(h**2 / ufl.JacobianDeterminant(mesh), α)
 
 # Weak form: components (as one-form)
-F = - ufl.inner(δEm, N) * α * dx - ufl.inner(δEm, N) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
-    - ufl.inner(δEs, T) * α * dx - ufl.inner(δEs, T) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)}) \
-    - ufl.inner(δEb, M) * dx \
-    + δu * p_x * dx \
-    + δw * p_z * dx \
-    + δr * m_y * dx \
-    + δu * F_x * ds(end) \
-    + δw * F_z * ds(end) \
+form = (
+    -ufl.inner(δEm, N) * α * dx
+    - ufl.inner(δEm, N) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)})
+    - ufl.inner(δEs, T) * α * dx
+    - ufl.inner(δEs, T) * (1 - α) * dx(metadata={"quadrature_degree": p * (p - 1)})
+    - ufl.inner(δEb, M) * dx
+    + δu * p_x * dx
+    + δw * p_z * dx
+    + δr * m_y * dx
+    + δu * F_x * ds(end)
+    + δw * F_z * ds(end)
     + δr * M_y * ds(end)
+)
 
 # Optional: linearise weak form
-# F = dolfiny.expression.linearise(F, m)  # linearise around zero state
+# form = dolfiny.expression.linearise(form, m)  # linearise around zero state
 
 # Overall form (as list of forms)
-F = dolfiny.function.extract_blocks(F, δm)
+forms = dolfiny.function.extract_blocks(form, δm)
 
 # Create output xdmf file -- open in Paraview with Xdmf3ReaderT
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
@@ -222,7 +227,7 @@ if q <= 2:
     ofile.write_mesh_meshtags(mesh, mts)
 
 # Options for PETSc backend
-opts = PETSc.Options("beam")
+opts = PETSc.Options("beam")  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -235,7 +240,7 @@ opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="beam")
+problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, prefix="beam")
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
 beg_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, beg)
@@ -243,7 +248,9 @@ beg_dofs_Wf = dolfiny.mesh.locate_dofs_topological(Wf, interfaces, beg)
 beg_dofs_Rf = dolfiny.mesh.locate_dofs_topological(Rf, interfaces, beg)
 
 # Create custom plotter (via matplotlib)
-plotter = pp.Plotter(f"{name}.pdf", r'finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{0}$)')
+plotter = pp.Plotter(
+    f"{name}.pdf", r"finite strain beam (1st order shear, displacement-based, on $\mathcal{B}_{0}$)"
+)
 
 # Create vector function space and vector function for writing the displacement vector
 Z = dolfinx.fem.functionspace(mesh, ("CG", p, (mesh.geometry.dim,)))
@@ -251,7 +258,6 @@ z = dolfinx.fem.Function(Z)
 
 # Process load steps
 for factor in np.linspace(0, 1, num=20 + 1):
-
     # Set current time
     μ.value = factor
 

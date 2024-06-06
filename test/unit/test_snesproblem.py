@@ -1,11 +1,13 @@
-import pytest
 from petsc4py import PETSc
 
-import dolfinx
-import dolfiny
-import numpy as np
-import ufl
 import basix
+import dolfinx
+import ufl
+
+import numpy as np
+import pytest
+
+import dolfiny
 
 
 def test_monolithic(V1, V2, squaremesh_5):
@@ -26,18 +28,18 @@ def test_monolithic(V1, V2, squaremesh_5):
 
     opts = PETSc.Options("monolithic")
 
-    opts.setValue('snes_type', 'newtonls')
-    opts.setValue('snes_linesearch_type', 'basic')
+    opts.setValue("snes_type", "newtonls")
+    opts.setValue("snes_linesearch_type", "basic")
 
-    opts.setValue('snes_rtol', 1.0e-10)
-    opts.setValue('snes_max_it', 20)
+    opts.setValue("snes_rtol", 1.0e-10)
+    opts.setValue("snes_max_it", 20)
 
-    opts.setValue('ksp_type', 'preonly')
-    opts.setValue('pc_type', 'lu')
-    opts.setValue('pc_factor_mat_solver_type', 'mumps')
+    opts.setValue("ksp_type", "preonly")
+    opts.setValue("pc_type", "lu")
+    opts.setValue("pc_factor_mat_solver_type", "mumps")
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem([F], [u], prefix="monolithic")
-    sol, = problem.solve()
+    (sol,) = problem.solve()
 
     u0, u1 = sol.split()
     u0 = u0.collapse()
@@ -67,19 +69,20 @@ def test_block(V1, V2, squaremesh_5, nest):
 
     opts = PETSc.Options("block")
 
-    opts.setValue('snes_type', 'newtontr')
-    opts.setValue('snes_rtol', 1.0e-08)
-    opts.setValue('snes_max_it', 12)
+    opts.setValue("snes_type", "newtonls")
+    opts.setValue("snes_rtol", 1.0e-08)
+    opts.setValue("snes_max_it", 12)
 
     if nest:
-        opts.setValue('ksp_type', 'cg')
-        opts.setValue('pc_type', 'fieldsplit')
-        opts.setValue('fieldsplit_pc_type', 'lu')
-        opts.setValue('ksp_rtol', 1.0e-10)
+        opts.setValue("ksp_type", "cg")
+        opts.setValue("pc_type", "fieldsplit")
+        opts.setValue("fieldsplit_pc_type", "lu")
+        opts.setValue("ksp_rtol", 1.0e-08)
+        opts.setValue("ksp_atol", 1.0e-12)
     else:
-        opts.setValue('ksp_type', 'preonly')
-        opts.setValue('pc_type', 'lu')
-        opts.setValue('pc_factor_mat_solver_type', 'mumps')
+        opts.setValue("ksp_type", "preonly")
+        opts.setValue("pc_type", "lu")
+        opts.setValue("pc_factor_mat_solver_type", "mumps")
 
     problem = dolfiny.snesblockproblem.SNESBlockProblem(F, u, nest=nest, prefix="block")
     sol = problem.solve()

@@ -3,8 +3,16 @@
 from mpi4py import MPI
 
 
-def mesh_planartruss_gmshapi(name="planartruss", shape="straight", L=1.0, nL=2, θ=3.1415 / 3,
-                             order=1, msh_file=None, comm=MPI.COMM_WORLD):
+def mesh_planartruss_gmshapi(
+    name="planartruss",
+    shape="straight",
+    L=1.0,
+    nL=2,
+    θ=3.1415 / 3,
+    order=1,
+    msh_file=None,
+    comm=MPI.COMM_WORLD,
+):
     """
     Create mesh of planar truss using the Python API of Gmsh.
     """
@@ -14,7 +22,6 @@ def mesh_planartruss_gmshapi(name="planartruss", shape="straight", L=1.0, nL=2, 
     # Perform Gmsh work only on rank = 0
 
     if comm.rank == 0:
-
         import gmsh
 
         # Initialise gmsh and set options
@@ -36,27 +43,27 @@ def mesh_planartruss_gmshapi(name="planartruss", shape="straight", L=1.0, nL=2, 
             l2 = gmsh.model.geo.addLine(p1, p3)
             lines = [l0, l1, l2]
         else:
-            raise RuntimeError("Unknown shape identifier \'{shape:s}\'")
+            raise RuntimeError("Unknown shape identifier '{shape:s}'")
 
         # Sync
         gmsh.model.geo.synchronize()
         # Define physical groups for subdomains (! target tag > 0)
         lower = 1
         gmsh.model.addPhysicalGroup(tdim, [l0, l1], lower)
-        gmsh.model.setPhysicalName(tdim, lower, 'lower')
+        gmsh.model.setPhysicalName(tdim, lower, "lower")
         upper = 2
         gmsh.model.addPhysicalGroup(tdim, [l2], upper)
-        gmsh.model.setPhysicalName(tdim, upper, 'upper')
+        gmsh.model.setPhysicalName(tdim, upper, "upper")
         # Define physical groups for interfaces (! target tag > 0)
         support = 1
         gmsh.model.addPhysicalGroup(tdim - 1, [p0, p2], support)
-        gmsh.model.setPhysicalName(tdim - 1, support, 'support')
+        gmsh.model.setPhysicalName(tdim - 1, support, "support")
         connect = 2
         gmsh.model.addPhysicalGroup(tdim - 1, [p1], connect)
-        gmsh.model.setPhysicalName(tdim - 1, connect, 'connect')
+        gmsh.model.setPhysicalName(tdim - 1, connect, "connect")
         verytop = 3
         gmsh.model.addPhysicalGroup(tdim - 1, [p3], verytop)
-        gmsh.model.setPhysicalName(tdim - 1, verytop, 'verytop')
+        gmsh.model.setPhysicalName(tdim - 1, verytop, "verytop")
 
         # Set refinement along curve direction
         for line in lines:

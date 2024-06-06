@@ -1,9 +1,12 @@
-import dolfinx
-import dolfiny
-import numpy as np
-import ufl
 from mpi4py import MPI
 from petsc4py import PETSc
+
+import dolfinx
+import ufl
+
+import numpy as np
+
+import dolfiny
 
 
 def test_neohooke():
@@ -50,7 +53,9 @@ def test_neohooke():
     opts["eps_error_relative"] = "ascii::ascii_info_detail"
     opts["eps_monitor"] = "ascii"
 
-    slepcp = dolfiny.slepcblockproblem.SLEPcBlockProblem([F0, F1], [u, p], lmbda0, prefix="neohooke")
+    slepcp = dolfiny.slepcblockproblem.SLEPcBlockProblem(
+        [F0, F1], [u, p], lmbda0, prefix="neohooke"
+    )
     slepcp.solve()
 
     # mat = dolfiny.la.petsc_to_scipy(slepcp.eps.getOperators()[0])

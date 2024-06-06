@@ -17,11 +17,19 @@ variables:
 
 # jobs
 
-flake8:
+ruff:
    stage: lint
-   image: pipelinecomponents/flake8:latest
+   image: dolfinx/dev-env:current
    script:
-      - flake8 --verbose .
+      - pip install ruff
+      - ruff check .
+
+mypy:
+   stage: lint
+   image: dolfinx/dev-env:current
+   script:
+      - pip install mypy
+      - mypy .
 
 .image build:
    stage: image
@@ -46,11 +54,13 @@ flake8:
                --pull
                --load
                --builder=multi --platform="$TARGET_PLATFORM" $DOLFINY_IMAGE_BUILDARGS
+               --file docker/Dockerfile
                .
       - docker push "$CONTAINER_COMMIT_IMAGE-$TARGET_ARCH"
    rules:
       - if: ($CI_RUNNER_ARCHITECTURE == $TARGET_ARCH)
       - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH || $CI_PIPELINE_SOURCE == "schedule")
+      - if: $CI_COMMIT_TAG
       - exists: 
           - Dockerfile
         when: manual
@@ -91,6 +101,9 @@ image release:
    rules:
       - if: $DOLFINY_IMAGE_RELEASE == "no"
         when: never
+      - if: $CI_COMMIT_TAG
+        variables:
+           DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:$CI_COMMIT_TAG
       - if: ($CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_PIPELINE_SOURCE == "schedule")
         variables:
            DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:nightly
@@ -98,13 +111,24 @@ image release:
         variables:
            DOCKERHUB_COMMIT_IMAGE: dolfiny/dolfiny:latest
 
+wheel release:
+   stage: release
+   image: dolfinx/dev-env:current
+   variables:
+      PYPI_PACKAGES_URL: ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi
+   script:
+      - pip3 install build twine
+      - python3 -m build
+      - python3 -m twine upload -u gitlab-ci-token -p ${CI_JOB_TOKEN} --repository-url ${PYPI_PACKAGES_URL} dist/*
+   only:
+      - tags
+
+.install_template:
+   image: $CONTAINER_COMMIT_IMAGE-$CI_RUNNER_ARCHITECTURE
+
 .test_template:
    stage: test
-   image: $CONTAINER_COMMIT_IMAGE-$CI_RUNNER_ARCHITECTURE
-   before_script:
-      - pip3 install .
-      - export PYTEST_ADDOPTS="--color=yes"
-      - cd test
+   extends: .install_template
    artifacts:
       name: "$CI_PROJECT_NAME-$CI_JOB_NAME-$CI_COMMIT_REF_SLUG-artifacts"
       paths:
@@ -114,19 +138,19 @@ image release:
 test/unit/serial:
    extends: .test_template
    script:
-      - cd unit
+      - cd test/unit
       - python3 -u -m pytest -n $CI_RUNNER_JOBMAXNPROCS -vsx .
 
 test/unit/parallel:
    extends: .test_template
    script:
-      - cd unit
+      - cd test/unit
       - mpirun -n $CI_RUNNER_JOBMAXNPROCS python3 -u -m pytest -vsx .
 
 test/convergence:
    extends: .test_template
    script:
-      - cd convergence
+      - cd test/convergence
       - python3 -u -m pytest -n $CI_RUNNER_JOBMAXNPROCS -m 'convergence' -vsx .
       - python3 -u -m pytest -n $CI_RUNNER_JOBMAXNPROCS -m 'postprocess' -vsx .
    rules:
@@ -138,10 +162,7 @@ test/convergence:
 
 .demo_template:
    stage: demo
-   image: $CONTAINER_COMMIT_IMAGE-$CI_RUNNER_ARCHITECTURE
-   before_script:
-      - pip3 install .
-      - cd demo
+   extends: .install_template
    rules:
       - if: ($CI_PIPELINE_SOURCE == "merge_request_event")
       - if: ($CI_PIPELINE_SOURCE == "schedule")
@@ -161,14 +182,14 @@ test/convergence:
 demo/bingham:
    extends: .demo_template
    script:
-      - cd bingham
+      - cd demo/bingham
       - mpirun -n 4 python3 bingham_block.py
       - mpirun -n 4 python3 bingham_lm_block.py
 
 demo/beam:
    extends: .demo_template
    script:
-      - cd beam
+      - cd demo/beam
       - mpirun -n 4 python3 beam_curved_finitestrain_bstar.py
       - mpirun -n 1 python3 beam_curved_finitestrain_bstar.py
       - mpirun -n 4 python3 beam_curved_finitestrain_bzero.py
@@ -177,7 +198,7 @@ demo/beam:
 demo/vsolid:
    extends: .demo_template
    script:
-      - cd vsolid
+      - cd demo/vsolid
       - mpirun -n 4 python3 duffing.py
       - mpirun -n 4 python3 solid_disp_tda.py
       - mpirun -n 4 python3 solid_dispstress_tda.py
@@ -186,24 +207,37 @@ demo/vsolid:
 demo/plasticity:
    extends: .demo_template
    script:
-      - cd plasticity 
+      - cd demo/plasticity 
       - mpirun -n 4 python3 solid_plasticity_monolithic.py
 
 demo/plasticity_rankine:
    extends: .demo_template
    script:
-      - cd plasticity_rankine
+      - cd demo/plasticity_rankine
       - mpirun -n 4 python3 rankine.py
 
 demo/spectral:
    extends: .demo_template
    script:
-      - cd spectral 
+      - cd demo/spectral 
       - mpirun -n 4 python3 spectral_elasticity.py
 
 demo/continuation:
    extends: .demo_template
    script:
-      - cd continuation
+      - cd demo/continuation
       - mpirun -n 1 python3 continuation_planartruss.py
       - mpirun -n 1 python3 continuation_planartruss_disp.py
+      - mpirun -n 1 python3 continuation_spatialtruss.py
+      - mpirun -n 1 python3 continuation_stardome.py
+      - mpirun -n 1 python3 continuation_schwedler.py
+
+demo/tdnns:
+   extends: .demo_template
+   script:
+      - cd demo/tdnns 
+      - mpirun -n 4 python3 solid_tdnns_2d_cantilever.py
+      - mpirun -n 4 python3 solid_tdnns_3d_cantilever.py
+      - mpirun -n 4 python3 solid_tdnns_3d_spanner.py
+      - mpirun -n 4 python3 solid_displ_3d_spanner.py
+      - mpirun -n 4 python3 solid_mixed_3d_spanner.py

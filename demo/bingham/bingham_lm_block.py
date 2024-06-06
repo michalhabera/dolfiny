@@ -3,13 +3,15 @@
 from mpi4py import MPI
 from petsc4py import PETSc
 
-import dolfinx
-import dolfiny
-import numpy as np
-import ufl
 import basix
+import dolfinx
+import ufl
+from dolfinx import default_scalar_type as scalar
 
 import mesh_annulus_gmshapi as mg
+import numpy as np
+
+import dolfiny
 
 # Basic settings
 name = "bingham_lm_block"
@@ -26,20 +28,8 @@ y0 = 0.0
 # Create the regular mesh of an annulus with given dimensions
 gmsh_model, tdim = mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False)
 
-# # Create the regular mesh of an annulus with given dimensions and save as msh, then read into gmsh model
-# mg.mesh_annulus_gmshapi(name, iR, oR, nR, nT, x0, y0, do_quads=False, msh_file=f"{name}.msh")
-# gmsh_model, tdim = dolfiny.mesh.msh_to_gmsh(f"{name}.msh")
-
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim, prune_z=True)
-
-# # Write mesh and meshtags to file
-# with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w") as ofile:
-#     ofile.write_mesh_meshtags(mesh, mts)
-
-# # Read mesh and meshtags from file
-# with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "r") as ifile:
-#     mesh, mts = ifile.read_mesh_meshtags()
 
 # Get merged MeshTags for each codimension
 subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
@@ -51,21 +41,21 @@ ring_outer = interfaces_keys["ring_outer"]
 domain = subdomains_keys["domain"]
 
 # Fluid material parameters
-rho = dolfinx.fem.Constant(mesh, 2.0)  # [kg/m^3]
-mu = dolfinx.fem.Constant(mesh, 1.0)  # [kg/m/s]
-tau_zero = dolfinx.fem.Constant(mesh, 0.2)  # [kg/m/s^2]
-tau_zero_regularisation = dolfinx.fem.Constant(mesh, 1.e-3)  # [-]
+rho = dolfinx.fem.Constant(mesh, scalar(2.0))  # [kg/m^3]
+mu = dolfinx.fem.Constant(mesh, scalar(1.0))  # [kg/m/s]
+tau_zero = dolfinx.fem.Constant(mesh, scalar(0.2))  # [kg/m/s^2]
+tau_zero_regularisation = dolfinx.fem.Constant(mesh, scalar(1.0e-3))  # [-]
 
 # Max inner ring velocity
 v_inner_max = 0.1  # [m/s]
 # Normal and tangential velocity at inner ring
-v_n = dolfinx.fem.Constant(mesh, 0.0)  # [m/s]
-v_t = dolfinx.fem.Constant(mesh, 0.0)  # [m/s] -- value set/updated in analysis
+v_n = dolfinx.fem.Constant(mesh, scalar(0.0))  # [m/s]
+v_t = dolfinx.fem.Constant(mesh, scalar(0.0))  # [m/s] -- value set/updated in analysis
 
 # Global time
-time = dolfinx.fem.Constant(mesh, 0.0)  # [s]
+time = dolfinx.fem.Constant(mesh, scalar(0.0))  # [s]
 # Time step size
-dt = dolfinx.fem.Constant(mesh, 0.05)  # [s]
+dt = dolfinx.fem.Constant(mesh, scalar(0.05))  # [s]
 # Number of time steps
 nT = 80
 
@@ -85,26 +75,26 @@ Pe = basix.ufl.element("P", mesh.basix_cell(), degree=1)
 Le = basix.ufl.element("P", mesh.basix_cell(), degree=2)
 
 # Define function spaces
-V = dolfinx.fem.functionspace(mesh, Ve)
-P = dolfinx.fem.functionspace(mesh, Pe)
-N = dolfinx.fem.functionspace(mesh, Le)
-T = dolfinx.fem.functionspace(mesh, Le)
+Vf = dolfinx.fem.functionspace(mesh, Ve)
+Pf = dolfinx.fem.functionspace(mesh, Pe)
+Nf = dolfinx.fem.functionspace(mesh, Le)
+Tf = dolfinx.fem.functionspace(mesh, Le)
 
 # Define functions
-v = dolfinx.fem.Function(V, name="v")
-p = dolfinx.fem.Function(P, name="p")
-n = dolfinx.fem.Function(N, name="n")
-t = dolfinx.fem.Function(T, name="t")
+v = dolfinx.fem.Function(Vf, name="v")
+p = dolfinx.fem.Function(Pf, name="p")
+n = dolfinx.fem.Function(Nf, name="n")
+t = dolfinx.fem.Function(Tf, name="t")
 
-vt = dolfinx.fem.Function(V, name="vt")
-pt = dolfinx.fem.Function(P, name="pt")
-nt = dolfinx.fem.Function(N, name="nt")
-tt = dolfinx.fem.Function(T, name="tt")
+vt = dolfinx.fem.Function(Vf, name="vt")
+pt = dolfinx.fem.Function(Pf, name="pt")
+nt = dolfinx.fem.Function(Nf, name="nt")
+tt = dolfinx.fem.Function(Tf, name="tt")
 
-δv = ufl.TestFunction(V)
-δp = ufl.TestFunction(P)
-δn = ufl.TestFunction(N)
-δt = ufl.TestFunction(T)
+δv = ufl.TestFunction(Vf)
+δp = ufl.TestFunction(Pf)
+δn = ufl.TestFunction(Nf)
+δt = ufl.TestFunction(Tf)
 
 # Define state as (ordered) list of functions
 m = [v, p, n, t]
@@ -112,16 +102,16 @@ mt = [vt, pt, nt, tt]
 δm = [δv, δp, δn, δt]
 
 # Create other functions
-v_vector_o = dolfinx.fem.Function(V)
-p_scalar_i = dolfinx.fem.Function(P)
+v_vector_o = dolfinx.fem.Function(Vf)
+p_scalar_i = dolfinx.fem.Function(Pf)
 
 # Set up restriction
-rdofsV = dolfiny.mesh.locate_dofs_topological(V, subdomains, domain)
-rdofsV = dolfiny.function.unroll_dofs(rdofsV, V.dofmap.bs)
-rdofsP = dolfiny.mesh.locate_dofs_topological(P, subdomains, domain)
-rdofsN = dolfiny.mesh.locate_dofs_topological(N, interfaces, ring_inner)
-rdofsT = dolfiny.mesh.locate_dofs_topological(T, interfaces, ring_inner)
-restrc = dolfiny.restriction.Restriction([V, P, N, T], [rdofsV, rdofsP, rdofsN, rdofsT])
+rdofsV = dolfiny.mesh.locate_dofs_topological(Vf, subdomains, domain)
+rdofsV = dolfiny.function.unroll_dofs(rdofsV, Vf.dofmap.bs)
+rdofsP = dolfiny.mesh.locate_dofs_topological(Pf, subdomains, domain)
+rdofsN = dolfiny.mesh.locate_dofs_topological(Nf, interfaces, ring_inner)
+rdofsT = dolfiny.mesh.locate_dofs_topological(Tf, interfaces, ring_inner)
+restrc = dolfiny.restriction.Restriction([Vf, Pf, Nf, Tf], [rdofsV, rdofsP, rdofsN, rdofsT])
 
 # Time integrator
 odeint = dolfiny.odeint.ODEInt(t=time, dt=dt, x=m, xt=mt, rho=0.8)
@@ -149,7 +139,7 @@ def T(v, p):
     # Second invariant
     rJ2_ = rJ2(D_)
     # Regularisation
-    mu_effective = mu + tau_zero * 1.0 / (2. * (rJ2_ + tau_zero_regularisation))
+    mu_effective = mu + tau_zero * 1.0 / (2.0 * (rJ2_ + tau_zero_regularisation))
     # Cauchy stress
     T = -p * ufl.Identity(2) + 2.0 * mu_effective * D_
     return T
@@ -160,19 +150,21 @@ n_vec = ufl.FacetNormal(mesh)  # outward unit normal vector
 t_vec = ufl.as_vector([n_vec[1], -n_vec[0]])  # tangent 2D
 
 # Weak form (as one-form)
-f = ufl.inner(δv, rho * vt + rho * ufl.grad(v) * v) * dx \
-    + ufl.inner(ufl.grad(δv), T(v, p)) * dx \
-    + ufl.inner(δp, ufl.div(v)) * dx \
-    - ufl.inner(δv, n_vec) * n * ds(ring_inner) \
-    - ufl.inner(δv, t_vec) * t * ds(ring_inner) \
-    - δn * (v_n - ufl.inner(v, n_vec)) * ds(ring_inner) \
-    - δt * (v_t - ufl.inner(v, t_vec)) * ds(ring_inner) \
-    + dolfinx.fem.Constant(mesh, 0.0) * ufl.inner(δp, p) * dx  # Zero pressure block for BCs
+form = (
+    ufl.inner(δv, rho * vt + rho * ufl.grad(v) * v) * dx
+    + ufl.inner(ufl.grad(δv), T(v, p)) * dx
+    + ufl.inner(δp, ufl.div(v)) * dx
+    - ufl.inner(δv, n_vec) * n * ds(ring_inner)
+    - ufl.inner(δv, t_vec) * t * ds(ring_inner)
+    - δn * (v_n - ufl.inner(v, n_vec)) * ds(ring_inner)
+    - δt * (v_t - ufl.inner(v, t_vec)) * ds(ring_inner)
+    + dolfinx.fem.Constant(mesh, scalar(0.0)) * ufl.inner(δp, p) * dx
+)  # Zero pressure block for BCs
 
 # Overall form (as one-form)
-F = odeint.discretise_in_time(f)
+form = odeint.discretise_in_time(form)
 # Overall form (as list of forms)
-F = dolfiny.function.extract_blocks(F, δm)
+forms = dolfiny.function.extract_blocks(form, δm)
 
 # Create output xdmf file -- open in Paraview with Xdmf3ReaderT
 ofile = dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w")
@@ -183,7 +175,7 @@ ofile.write_mesh_meshtags(mesh, mts)
 # ofile.write_function(p, time.value)
 
 # Options for PETSc backend
-opts = PETSc.Options("bingham")
+opts = PETSc.Options("bingham")  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -194,16 +186,17 @@ opts["pc_type"] = "lu"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(F, m, prefix="bingham", restriction=restrc)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, prefix="bingham", restriction=restrc)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
-ring_outer_dofs_V = dolfiny.mesh.locate_dofs_topological(V, interfaces, ring_outer)
-ring_inner_dofs_P = dolfiny.mesh.locate_dofs_topological(P, interfaces, ring_outer)
+ring_outer_dofs_Vf = dolfiny.mesh.locate_dofs_topological(Vf, interfaces, ring_outer)
+ring_inner_dofs_Pf = dolfiny.mesh.locate_dofs_topological(Pf, interfaces, ring_outer)
 
 # Process time steps
 for time_step in range(1, nT + 1):
-
-    dolfiny.utils.pprint(f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}")
+    dolfiny.utils.pprint(
+        f"\n+++ Processing time instant = {time.value + dt.value:7.3f} in step {time_step:d}"
+    )
 
     # Stage next time step
     odeint.stage()
@@ -213,8 +206,8 @@ for time_step in range(1, nT + 1):
 
     # Set/update boundary conditions
     problem.bcs = [
-        dolfinx.fem.dirichletbc(v_vector_o, ring_outer_dofs_V),  # velocity ring_outer
-        dolfinx.fem.dirichletbc(p_scalar_i, ring_inner_dofs_P),  # pressure ring_inner
+        dolfinx.fem.dirichletbc(v_vector_o, ring_outer_dofs_Vf),  # velocity ring_outer
+        dolfinx.fem.dirichletbc(p_scalar_i, ring_inner_dofs_Pf),  # pressure ring_inner
     ]
 
     # Solve nonlinear problem

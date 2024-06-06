@@ -1,8 +1,11 @@
 from mpi4py import MPI
+
 import dolfinx
-import dolfiny
-import numpy
 import ufl
+
+import numpy as np
+
+import dolfiny
 
 # === ODEInt-based solutions =================================================
 
@@ -58,14 +61,13 @@ def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01, **kwargs):
     problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
-    u_, ut_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1)
-    u_[0], ut_[0] = [v.vector.sum() / v.vector.getSize() for v in [u, ut]]
+    u_, ut_ = np.zeros(nT + 1), np.zeros(nT + 1)
+    u_[0], ut_[0] = (v.vector.sum() / v.vector.getSize() for v in [u, ut])
 
     dolfiny.utils.pprint(f"+++ Processing time steps = {nT}")
 
     # Process time steps
     for time_step in range(1, nT + 1):
-
         # Stage next time step
         odeint.stage()
 
@@ -76,10 +78,12 @@ def ode_1st_linear_odeint(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01, **kwargs):
         odeint.update()
 
         # Assert zero residual at t + dt
-        assert numpy.isclose(dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6), "Non-zero residual at (t + dt)!"
+        assert np.isclose(
+            dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6
+        ), "Non-zero residual at (t + dt)!"
 
         # Store results
-        u_[time_step], ut_[time_step] = [v.vector.sum() / v.vector.getSize() for v in [u, ut]]
+        u_[time_step], ut_[time_step] = (v.vector.sum() / v.vector.getSize() for v in [u, ut])
 
     return u_, ut_
 
@@ -89,7 +93,8 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
     Create 1st order ODE problem and solve with `ODEInt` time integrator.
 
     First order nonlinear non-autonomous ODE:
-    t * dot u - a * cos(c*t) * u^2 - 2 * u - a * b^2 * t^4 * cos(c*t) = 0 with initial condition u(t=1) = 0
+    t * dot u - a * cos(c*t) * u^2 - 2 * u - a * b^2 * t^4 * cos(c*t) = 0
+                                        with initial condition u(t=1) = 0
     """
 
     mesh = dolfinx.mesh.create_unit_interval(MPI.COMM_WORLD, 10)
@@ -99,7 +104,7 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
     ut = dolfinx.fem.Function(U, name="ut")
 
     u.vector.set(0.0)  # initial condition
-    ut.vector.set(a * b**2 * numpy.cos(c))  # exact initial rate of this ODE for generalised alpha
+    ut.vector.set(a * b**2 * np.cos(c))  # exact initial rate of this ODE for generalised alpha
 
     u.vector.ghostUpdate()
     ut.vector.ghostUpdate()
@@ -130,6 +135,7 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
 
     # Options for PETSc backend
     from petsc4py import PETSc
+
     opts = PETSc.Options()
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
@@ -143,14 +149,13 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
     problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
-    u_, ut_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1)
-    u_[0], ut_[0] = [v.vector.sum() / v.vector.getSize() for v in [u, ut]]
+    u_, ut_ = np.zeros(nT + 1), np.zeros(nT + 1)
+    u_[0], ut_[0] = (v.vector.sum() / v.vector.getSize() for v in [u, ut])
 
     dolfiny.utils.pprint(f"+++ Processing time steps = {nT}")
 
     # Process time steps
     for time_step in range(1, nT + 1):
-
         # Stage next time step
         odeint.stage()
 
@@ -164,10 +169,12 @@ def ode_1st_nonlinear_odeint(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01, **kwargs):
         odeint.update()
 
         # Assert zero residual at t + dt
-        assert numpy.isclose(dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6), "Non-zero residual at (t + dt)!"
+        assert np.isclose(
+            dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6
+        ), "Non-zero residual at (t + dt)!"
 
         # Store results
-        u_[time_step], ut_[time_step] = [v.vector.sum() / v.vector.getSize() for v in [u, ut]]
+        u_[time_step], ut_[time_step] = (v.vector.sum() / v.vector.getSize() for v in [u, ut])
 
     return u_, ut_
 
@@ -189,7 +196,9 @@ def ode_2nd_linear_odeint(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
 
     u.vector.set(u_0)  # initial condition
     ut.vector.set(du_0)  # initial condition
-    utt.vector.set(c - a * du_0 - b * u_0)  # exact initial rate of rate of this ODE for generalised alpha
+    utt.vector.set(
+        c - a * du_0 - b * u_0
+    )  # exact initial rate of rate of this ODE for generalised alpha
 
     u.vector.ghostUpdate()
     ut.vector.ghostUpdate()
@@ -226,14 +235,13 @@ def ode_2nd_linear_odeint(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
     problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
-    u_, ut_, utt_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1), numpy.zeros(nT + 1)
-    u_[0], ut_[0], utt_[0] = [v.vector.sum() / v.vector.getSize() for v in [u, ut, utt]]
+    u_, ut_, utt_ = np.zeros(nT + 1), np.zeros(nT + 1), np.zeros(nT + 1)
+    u_[0], ut_[0], utt_[0] = (v.vector.sum() / v.vector.getSize() for v in [u, ut, utt])
 
     dolfiny.utils.pprint(f"+++ Processing time steps = {nT}")
 
     # Process time steps
     for time_step in range(1, nT + 1):
-
         # Stage next time step
         odeint.stage()
 
@@ -244,10 +252,14 @@ def ode_2nd_linear_odeint(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
         odeint.update()
 
         # Assert zero residual at t + dt
-        assert numpy.isclose(dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6), "Non-zero residual at (t + dt)!"
+        assert np.isclose(
+            dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6
+        ), "Non-zero residual at (t + dt)!"
 
         # Store results
-        u_[time_step], ut_[time_step], utt_[time_step] = [v.vector.sum() / v.vector.getSize() for v in [u, ut, utt]]
+        u_[time_step], ut_[time_step], utt_[time_step] = (
+            v.vector.sum() / v.vector.getSize() for v in [u, ut, utt]
+        )
 
     return u_, ut_, utt_
 
@@ -269,7 +281,9 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
 
     u.vector.set(u_0)  # initial condition
     ut.vector.set(0.0)  # initial condition
-    utt.vector.set(- a * u_0 - b * u_0**3)  # exact initial rate of rate of this ODE for generalised alpha
+    utt.vector.set(
+        -a * u_0 - b * u_0**3
+    )  # exact initial rate of rate of this ODE for generalised alpha
 
     u.vector.ghostUpdate()
     ut.vector.ghostUpdate()
@@ -301,6 +315,7 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
 
     # Options for PETSc backend
     from petsc4py import PETSc
+
     opts = PETSc.Options()
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
@@ -314,14 +329,13 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
     problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
-    u_, ut_, utt_ = numpy.zeros(nT + 1), numpy.zeros(nT + 1), numpy.zeros(nT + 1)
-    u_[0], ut_[0], utt_[0] = [v.vector.sum() / v.vector.getSize() for v in [u, ut, utt]]
+    u_, ut_, utt_ = np.zeros(nT + 1), np.zeros(nT + 1), np.zeros(nT + 1)
+    u_[0], ut_[0], utt_[0] = (v.vector.sum() / v.vector.getSize() for v in [u, ut, utt])
 
     dolfiny.utils.pprint(f"+++ Processing time steps = {nT}")
 
     # Process time steps
     for time_step in range(1, nT + 1):
-
         # Stage next time step
         odeint.stage()
 
@@ -335,10 +349,14 @@ def ode_2nd_nonlinear_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwargs):
         odeint.update()
 
         # Assert zero residual at t + dt
-        assert numpy.isclose(dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6), "Non-zero residual at (t + dt)!"
+        assert np.isclose(
+            dolfiny.expression.assemble(r, dx), 0.0, atol=1e-6
+        ), "Non-zero residual at (t + dt)!"
 
         # Store results
-        u_[time_step], ut_[time_step], utt_[time_step] = [v.vector.sum() / v.vector.getSize() for v in [u, ut, utt]]
+        u_[time_step], ut_[time_step], utt_[time_step] = (
+            v.vector.sum() / v.vector.getSize() for v in [u, ut, utt]
+        )
 
     return u_, ut_, utt_
 
@@ -426,6 +444,7 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
 
     # Options for PETSc backend
     from petsc4py import PETSc
+
     opts = PETSc.Options()
     opts["snes_type"] = "newtonls"
     opts["snes_linesearch_type"] = "basic"
@@ -439,14 +458,13 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
     problem.verbose = dict(snes=False, ksp=False)
 
     # Book-keeping of results
-    u_, v_, vt_ = [numpy.zeros(nT + 1) for w in [u, v, vt]]
-    u_[0], v_[0], vt_[0] = [w.vector.sum() / w.vector.getSize() for w in [u, v, vt]]
+    u_, v_, vt_ = (np.zeros(nT + 1) for w in [u, v, vt])
+    u_[0], v_[0], vt_[0] = (w.vector.sum() / w.vector.getSize() for w in [u, v, vt])
 
     dolfiny.utils.pprint(f"+++ Processing time steps = {nT}")
 
     # Process time steps
     for ts in range(1, nT + 1):
-
         # Stage next time step
         odeint.stage()
 
@@ -460,20 +478,25 @@ def ode_1st_nonlinear_mdof_odeint(a=100, b=-50, u_0=1.0, nT=100, dt=0.01, **kwar
         odeint.update()
 
         # Assert zero residual at t + dt
-        assert numpy.isclose(dolfiny.expression.assemble(r1, dx), 0.0, atol=1e-6), "Non-zero residual r1 at (t + dt)!"
-        assert numpy.isclose(dolfiny.expression.assemble(r2, dx), 0.0, atol=1e-6), "Non-zero residual r2 at (t + dt)!"
+        assert np.isclose(
+            dolfiny.expression.assemble(r1, dx), 0.0, atol=1e-6
+        ), "Non-zero residual r1 at (t + dt)!"
+        assert np.isclose(
+            dolfiny.expression.assemble(r2, dx), 0.0, atol=1e-6
+        ), "Non-zero residual r2 at (t + dt)!"
 
         # Assign time-integrated quantities
         dolfiny.interpolation.interpolate(u_expr, d)
         dolfiny.interpolation.interpolate(d, u)
 
         # Store results
-        u_[ts], v_[ts], vt_[ts] = [w.vector.sum() / w.vector.getSize() for w in [u, v, vt]]
+        u_[ts], v_[ts], vt_[ts] = (w.vector.sum() / w.vector.getSize() for w in [u, v, vt])
 
     return u_, v_, vt_
 
 
 # === Closed-form solutions ==================================================
+
 
 def ode_1st_linear_closed(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01):
     """
@@ -483,10 +506,10 @@ def ode_1st_linear_closed(a=1.0, b=0.5, u_0=1.0, nT=100, dt=0.01):
     dot u + a * u - b = 0 with initial condition u(t=0) = u_0
     """
 
-    t = numpy.linspace(0, nT * dt, num=nT + 1)
+    t = np.linspace(0, nT * dt, num=nT + 1)
 
-    u = (u_0 - b / a) * numpy.exp(-a * t) + b / a
-    ut = -a * (u_0 - b / a) * numpy.exp(-a * t)
+    u = (u_0 - b / a) * np.exp(-a * t) + b / a
+    ut = -a * (u_0 - b / a) * np.exp(-a * t)
 
     return u, ut
 
@@ -496,16 +519,20 @@ def ode_1st_nonlinear_closed(a=2.0, b=1.0, c=8.0, nT=100, dt=0.01):
     Solve ODE in closed form (analytically, at discrete time instances).
 
     First order nonlinear non-autonomous ODE:
-    t * dot u - a * cos(c*t) * u^2 - 2*u - a * b^2 * t^4 * cos(c*t) = 0 with initial condition u(t=1) = 0
+    t * dot u - a * cos(c*t) * u^2 - 2*u - a * b^2 * t^4 * cos(c*t) = 0
+                                      with initial condition u(t=1) = 0
     """
 
-    t = numpy.linspace(1, 1 + nT * dt, num=nT + 1)
+    t = np.linspace(1, 1 + nT * dt, num=nT + 1)
 
-    z = c * t * numpy.sin(c * t) - c * numpy.sin(c) + numpy.cos(c * t) - numpy.cos(c)
-    zt = c**2 * t * numpy.cos(c * t)
+    z = c * t * np.sin(c * t) - c * np.sin(c) + np.cos(c * t) - np.cos(c)
+    zt = c**2 * t * np.cos(c * t)
 
-    u = b * t**2 * numpy.tan(a * b / c**2 * z)
-    ut = 2 * b * t * numpy.tan(a * b / c**2 * z) + a * b**2 / c**2 * t**2 * (numpy.tan((a * b / c**2 * z))**2 + 1) * zt
+    u = b * t**2 * np.tan(a * b / c**2 * z)
+    ut = (
+        2 * b * t * np.tan(a * b / c**2 * z)
+        + a * b**2 / c**2 * t**2 * (np.tan(a * b / c**2 * z) ** 2 + 1) * zt
+    )
 
     return u, ut
 
@@ -518,18 +545,26 @@ def ode_2nd_linear_closed(a=12.0, b=1000.0, c=1000.0, u_0=0.5, du_0=0.0, nT=100,
     ddot u + a * dot u + b * u - c = 0 with initial conditions u(t=0) = u_0 ; du(t=0) = du_0
     """
 
-    t = numpy.linspace(0, nT * dt, num=nT + 1)
+    t = np.linspace(0, nT * dt, num=nT + 1)
 
-    La = numpy.sqrt(4 * b - a**2)
+    La = np.sqrt(4 * b - a**2)
     C2 = u_0 - c / b
     C1 = 2 / La * (du_0 + C2 * a / 2)
 
-    u = numpy.exp(-0.5 * a * t) * (C1 * numpy.sin(La / 2 * t) + C2 * numpy.cos(La / 2 * t)) + c / b
-    ut = numpy.exp(-a * t / 2) * ((C1 * La * numpy.cos(La * t / 2)) / 2 - (C2 * La * numpy.sin(La * t / 2)) / 2) \
-        - (a * numpy.exp(-a * t / 2) * (C2 * numpy.cos(La * t / 2) + C1 * numpy.sin(La * t / 2))) / 2
-    utt = (a**2 * numpy.exp(-a * t / 2) * (C2 * numpy.cos(La * t / 2) + C1 * numpy.sin(La * t / 2))) / 4 \
-        - numpy.exp(-a * t / 2) * (C2 * La**2 * numpy.cos(La * t / 2) / 4 + (C1 * La**2 * numpy.sin(La * t / 2)) / 4) \
-        - a * numpy.exp(-a * t / 2) * ((C1 * La * numpy.cos(La * t / 2)) / 2 - (C2 * La * numpy.sin(La * t / 2)) / 2)
+    u = np.exp(-0.5 * a * t) * (C1 * np.sin(La / 2 * t) + C2 * np.cos(La / 2 * t)) + c / b
+    ut = (
+        np.exp(-a * t / 2)
+        * ((C1 * La * np.cos(La * t / 2)) / 2 - (C2 * La * np.sin(La * t / 2)) / 2)
+        - (a * np.exp(-a * t / 2) * (C2 * np.cos(La * t / 2) + C1 * np.sin(La * t / 2))) / 2
+    )
+    utt = (
+        (a**2 * np.exp(-a * t / 2) * (C2 * np.cos(La * t / 2) + C1 * np.sin(La * t / 2))) / 4
+        - np.exp(-a * t / 2)
+        * (C2 * La**2 * np.cos(La * t / 2) / 4 + (C1 * La**2 * np.sin(La * t / 2)) / 4)
+        - a
+        * np.exp(-a * t / 2)
+        * ((C1 * La * np.cos(La * t / 2)) / 2 - (C2 * La * np.sin(La * t / 2)) / 2)
+    )
 
     return u, ut, utt
 
@@ -542,16 +577,19 @@ def ode_2nd_nonlinear_closed(a=100, b=-50, u_0=1.0, nT=100, dt=0.01):
     ddot u + a * u + b * u^3 = 0 with initial conditions u(t=0) = u_0 ; du(t=0) = 0
     """
 
-    t = numpy.linspace(0, nT * dt, num=nT + 1)
+    t = np.linspace(0, nT * dt, num=nT + 1)
 
     # Analytical solution in terms of Jacobi elliptic functions (exact)
     # u(t) = u_0 * cn(c * t, m)
     # ut(t) = -c * u_0 * dn(c * t, m) * sn(c * t, m)
-    # utt(t) = -c^2 * u_0 * cn(c * t, m) * dn(c * t, m) * (dn(c * t, m) - m * sd(c * t, m) * sn(c * t, m))
+    # utt(t) = -c^2 * u_0 * cn(c * t, m) * dn(c * t, m) * (dn(c * t, m)
+    #          - m * sd(c * t, m) * sn(c * t, m))
     import scipy.special
-    c = numpy.sqrt(a + b * u_0**2)
+
+    c = np.sqrt(a + b * u_0**2)
     k = b * u_0**2 / 2 / (a + b * u_0**2)
-    # Capture cases for which the modulus k is not within the [0,1] interval of `scipy.special.ellipj`.
+    # Capture cases for which the modulus k is not within the [0,1] interval
+    # of `scipy.special.ellipj`.
     # This is needed for a softening Duffing oscillator with b < 0.
     # Arguments for `scipy.special.ellipj`
     u = c * t
@@ -561,18 +599,18 @@ def ode_2nd_nonlinear_closed(a=100, b=-50, u_0=1.0, nT=100, dt=0.01):
         sn, cn, dn, _ = scipy.special.ellipj(u, m)
         sn_, cn_, dn_ = sn, cn, dn
     if m > 1:
-        u_ = u * m**(1 / 2)
-        m_ = m**(-1)
+        u_ = u * m ** (1 / 2)
+        m_ = m ** (-1)
         sn, cn, dn, _ = scipy.special.ellipj(u_, m_)
-        sn_, cn_, dn_ = m**(-1 / 2) * sn, dn, cn
+        sn_, cn_, dn_ = m ** (-1 / 2) * sn, dn, cn
     if m < 0:
-        u_ = u * (1 / (1 - m))**(-1 / 2)
+        u_ = u * (1 / (1 - m)) ** (-1 / 2)
         m_ = -m / (1 - m)
         sn, cn, dn, _ = scipy.special.ellipj(u_, m_)
-        sn_, cn_, dn_ = (1 / (1 - m))**(1 / 2) * sn / dn, cn / dn, 1 / dn
+        sn_, cn_, dn_ = (1 / (1 - m)) ** (1 / 2) * sn / dn, cn / dn, 1 / dn
 
     u = u_0 * cn_
     ut = -c * u_0 * dn_ * sn_
-    utt = -c**2 * u_0 * cn_ * dn_ * (dn_ - m * sn_ / dn_ * sn_)
+    utt = -(c**2) * u_0 * cn_ * dn_ * (dn_ - m * sn_ / dn_ * sn_)
 
     return u, ut, utt
