@@ -120,6 +120,7 @@ wheel release:
       - pip3 install build twine
       - python3 -m build
       - python3 -m twine upload -u gitlab-ci-token -p ${CI_JOB_TOKEN} --repository-url ${PYPI_PACKAGES_URL} dist/*
+      - python3 -m twine upload -u ${PYPI_USER} -p ${PYPI_PASSWORD} dist/*
    only:
       - tags
 
