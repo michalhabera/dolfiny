@@ -158,10 +158,10 @@ opts["mat_mumps_icntl_24"] = 1
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, bcs, prefix=name)
 
-# Solve nonlinear problem
+# Solve problem
 problem.solve()
 
-# Assert convergence of nonlinear solver
+# Assert convergence of solver
 problem.status(verbose=True, error_on_failure=True)
 
 # Assert symmetry of operator

@@ -10,7 +10,7 @@ class Xdmf3Reader(pyvista.XdmfReader):
     _vtk_class_name = "vtkXdmf3Reader"
 
 
-def plot_tube3d_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=MPI.COMM_WORLD):
+def plot_box_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=MPI.COMM_WORLD):
     if comm.rank > 0:
         return
 
@@ -20,6 +20,13 @@ def plot_tube3d_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=M
     if plot_file is None:
         plot_file = f"./{name}.png"  # default: png
 
+    options_default = dict(
+        on_deformed=True,
+        u_factor=500.0,
+        s_range=None,
+    )
+    options = options_default | options
+
     # Read results and plot using pyvista (all in serial, on rank = 0)
 
     reader = Xdmf3Reader(path=xdmf_file)
@@ -27,7 +34,8 @@ def plot_tube3d_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=M
 
     grid = multiblock[-1]
     grid.point_data["u"] = multiblock[0].point_data["u"]
-    grid.point_data["s"] = multiblock[1].point_data["s"] * 1.0e3  # to [MPa]
+    grid.point_data["S"] = multiblock[1].point_data["S"]
+    grid.point_data["s"] = multiblock[2].point_data["s"]
 
     pixels = 2048
     plotter = pyvista.Plotter(off_screen=True, window_size=[pixels, pixels], image_scale=1)
@@ -38,7 +46,7 @@ def plot_tube3d_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=M
         width=0.8,
         position_x=0.1,
         position_y=0.90,
-        title="von Mises stress [MPa]",
+        title=options["s_title"],
         font_family="courier",
         fmt="%1.2f",
         color="black",
@@ -46,7 +54,20 @@ def plot_tube3d_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=M
         label_font_size=pixels // 50,
     )
 
-    grid_warped = grid.warp_by_vector("u", factor=1.0)
+    factor = options["u_factor"]  # scaling factor, warped deformation
+
+    plotter.add_text(
+        f"u × {factor:.1f}",
+        position=(pixels // 50, pixels // 50),
+        font_size=pixels // 100,
+        color="black",
+        font="courier",
+    )
+
+    if options["on_deformed"]:
+        grid_warped = grid.warp_by_vector("u", factor=factor)
+    else:
+        grid_warped = grid
 
     if not grid.get_cell(0).is_linear:
         levels = 4
@@ -64,7 +85,8 @@ def plot_tube3d_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=M
         split_sharp_edges=True,
     )
 
-    s.mapper.scalar_range = [0, 8]
+    if options["s_range"]:
+        s.mapper.scalar_range = options["s_range"]
 
     plotter.add_mesh(
         grid_warped.separate_cells()
@@ -76,10 +98,10 @@ def plot_tube3d_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=M
         render_lines_as_tubes=True,
     )
 
-    plotter.zoom_camera(1.15)
+    plotter.zoom_camera(1.0)
 
     plotter.screenshot(plot_file, transparent_background=False)
 
 
 if __name__ == "__main__":
-    plot_tube3d_pyvista(name="solid_elasticity")
+    plot_box_pyvista(name="solid_stressonly")

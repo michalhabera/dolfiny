@@ -120,6 +120,7 @@ wheel release:
       - pip3 install build twine
       - python3 -m build
       - python3 -m twine upload -u gitlab-ci-token -p ${CI_JOB_TOKEN} --repository-url ${PYPI_PACKAGES_URL} dist/*
+      - python3 -m twine upload -u ${PYPI_USER} -p ${PYPI_PASSWORD} dist/*
    only:
       - tags
 
@@ -220,7 +221,8 @@ demo/spectral:
    extends: .demo_template
    script:
       - cd demo/spectral 
-      - mpirun -n 4 python3 spectral_elasticity.py
+      - mpirun -n 4 python3 solid_elasticity_classic.py
+      - mpirun -n 4 python3 solid_elasticity_spectral.py
 
 demo/continuation:
    extends: .demo_template
@@ -241,3 +243,9 @@ demo/tdnns:
       - mpirun -n 4 python3 solid_tdnns_3d_spanner.py
       - mpirun -n 4 python3 solid_displ_3d_spanner.py
       - mpirun -n 4 python3 solid_mixed_3d_spanner.py
+
+demo/beltrami:
+   extends: .demo_template
+   script:
+      - cd demo/beltrami 
+      - mpirun -n 4 python3 solid_stressonly.py

@@ -102,7 +102,6 @@ opts = PETSc.Options(name)  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
-opts["snes_atol"] = 1.0e-00
 opts["snes_rtol"] = 1.0e-00
 opts["snes_max_it"] = 1
 opts["ksp_type"] = "preonly"
@@ -112,10 +111,10 @@ opts["pc_factor_mat_solver_type"] = "mumps"
 # Create nonlinear problem: SNES
 problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, bcs, prefix=name)
 
-# Solve nonlinear problem
+# Solve problem
 problem.solve()
 
-# Assert convergence of nonlinear solver
+# Assert convergence of solver
 problem.status(verbose=True, error_on_failure=False)
 
 # Assert symmetry of operator

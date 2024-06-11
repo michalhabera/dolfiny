@@ -21,7 +21,7 @@ def plot_spanner_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=
         plot_file = f"{name}.png"  # default: png
 
     options_default = dict(
-        wire_deformed=False,
+        wire_deformed=True,
         wire_undeformed=False,
         on_deformed=True,
         u_factor=10.0,
@@ -72,10 +72,12 @@ def plot_spanner_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=
         grid_warped = grid
 
     if not grid.get_cell(0).is_linear:
-        grid_warped = grid_warped.extract_surface(nonlinear_subdivision=3)
+        levels = 3
+    else:
+        levels = 0
 
     s = plotter.add_mesh(
-        grid_warped,
+        grid_warped.extract_surface(nonlinear_subdivision=levels),
         scalars="s",
         scalar_bar_args=sargs,
         cmap="coolwarm",
@@ -88,10 +90,26 @@ def plot_spanner_pyvista(name, xdmf_file=None, plot_file=None, options={}, comm=
     s.mapper.scalar_range = options["s_range"]
 
     if options["wire_deformed"]:
-        plotter.add_mesh(grid_warped, style="wireframe", color="black", line_width=pixels // 500)
+        plotter.add_mesh(
+            grid_warped.separate_cells()
+            .extract_surface(nonlinear_subdivision=levels)
+            .extract_feature_edges(),
+            style="wireframe",
+            color="black",
+            line_width=pixels // 1000,
+            render_lines_as_tubes=True,
+        )
 
     if options["wire_undeformed"]:
-        plotter.add_mesh(grid, style="wireframe", color="lightgray", line_width=pixels // 1000)
+        plotter.add_mesh(
+            grid.separate_cells()
+            .extract_surface(nonlinear_subdivision=levels)
+            .extract_feature_edges(),
+            style="wireframe",
+            color="lightgray",
+            line_width=pixels // 1000,
+            render_lines_as_tubes=True,
+        )
 
     plotter.camera_position = (
         pyvista.pyvista_ndarray([(-0.8, -1.0, 0.8), (0.05, 0.5, 0.0), (2.0, 4.0, 8.0)]) * 0.15
