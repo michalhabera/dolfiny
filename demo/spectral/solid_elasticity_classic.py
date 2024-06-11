@@ -15,15 +15,15 @@ import plot_tube3d_pyvista as pl
 import dolfiny
 
 # Basic settings
-name = "spectral_elasticity"
+name = "solid_elasticity_classic"
 comm = MPI.COMM_WORLD
 
 # Geometry and mesh parameters
-dx, dy, dz = 1.0, 1.0, 1.0
-nx, ny, nz = 20, 20, 20
+r, t, h = 0.04, 0.01, 0.1  # [m]
+nr, nt, nh = 16, 5, 8
 
-# Create the regular mesh of a tube with given dimensions FIXME: implement tube
-gmsh_model, tdim = mg.mesh_tube3d_gmshapi(name, dx, dy, dz, nx, ny, nz, do_quads=False)
+# Create the regular mesh of a tube with given dimensions
+gmsh_model, tdim = mg.mesh_tube3d_gmshapi(name, r, t, h, nr, nt, nh, do_quads=True, order=2)
 
 # Get mesh and meshtags
 mesh, mts = dolfiny.mesh.gmsh_to_dolfin(gmsh_model, tdim)
@@ -33,21 +33,15 @@ subdomains, subdomains_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 0)
 interfaces, interfaces_keys = dolfiny.mesh.merge_meshtags(mesh, mts, tdim - 1)
 
 # Define shorthands for labelled tags
-surface_front = interfaces_keys["surface_front"]
-surface_back = interfaces_keys["surface_back"]
-
-# Define boundary stress vector (torque at upper face)
-x = ufl.SpatialCoordinate(mesh)
-n = ufl.FacetNormal(mesh)
-t = ufl.cross(x - ufl.as_vector([dx / 2, dy / 2, dz]), n)
-t *= dolfinx.fem.Constant(mesh, scalar(np.pi / 2))
+surface_lower = interfaces_keys["surface_lower"]
+surface_upper = interfaces_keys["surface_upper"]
 
 # Define integration measures
-dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 3})
-ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 3})
+dx = ufl.Measure("dx", domain=mesh, subdomain_data=subdomains, metadata={"quadrature_degree": 4})
+ds = ufl.Measure("ds", domain=mesh, subdomain_data=interfaces, metadata={"quadrature_degree": 4})
 
 # Define elements
-Ue = basix.ufl.element("P", mesh.basix_cell(), 1, shape=(mesh.geometry.dim,))
+Ue = basix.ufl.element("P", mesh.basix_cell(), 2, shape=(mesh.geometry.dim,))
 
 # Define function spaces
 Uf = dolfinx.fem.functionspace(mesh, Ue)
@@ -62,28 +56,31 @@ u_ = dolfinx.fem.Function(Uf, name="u_")  # boundary conditions
 # Define state as (ordered) list of functions
 m, δm = [u], [δu]
 
-# output / visualisation
+# Functions for output / visualisation
 vorder = mesh.geometry.cmap.degree
 uo = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder, (3,))), name="u")
 so = dolfinx.fem.Function(dolfinx.fem.functionspace(mesh, ("P", vorder)), name="s")  # for output
 
 # Kinematics
 F = ufl.Identity(3) + ufl.grad(u)
-C = F.T * F
-# Spectral decomposition of C
-(c0, c1, c2), (E0, E1, E2) = dolfiny.invariants.eigenstate(C)
 
-# Squares of principal stretches
-c = ufl.as_vector([c0, c1, c2])
-c = ufl.variable(c)
-# Variation of squares of principal stretches
-δc = dolfiny.expression.derivative(c, m, δm)
+# Strain measure: Cauchy strain tensor
+C = F.T * F
+C = ufl.variable(C)
+# Variation of strain measure
+δC = dolfiny.expression.derivative(C, m, δm)
 
 # Elasticity parameters
-E = dolfinx.fem.Constant(mesh, scalar(10.0))
-nu = dolfinx.fem.Constant(mesh, scalar(0.4))
+E = dolfinx.fem.Constant(mesh, scalar(0.01))  # [GPa]
+nu = dolfinx.fem.Constant(mesh, scalar(0.4))  # [-]
 mu = E / (2 * (1 + nu))
 la = E * nu / ((1 + nu) * (1 - 2 * nu))
+
+# Define boundary stress vector (torque at upper face)
+x0 = ufl.SpatialCoordinate(mesh)
+n0 = ufl.FacetNormal(mesh)
+λ = dolfinx.fem.Constant(mesh, scalar(0.0))
+t = ufl.cross(x0 - ufl.as_vector([0.0, 0.0, h]), n0) / 20 * λ
 
 
 def strain_energy(i1, i2, i3):
@@ -105,24 +102,24 @@ def strain_energy(i1, i2, i3):
     return Ψ
 
 
-# Invariants (based on spectral decomposition of C)
-i1, i2, i3 = dolfiny.invariants.invariants_principal(ufl.diag(c))
+# Invariants (of C)
+i1, i2, i3 = dolfiny.invariants.invariants_principal(C)
 # Material model (isotropic)
 Ψ = strain_energy(i1, i2, i3)
 # Stress measure
-s = 2 * ufl.diff(Ψ, c)
+S = 2 * ufl.diff(Ψ, C)
 
 # von Mises stress (output)
-svm = ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(ufl.diag(s)), ufl.dev(ufl.diag(s))))
+svm = ufl.sqrt(3 / 2 * ufl.inner(ufl.dev(S), ufl.dev(S)))
 
-# Weak form: for isotropic material, eigenprojectors of C and S are identical
-form = -0.5 * ufl.inner(δc, s) * dx + ufl.inner(δu, t) * ds(surface_front)
+# Weak form
+form = -0.5 * ufl.inner(δC, S) * dx + ufl.inner(δu, t) * ds(surface_upper)
 
 # Overall form (as list of forms)
 forms = dolfiny.function.extract_blocks(form, δm)
 
 # Options for PETSc backend
-opts = PETSc.Options("spectral")  # type: ignore[attr-defined]
+opts = PETSc.Options(name)  # type: ignore[attr-defined]
 
 opts["snes_type"] = "newtonls"
 opts["snes_linesearch_type"] = "basic"
@@ -134,33 +131,37 @@ opts["pc_type"] = "cholesky"
 opts["pc_factor_mat_solver_type"] = "mumps"
 
 # FFCx options
-jit_options = dict(cffi_extra_compile_args=["-O0"])
+jit_options = dict(cffi_extra_compile_args=["-O3"])
 
 # Create nonlinear problem: SNES
-problem = dolfiny.snesblockproblem.SNESBlockProblem(
-    forms, m, prefix="spectral", jit_options=jit_options
-)
+problem = dolfiny.snesblockproblem.SNESBlockProblem(forms, m, prefix=name, jit_options=jit_options)
 
 # Identify dofs of function spaces associated with tagged interfaces/boundaries
-b_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_back)
+b_dofs_Uf = dolfiny.mesh.locate_dofs_topological(Uf, interfaces, surface_lower)
 
 # Set/update boundary conditions
 problem.bcs = [
-    dolfinx.fem.dirichletbc(u_, b_dofs_Uf),  # u back face
+    dolfinx.fem.dirichletbc(u_, b_dofs_Uf),  # u lower face
 ]
 
-# Solve nonlinear problem
-problem.solve()
+# Apply external force via load stepping
+for λk in np.linspace(0.0, 1.0, 10 + 1)[1:]:
+    # Set load factor
+    λ.value = λk
+    dolfiny.utils.pprint(f"\n*** Load factor λ = {λk:.4f} \n")
 
-# Assert convergence of nonlinear solver
-problem.status(verbose=True, error_on_failure=True)
+    # Solve nonlinear problem
+    problem.solve()
 
-# Assert symmetry of operator
-assert dolfiny.la.is_symmetric(problem.J)
+    # Assert convergence of nonlinear solver
+    problem.status(verbose=True, error_on_failure=True)
 
-# Interpolate
+    # Assert symmetry of operator
+    assert dolfiny.la.is_symmetric(problem.J)
+
+# Interpolate for output purposes
 dolfiny.interpolation.interpolate(u, uo)
-dolfiny.projection.project(svm, so)
+dolfiny.interpolation.interpolate(svm, so)
 
 # Write results to file
 with dolfiny.io.XDMFFile(comm, f"{name}.xdmf", "w") as ofile:

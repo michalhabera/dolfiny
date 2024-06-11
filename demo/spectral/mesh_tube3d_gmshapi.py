@@ -5,19 +5,16 @@ from mpi4py import MPI
 
 def mesh_tube3d_gmshapi(
     name="tube3d",
-    dx=1.0,
-    dy=1.0,
-    dz=1.0,
-    nx=10,
-    ny=10,
-    nz=10,
+    r=1.0,
+    t=0.2,
+    h=1.0,
+    nr=30,
+    nt=6,
+    nh=10,
     x0=0.0,
     y0=0.0,
     z0=0.0,
     do_quads=False,
-    px=1.0,
-    py=1.0,
-    pz=1.0,
     order=1,
     msh_file=None,
     comm=MPI.COMM_WORLD,
@@ -35,110 +32,95 @@ def mesh_tube3d_gmshapi(
         # Initialise gmsh and set options
         gmsh.initialize()
         gmsh.option.setNumber("General.Terminal", 1)
+        gmsh.option.set_number("General.NumThreads", 1)  # reproducibility
 
-        # gmsh.option.setNumber("Mesh.Algorithm", 9)
-        # gmsh.option.setNumber("Mesh.Algorithm3D", 10)
-
-        # if do_quads:
-        #   gmsh.option.setNumber("Mesh.RecombineAll", 1)
-        #   gmsh.option.setNumber("Mesh.Recombine3DAll", 1)
-        #   gmsh.option.setNumber("Mesh.SubdivisionAlgorithm", 2)
+        if do_quads:
+            gmsh.option.set_number("Mesh.Algorithm", 8)
+            gmsh.option.set_number("Mesh.Algorithm3D", 10)
+            # gmsh.option.set_number("Mesh.SubdivisionAlgorithm", 2)
+        else:
+            gmsh.option.set_number("Mesh.Algorithm", 5)
+            gmsh.option.set_number("Mesh.Algorithm3D", 4)
+            gmsh.option.set_number("Mesh.AlgorithmSwitchOnFailure", 6)
 
         # Add model under given name
         gmsh.model.add(name)
 
-        # Set refinement
-        import numpy as np
-
-        # FIXME: generate a 3d tube here.
-
-        def nele(n):
-            return np.ones(n, dtype=int)
-
-        def prog(n, p):
-            t = np.linspace(0, 1, n + 1)[1:]
-            if p > 0:
-                r = t**p
-            else:
-                r = 1 - (1 - t) ** (-p)
-            return r
-
-        # Create block by extrusion from a point
-        p0 = gmsh.model.geo.addPoint(x0, y0, z0)
-        # e0 = gmsh.model.geo.extrude([(tdim - 3, p0)], dx, 0.0, 0.0, recombine=do_quads)
-        e0 = gmsh.model.geo.extrude(
-            [(tdim - 3, p0)],
-            dx,
-            0.0,
-            0.0,
-            numElements=nele(nx),
-            heights=prog(nx, px),
+        # Create points and line
+        p0 = gmsh.model.occ.add_point(x0 + r, y0, 0.0)
+        p1 = gmsh.model.occ.add_point(x0 + r + t, y0, 0.0)
+        l0 = gmsh.model.occ.add_line(p0, p1)
+        s0 = gmsh.model.occ.revolve(
+            [(1, l0)],
+            x0,
+            y0,
+            z0,
+            0,
+            0,
+            1,
+            angle=+gmsh.pi,
+            numElements=[nr],
             recombine=do_quads,
         )
-        l0 = e0[1][1]
-        # e1 = gmsh.model.geo.extrude([(tdim - 2, l0)], 0.0, dy, 0.0, recombine=do_quads)
-        e1 = gmsh.model.geo.extrude(
-            [(tdim - 2, l0)],
-            0.0,
-            dy,
-            0.0,
-            numElements=nele(ny),
-            heights=prog(ny, py),
+        s1 = gmsh.model.occ.revolve(
+            [(1, l0)],
+            x0,
+            y0,
+            z0,
+            0,
+            0,
+            1,
+            angle=-gmsh.pi,
+            numElements=[nr],
             recombine=do_quads,
         )
-        s0 = e1[1][1]
-        # e2 = gmsh.model.geo.extrude([(tdim - 1, s0)], 0.0, 0.0, dz, recombine=do_quads)
-        e2 = gmsh.model.geo.extrude(  # noqa: F841
-            [(tdim - 1, s0)],
-            0.0,
-            0.0,
-            dz,
-            numElements=nele(nz),
-            heights=prog(nz, pz),
-            recombine=do_quads,
-        )  # generate to produce surface order below
+        ring, _ = gmsh.model.occ.fuse([s0[1]], [s1[1]])
+        tube = gmsh.model.occ.extrude(ring, 0, 0, h, [nh], recombine=do_quads)  # noqa: F841
 
         # Synchronize
-        gmsh.model.geo.synchronize()
+        gmsh.model.occ.synchronize()
 
         # Get model entites
-        points, lines, surfaces, volumes = (gmsh.model.getEntities(d) for d in [0, 1, 2, 3])
+        points, lines, surfaces, volumes = (gmsh.model.occ.get_entities(d) for d in [0, 1, 2, 3])
+        boundaries = gmsh.model.get_boundary(volumes, oriented=False)  # noqa: F841
 
-        # Extract surfaces and volumes
-        s0, s1, s2, s3, s4, s5 = (
-            surfaces[i][1] for i in [5, 0, 1, 3, 4, 2]
-        )  # ordering by inspection
-        (v0,) = (volumes[i][1] for i in [0])
+        # Assertions, problem-specific
+        assert len(volumes) == 2
+
+        # Helper
+        def extract_tags(a):
+            return list(ai[1] for ai in a)
+
+        # Extract certain tags, problem-specific
+        tag_subdomains_total = extract_tags(volumes)
+
+        # Set geometrical identifiers (obtained by inspection)
+        tag_interfaces_lower = extract_tags([surfaces[0], surfaces[1]])
+        tag_interfaces_upper = extract_tags([surfaces[6], surfaces[9]])
+        tag_interfaces_inner = extract_tags([surfaces[2], surfaces[7]])
+        tag_interfaces_outer = extract_tags([surfaces[3], surfaces[8]])
 
         # Define physical groups for subdomains (! target tag > 0)
         domain = 1
-        gmsh.model.addPhysicalGroup(tdim, [v0], domain)
-        gmsh.model.setPhysicalName(tdim, domain, "domain")
+        gmsh.model.add_physical_group(tdim, tag_subdomains_total, domain)
+        gmsh.model.set_physical_name(tdim, domain, "domain")
 
         # Define physical groups for interfaces (! target tag > 0)
-        surface_front = 1
-        gmsh.model.addPhysicalGroup(tdim - 1, [s0], surface_front)
-        gmsh.model.setPhysicalName(tdim - 1, surface_front, "surface_front")
-        surface_back = 2
-        gmsh.model.addPhysicalGroup(tdim - 1, [s1], surface_back)
-        gmsh.model.setPhysicalName(tdim - 1, surface_back, "surface_back")
-        surface_bottom = 3
-        gmsh.model.addPhysicalGroup(tdim - 1, [s2], surface_bottom)
-        gmsh.model.setPhysicalName(tdim - 1, surface_bottom, "surface_bottom")
-        surface_top = 4
-        gmsh.model.addPhysicalGroup(tdim - 1, [s3], surface_top)
-        gmsh.model.setPhysicalName(tdim - 1, surface_top, "surface_top")
-        surface_left = 5
-        gmsh.model.addPhysicalGroup(tdim - 1, [s4], surface_left)
-        gmsh.model.setPhysicalName(tdim - 1, surface_left, "surface_left")
-        surface_right = 6
-        gmsh.model.addPhysicalGroup(tdim - 1, [s5], surface_right)
-        gmsh.model.setPhysicalName(tdim - 1, surface_right, "surface_right")
+        surface_lower = 1
+        gmsh.model.add_physical_group(tdim - 1, tag_interfaces_lower, surface_lower)
+        gmsh.model.set_physical_name(tdim - 1, surface_lower, "surface_lower")
+        surface_upper = 2
+        gmsh.model.add_physical_group(tdim - 1, tag_interfaces_upper, surface_upper)
+        gmsh.model.set_physical_name(tdim - 1, surface_upper, "surface_upper")
+        surface_inner = 3
+        gmsh.model.add_physical_group(tdim - 1, tag_interfaces_inner, surface_inner)
+        gmsh.model.set_physical_name(tdim - 1, surface_inner, "surface_inner")
+        surface_outer = 4
+        gmsh.model.add_physical_group(tdim - 1, tag_interfaces_outer, surface_outer)
+        gmsh.model.set_physical_name(tdim - 1, surface_outer, "surface_outer")
 
-        # Ensure union jack meshing for triangular elements
-        # if not do_quads:
-        #     gmsh.model.mesh.setTransfiniteSurface(s0, arrangement="Alternate")
-        #     gmsh.model.mesh.setTransfiniteSurface(s1, arrangement="Alternate")
+        # Set refinement in radial direction
+        gmsh.model.mesh.setTransfiniteCurve(l0, numNodes=nt)
 
         # Generate the mesh
         gmsh.model.mesh.generate()
